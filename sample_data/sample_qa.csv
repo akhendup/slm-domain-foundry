@@ -1,0 +1,4 @@
+question,answer
+What is a small language model?,"A small language model (SLM) is a compact neural network trained to generate or understand text. It has fewer parameters than large models like GPT-4, so it can run on a single laptop or GPU."
+How do I train an SLM?,"You need (1) text or question-answer data, (2) a way to turn it into training examples, and (3) either fine-tuning an existing small model (e.g. with Unsloth) or training a tiny model from scratch."
+What is fine-tuning?,"Fine-tuning means taking a model that was already trained on lots of data and training it a bit more on your own data. This adapts the model to your topic or style without training from scratch."

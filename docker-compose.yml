@@ -1,0 +1,37 @@
+version: "3.8"
+
+# Usage:
+#   docker compose up --build        # CPU
+#   docker compose up --build        # GPU (nvidia-container-toolkit required)
+#
+# Open http://localhost:7860 in your browser.
+# Tabs: 1 · Prepare Data  →  2 · Train  →  3 · Chat
+
+services:
+  app:
+    build: .
+    ports:
+      - "7860:7860"
+    volumes:
+      # Raw uploaded files (PDFs / CSVs written by the UI)
+      - ./data:/app/data
+      # Prepared JSONL training files
+      - ./training_data:/app/training_data
+      # Trained model output (persists across container restarts)
+      - ./output_model:/app/output_model
+      # HuggingFace model cache so base models are only downloaded once
+      - huggingface_cache:/root/.cache/huggingface
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python run_gradio_ui.py --host 0.0.0.0
+    # GPU support — remove or comment out this block on CPU-only hosts
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  huggingface_cache:

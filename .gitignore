@@ -1,0 +1,17 @@
+# Virtual env
+.venv/
+venv/
+env/
+
+# Generated / local
+training_data/
+output_model/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,38 @@
+# Virtual env and caches
+.venv
+venv
+env
+__pycache__
+*.py[cod]
+*.pyo
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Git and IDE
+.git
+.gitignore
+.dockerignore
+.cursor
+.idea
+.vscode
+*.swp
+*.swo
+
+# Generated / local data (mount at run time instead)
+training_data
+output_model
+*.jsonl
+*.safetensors
+
+# Optional: uncomment to shrink image (README still useful in container)
+# *.md
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db

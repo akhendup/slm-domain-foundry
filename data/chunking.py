@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""
+Simple text chunking for training data. Preserves paragraph boundaries.
+Optional: use sentence-transformers for semantic chunking if installed.
+"""
+
+import re
+from typing import List
+
+try:
+    from sentence_transformers import SentenceTransformer
+    SEMANTIC_AVAILABLE = True
+except ImportError:
+    SEMANTIC_AVAILABLE = False
+
+
+def chunk_text(
+    text: str,
+    chunk_size: int = 1000,
+    chunk_overlap: int = 200,
+    use_semantic: bool = False,
+) -> List[str]:
+    """
+    Split text into chunks. By default uses rule-based chunking.
+    If use_semantic=True and sentence-transformers is installed, uses sentence boundaries.
+    """
+    if not text or not text.strip():
+        return []
+    if len(text) <= chunk_size:
+        return [text.strip()]
+
+    if use_semantic and SEMANTIC_AVAILABLE:
+        try:
+            return _chunk_semantic(text, chunk_size, chunk_overlap)
+        except Exception:
+            pass
+    return _chunk_rule_based(text, chunk_size, chunk_overlap)
+
+
+def _chunk_rule_based(text: str, chunk_size: int, overlap: int) -> List[str]:
+    chunks = []
+    paragraphs = re.split(r"\n\n+", text)
+    current = []
+    current_len = 0
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+        n = len(para) + 2
+        if current_len + n > chunk_size and current:
+            chunk = "\n\n".join(current)
+            chunks.append(chunk)
+            if overlap > 0 and current:
+                overlap_paras = []
+                overlap_len = 0
+                for p in reversed(current):
+                    if overlap_len + len(p) <= overlap:
+                        overlap_paras.insert(0, p)
+                        overlap_len += len(p)
+                    else:
+                        break
+                current = overlap_paras + [para]
+                current_len = sum(len(p) for p in current) + 2 * (len(current) - 1)
+            else:
+                current = [para]
+                current_len = n
+        else:
+            current.append(para)
+            current_len += n
+
+    if current:
+        chunks.append("\n\n".join(current))
+    return chunks
+
+
+def _chunk_semantic(text: str, chunk_size: int, overlap: int) -> List[str]:
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 10]
+    if not sentences:
+        return [text]
+
+    chunks = []
+    current = []
+    current_len = 0
+    for s in sentences:
+        n = len(s) + 1
+        if current_len + n > chunk_size and current:
+            chunks.append(" ".join(current))
+            if overlap > 0 and len(current) > 1:
+                overlap_sents = []
+                overlap_len = 0
+                for x in reversed(current):
+                    if overlap_len + len(x) <= overlap:
+                        overlap_sents.insert(0, x)
+                        overlap_len += len(x)
+                    else:
+                        break
+                current = overlap_sents + [s]
+                current_len = sum(len(x) for x in current) + len(current) - 1
+            else:
+                current = [s]
+                current_len = n
+        else:
+            current.append(s)
+            current_len += n
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
