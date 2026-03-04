@@ -1,0 +1,50 @@
+# NVIDIA GPU image — CUDA 12.1, PyTorch with CUDA, Unsloth enabled.
+# Requires nvidia-container-toolkit on the host.
+# docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+
+FROM nvidia/cuda:12.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONPATH=/app
+
+WORKDIR /app
+
+# Python 3.12 + build tools
+RUN apt-get update -qq \
+    && apt-get install -y --no-install-recommends \
+        python3.12 python3.12-dev python3.12-venv python3-pip \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3.12 -m pip install --upgrade pip setuptools wheel
+
+# PyTorch with CUDA 12.1 support (must come before requirements.txt so the
+# CPU-only torch from PyPI is not installed first)
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Remaining dependencies (torch already present, pip will skip it)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Unsloth — installs cleanly because CUDA headers are available in this image
+RUN pip install --no-cache-dir unsloth
+
+# Copy project code
+COPY README.md .
+COPY run_gradio_ui.py .
+COPY data/       data/
+COPY train/      train/
+COPY demo/       demo/
+COPY scripts/    scripts/
+COPY sample_data/ sample_data/
+
+EXPOSE 7860
+
+# Verify GPU stack is functional
+RUN python3.12 -c "import torch; assert torch.cuda.is_available(), 'CUDA not visible at build time — check base image'; import unsloth; print('GPU stack OK')" \
+    || echo "WARNING: CUDA not visible during build (expected if building without GPU). Will work at runtime."
+
+CMD ["bash"]

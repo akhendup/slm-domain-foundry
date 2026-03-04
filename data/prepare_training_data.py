@@ -17,19 +17,29 @@ from data.chunking import chunk_text
 
 def text_to_qa_heuristic(chunks: List[str], source: str = "doc") -> List[Tuple[str, str]]:
     """
-    Turn text chunks into simple Q&A pairs using headings as questions.
-    For better quality, use an LLM in a separate step (not included here).
+    Turn text chunks into Q&A pairs.
+    Primary: if the chunk has a heading (first paragraph ≤150 chars before a blank line),
+    use heading as question and the rest as answer.
+    Fallback: wrap the entire chunk as a summarisation Q&A so no chunk is discarded.
     """
     qa = []
     for chunk in chunks:
-        parts = chunk.strip().split("\n\n")
-        if len(parts) < 2:
+        chunk = chunk.strip()
+        if not chunk:
             continue
-        heading = parts[0].strip()
-        content = "\n\n".join(parts[1:]).strip()
-        if len(heading) < 150 and len(content) > 30:
-            q = heading if heading.endswith("?") else f"What is {heading}?"
-            qa.append((q, content))
+        parts = chunk.split("\n\n", 1)
+        if len(parts) == 2:
+            heading = parts[0].strip()
+            content = parts[1].strip()
+            if len(heading) < 150 and len(content) > 30:
+                q = heading if heading.endswith("?") else f"What is {heading}?"
+                qa.append((q, content))
+                continue
+        # Fallback: use the full chunk as the answer with a generic question
+        if len(chunk) > 50:
+            short_src = Path(source).stem if source != "doc" else source
+            q = f"What does the documentation say about the following from {short_src}?"
+            qa.append((q, chunk))
     return qa
 
 

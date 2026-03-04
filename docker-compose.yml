@@ -1,8 +1,8 @@
-version: "3.8"
-
-# Usage:
-#   docker compose up --build        # CPU
-#   docker compose up --build        # GPU (nvidia-container-toolkit required)
+# CPU / MPS (Mac) — works on any host:
+#   docker compose up --build
+#
+# NVIDIA GPU — merge the gpu override:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
 #
 # Open http://localhost:7860 in your browser.
 # Tabs: 1 · Prepare Data  →  2 · Train  →  3 · Chat
@@ -24,14 +24,6 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     command: python run_gradio_ui.py --host 0.0.0.0
-    # GPU support — remove or comment out this block on CPU-only hosts
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
 volumes:
   huggingface_cache:

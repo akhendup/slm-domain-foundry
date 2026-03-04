@@ -20,7 +20,7 @@ try:
     import torch
     from datasets import load_dataset
     from trl import SFTTrainer
-    from transformers import TrainingArguments
+    from transformers import TrainerCallback, TrainingArguments
 except ImportError as e:
     print(f"ERROR: {e}")
     print("Install: pip install unsloth torch datasets transformers trl")
@@ -29,6 +29,31 @@ except ImportError as e:
 # Detect TrainingArguments API
 _sig = inspect.signature(TrainingArguments.__init__)
 USE_EVAL_STRATEGY = "eval_strategy" in _sig.parameters
+
+
+class _PrintProgressCallback(TrainerCallback):
+    """Print step/epoch progress to stdout so it streams through the UI."""
+
+    def on_epoch_begin(self, args, state, control, **kwargs):
+        epoch = int(state.epoch) + 1
+        print(f"\n--- Epoch {epoch}/{int(args.num_train_epochs)} ---", flush=True)
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        if not logs:
+            return
+        parts = []
+        if "loss" in logs:
+            parts.append(f"loss={logs['loss']:.4f}")
+        if "eval_loss" in logs:
+            parts.append(f"eval_loss={logs['eval_loss']:.4f}")
+        if "learning_rate" in logs:
+            parts.append(f"lr={logs['learning_rate']:.2e}")
+        total = state.max_steps or "?"
+        pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
+        print(f"  step {state.global_step}/{total} {pct}  {' | '.join(parts)}", flush=True)
+
+    def on_epoch_end(self, args, state, control, **kwargs):
+        print(f"  Epoch {int(state.epoch)} complete.", flush=True)
 
 
 def formatting_func_sharegpt(examples):
@@ -79,7 +104,7 @@ def main():
         raise SystemExit(1)
 
     global tokenizer
-    print("Loading model:", args.model_name)
+    print("Loading model:", args.model_name, flush=True)
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model_name,
         max_seq_length=args.max_seq_length,
@@ -88,7 +113,8 @@ def main():
     )
     tokenizer = get_chat_template(tokenizer, chat_template="chatml" if "TinyLlama" in args.model_name else "llama-3.1")
 
-    print("Adding LoRA adapters...")
+    print("Model loaded.", flush=True)
+    print("Adding LoRA adapters...", flush=True)
     model = FastLanguageModel.get_peft_model(
         model,
         r=16,
@@ -100,7 +126,7 @@ def main():
         random_state=42,
     )
 
-    print("Loading dataset...")
+    print("Loading dataset...", flush=True)
     dataset = load_dataset(
         "json",
         data_files={"train": str(args.train_file), "validation": str(args.val_file)},
@@ -123,7 +149,6 @@ def main():
         "save_steps": args.save_steps,
         "save_total_limit": 2,
         "eval_steps": 50,
-        "load_best_model_at_end": True,
     }
     if USE_EVAL_STRATEGY:
         train_args_dict["eval_strategy"] = "steps"
@@ -138,13 +163,17 @@ def main():
         max_seq_length=args.max_seq_length,
         formatting_func=formatting_func_sharegpt,
         args=TrainingArguments(**train_args_dict),
+        callbacks=[_PrintProgressCallback()],
     )
 
-    print("Training...")
+    n_train = len(dataset["train"])
+    steps_per_epoch = max(1, n_train // (args.batch_size * args.grad_accum))
+    print(f"Starting training: {n_train} examples, ~{steps_per_epoch} steps/epoch, "
+          f"{args.epochs} epoch(s)", flush=True)
     trainer.train()
-    print("Saving merged model to", args.output_dir, "...")
+    print("Saving merged model to", args.output_dir, "...", flush=True)
     model.save_pretrained_merged(str(args.output_dir), tokenizer, save_method="merged_16bit")
-    print("Saved to", args.output_dir)
+    print("Saved to", args.output_dir, flush=True)
     return 0
 
 

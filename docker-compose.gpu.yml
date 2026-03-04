@@ -1,0 +1,19 @@
+# NVIDIA GPU override — requires nvidia-container-toolkit on the host.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+#
+# This override:
+#   1. Builds from Dockerfile.gpu (CUDA base image + CUDA PyTorch + Unsloth)
+#   2. Passes all Nvidia GPUs into the container
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

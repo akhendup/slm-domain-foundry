@@ -1,8 +1,6 @@
-# AI SLM Training - runnable on any platform that supports Docker
-# Build: docker build -t ai_slm_training .
-# Run data prep: docker run --rm -v "$(pwd)/my_data:/data" ai_slm_training python -m data.prepare_training_data --csv /data/qa.csv --output-dir /data/training_data
-# Run web UI: docker run -p 7860:7860 -v "$(pwd)/output_model:/app/model:ro" ai_slm_training python run_gradio_ui.py --model-dir /app/model --host 0.0.0.0
-# Shell: docker run -it --rm ai_slm_training bash
+# CPU / Mac image — no CUDA, no Unsloth.
+# For NVIDIA GPU use Dockerfile.gpu + docker-compose.gpu.yml instead.
+# docker compose up --build
 
 FROM python:3.12-slim
 
@@ -14,16 +12,16 @@ ENV PYTHONPATH=/app
 
 WORKDIR /app
 
-# System deps for building Python packages
+# Minimal system deps — only gcc for packages that can't use pre-built wheels
 RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends build-essential \
+    && apt-get install -y --no-install-recommends gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies from requirements.txt
+# --prefer-binary: use pre-built wheels instead of compiling from source
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt \
-    && pip install --no-cache-dir unsloth || echo "Unsloth unavailable (no CUDA build tools), skipping"
+    && pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy project code
 COPY README.md .
