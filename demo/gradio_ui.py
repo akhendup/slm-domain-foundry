@@ -1295,7 +1295,9 @@ def _chat(message: str, history: List) -> str:
             messages.append({"role": "user", "content": _normalize_content(user_msg)})
             if assistant_msg:
                 messages.append({"role": "assistant", "content": _normalize_content(assistant_msg)})
-    messages.append({"role": "user", "content": _normalize_content(message)})
+    # Gradio 5.x passes message as a dict {"role": ..., "content": ..., ...}; 4.x passes a plain string
+    msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
+    messages.append({"role": "user", "content": msg_text})
     return generate_response(_model, _tokenizer, messages)
 
 

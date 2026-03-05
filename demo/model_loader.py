@@ -186,8 +186,21 @@ def generate_response(
     temperature: float = 0.7,
 ) -> str:
     """Generate assistant reply given messages (e.g. [{"role": "user", "content": "..."}])."""
+    # Normalise content to str — Gradio 5.x can pass list-of-parts e.g. [{"type":"text","text":"..."}]
+    safe_messages = []
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                p["text"] if isinstance(p, dict) and "text" in p else str(p)
+                for p in content
+            )
+        elif not isinstance(content, str):
+            content = str(content) if content else ""
+        safe_messages.append({"role": msg["role"], "content": content})
+
     prompt = tokenizer.apply_chat_template(
-        messages,
+        safe_messages,
         tokenize=False,
         add_generation_prompt=True,
     )
