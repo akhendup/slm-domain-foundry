@@ -200,6 +200,28 @@ def _activity_text(log: str, n: int = 15) -> str:
     return "\n".join(activity[-n:])
 
 
+def _data_activity_text(log: str) -> str:
+    """Return meaningful data-prep progress lines, filtering out command/path noise."""
+    keep = []
+    for raw in log.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if (
+            line.startswith("[")          # [1/16] per-file progress
+            or line.startswith("Found ")
+            or line.startswith("Loading CSV")
+            or line.startswith("Total:")
+            or line.startswith("Alpaca:")
+            or line.startswith("ShareGPT:")
+            or "complete" in line.lower()
+            or "Q&A pairs" in line
+            or "Data preparation" in line
+        ):
+            keep.append(line)
+    return "\n".join(keep[-15:])
+
+
 def _rebuild_training_ui():
     """Reconstruct the training tab UI from _training_state.
 
@@ -851,18 +873,19 @@ def _run_data_prep(
     chunk_overlap: int,
     val_ratio: float,
     fmt: str,
-) -> Generator[Tuple[str, str, str, str], None, None]:
+) -> Generator[Tuple[str, str, str, str, str], None, None]:
     start_time = time.time()
     _pipeline_status["data"] = "running"
     log_text = "Starting data preparation...\n"
     pipe_html = _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"])
-    yield log_text, _make_elapsed_html(0.0), pipe_html, ""
+    yield log_text, _make_elapsed_html(0.0), pipe_html, "", _data_activity_text(log_text)
 
     if not uploaded_files:
         log_text += "ERROR: No files uploaded. Please upload at least one PDF or CSV.\n"
         _pipeline_status["data"] = "failed"
         yield log_text, _make_elapsed_html(time.time() - start_time, failed=True), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), ""
+            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
+            _data_activity_text(log_text)
         return
 
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -879,7 +902,8 @@ def _run_data_prep(
             pdfs.append(str(dest))
     log_text += f"Copied {len(pdfs)} PDF(s) and {len(csvs)} CSV file(s) to {_DATA_DIR}\n"
     yield log_text, _make_elapsed_html(time.time() - start_time), \
-        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), ""
+        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
+        _data_activity_text(log_text)
 
     cmd = [
         sys.executable, "-m", "data.prepare_training_data",
@@ -896,14 +920,16 @@ def _run_data_prep(
 
     log_text += f"Running: {' '.join(cmd)}\n\n"
     yield log_text, _make_elapsed_html(time.time() - start_time), \
-        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), ""
+        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
+        _data_activity_text(log_text)
 
     proc = _popen(cmd)
     for line in _iter_lines(proc):
         if line:
             log_text += line
         yield log_text, _make_elapsed_html(time.time() - start_time), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), ""
+            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
+            _data_activity_text(log_text)
 
     elapsed = time.time() - start_time
     train_jsonl = _TRAINING_DATA_DIR / "train_sharegpt.jsonl"
@@ -921,12 +947,14 @@ def _run_data_prep(
             _pipeline_status["data"] = "complete"
         sample_html = _make_data_sample_html(train_jsonl)
         yield log_text, _make_elapsed_html(elapsed, done=(_pipeline_status["data"] == "complete")), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), sample_html
+            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), sample_html, \
+            _data_activity_text(log_text)
     else:
         log_text += f"\nData preparation FAILED (exit code {proc.returncode}).\n"
         _pipeline_status["data"] = "failed"
         yield log_text, _make_elapsed_html(elapsed, failed=True), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), ""
+            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
+            _data_activity_text(log_text)
 
 
 # ---------------------------------------------------------------------------
@@ -940,6 +968,7 @@ def _run_training(
     lr: float,
     max_seq_len: int,
     resume_ckpt: bool = False,
+    save_steps: int = 50,
 ) -> Generator[Tuple[str, str, str, str, str], None, None]:
     """Yields (status_card, progress_bar, pipeline, quality, raw_log) on every update."""
     device_label = _get_device_label()
@@ -1055,6 +1084,7 @@ def _run_training(
         "--batch-size", str(batch_size),
         "--lr", str(lr),
         "--max-seq-length", str(max_seq_len),
+        "--save-steps", str(save_steps),
     ]
     if ckpt:
         cmd += ["--resume", str(ckpt)]
@@ -1232,10 +1262,16 @@ def _chat(message: str, history: List) -> str:
     if _model is None or _tokenizer is None:
         return "Model not loaded. Click 'Load Model' first."
     messages = []
-    for user_msg, assistant_msg in history:
-        messages.append({"role": "user", "content": user_msg})
-        if assistant_msg:
-            messages.append({"role": "assistant", "content": assistant_msg})
+    for entry in history:
+        if isinstance(entry, dict):
+            # Gradio 5.x messages format: {"role": ..., "content": ..., ...}
+            messages.append({"role": entry["role"], "content": entry["content"]})
+        else:
+            # Gradio 4.x tuples format: (user_msg, assistant_msg)
+            user_msg, assistant_msg = entry[0], entry[1]
+            messages.append({"role": "user", "content": user_msg})
+            if assistant_msg:
+                messages.append({"role": "assistant", "content": assistant_msg})
     messages.append({"role": "user", "content": message})
     return generate_response(_model, _tokenizer, messages)
 
@@ -1297,12 +1333,20 @@ def build_app() -> gr.Blocks:
 
                 prep_btn = gr.Button("Prepare Data", variant="primary")
                 prep_progress = gr.HTML(value="")
-                prep_log = gr.Textbox(
-                    label="Log",
-                    lines=15,
-                    max_lines=30,
+                prep_activity = gr.Textbox(
+                    label="Processing Status",
+                    lines=8,
+                    max_lines=12,
                     interactive=False,
+                    placeholder="Per-file progress will appear here once processing starts…",
                 )
+                with gr.Accordion("Developer log", open=False):
+                    prep_log = gr.Textbox(
+                        label="Raw log",
+                        lines=10,
+                        max_lines=20,
+                        interactive=False,
+                    )
                 data_sample = gr.HTML(value="")
 
                 gr.Markdown("---")
@@ -1331,7 +1375,7 @@ def build_app() -> gr.Blocks:
                 prep_btn.click(
                     fn=_run_data_prep,
                     inputs=[file_upload, chunk_size, chunk_overlap, val_ratio, fmt_choice],
-                    outputs=[prep_log, prep_progress, pipeline_status, data_sample],
+                    outputs=[prep_log, prep_progress, pipeline_status, data_sample, prep_activity],
                 )
 
             # ── Tab 2 ──────────────────────────────────────────────────────
@@ -1360,6 +1404,11 @@ def build_app() -> gr.Blocks:
                         lr = gr.Number(value=2e-4, label="Learning rate", precision=6)
                         max_seq_len = gr.Slider(
                             256, 2048, value=512, step=128, label="Max sequence length"
+                        )
+                        save_steps = gr.Slider(
+                            10, 200, value=50, step=10,
+                            label="Checkpoint every N steps",
+                            info="Save a checkpoint this often. Lower = safer, higher = faster.",
                         )
 
                 with gr.Accordion("Load saved dataset / Resume training", open=False):
@@ -1426,7 +1475,7 @@ def build_app() -> gr.Blocks:
                     )
                 train_btn.click(
                     fn=_run_training,
-                    inputs=[model_name, epochs, batch_size, lr, max_seq_len, resume_ckpt],
+                    inputs=[model_name, epochs, batch_size, lr, max_seq_len, resume_ckpt, save_steps],
                     outputs=[train_status_card, train_progress, pipeline_status, train_quality, train_log_raw, train_loss_plot, train_activity],
                 )
 
@@ -1510,7 +1559,7 @@ def build_app() -> gr.Blocks:
                     interactive=False,
                     lines=1,
                 )
-                chat_interface = gr.ChatInterface(  # noqa: F841
+                _chat_kwargs: dict = dict(
                     fn=_chat,
                     examples=[
                         "What is this document about?",
@@ -1518,6 +1567,12 @@ def build_app() -> gr.Blocks:
                         "How do I get started?",
                     ],
                 )
+                try:
+                    # Gradio 5.x: explicit messages format avoids tuple-unpack errors
+                    chat_interface = gr.ChatInterface(type="messages", **_chat_kwargs)  # noqa: F841
+                except TypeError:
+                    # Gradio 4.x: type parameter not supported
+                    chat_interface = gr.ChatInterface(**_chat_kwargs)  # noqa: F841
                 load_btn.click(
                     fn=_load_model_ui,
                     inputs=[],
@@ -1561,9 +1616,13 @@ def main():
         "--data-dir", type=Path, default=None,
         help="Raw uploaded data directory (default: /app/data)",
     )
-    p.add_argument("--port", type=int, default=7860)
-    p.add_argument("--host", type=str, default="127.0.0.1",
-                   help="Bind address (use 0.0.0.0 in Docker)")
+    p.add_argument("--port", type=int, default=int(os.environ.get("GRADIO_PORT", "7860")))
+    p.add_argument(
+        "--host", type=str,
+        default=os.environ.get("GRADIO_HOST", "0.0.0.0"),
+        help="Bind address. Default: 0.0.0.0 (all interfaces). "
+             "Set GRADIO_HOST=127.0.0.1 to restrict to localhost only.",
+    )
     p.add_argument("--share", action="store_true", default=False)
     args = p.parse_args()
 

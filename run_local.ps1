@@ -56,7 +56,12 @@ New-Item -ItemType Directory -Force -Path "$ScriptDir\output_model"  | Out-Null
 New-Item -ItemType Directory -Force -Path "$ScriptDir\saved_models"  | Out-Null
 
 # ── 5. Launch ────────────────────────────────────────────────────────────────
-Write-Host "Starting Gradio UI at http://localhost:7860"
+# GRADIO_HOST: set to 127.0.0.1 for localhost-only, or a specific IP/hostname.
+# Defaults to 0.0.0.0 (all interfaces — local + remote access).
+if (-not $env:GRADIO_HOST) { $env:GRADIO_HOST = "0.0.0.0" }
+if (-not $env:GRADIO_PORT) { $env:GRADIO_PORT = "7860" }
+
+Write-Host "Starting Gradio UI at http://$($env:GRADIO_HOST):$($env:GRADIO_PORT)"
 Write-Host "(Ctrl+C to stop)"
 Write-Host ""
 
@@ -65,5 +70,5 @@ $env:PYTHONPATH = $ScriptDir
     --data-dir          "$ScriptDir\data" `
     --training-data-dir "$ScriptDir\training_data" `
     --model-dir         "$ScriptDir\output_model" `
-    --host 0.0.0.0 `
-    --port 7860
+    --host $env:GRADIO_HOST `
+    --port $env:GRADIO_PORT

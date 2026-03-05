@@ -62,7 +62,15 @@ mkdir -p "$SCRIPT_DIR/output_model"
 mkdir -p "$SCRIPT_DIR/saved_models"
 
 # ── 5. Launch ────────────────────────────────────────────────────────────────
-echo "Starting Gradio UI at http://localhost:7860"
+# GRADIO_HOST controls the bind address (not the access URL).
+#   0.0.0.0  = all interfaces — local + remote (default)
+#   127.0.0.1 = localhost only
+# Access the UI at http://<this-machine-hostname>:${GRADIO_PORT} from any machine.
+GRADIO_HOST="${GRADIO_HOST:-0.0.0.0}"
+GRADIO_PORT="${GRADIO_PORT:-7860}"
+
+echo "Starting Gradio UI — bound to ${GRADIO_HOST}:${GRADIO_PORT}"
+echo "Access at: http://$(hostname):${GRADIO_PORT}  (or http://localhost:${GRADIO_PORT} locally)"
 echo "(Ctrl+C to stop)"
 echo ""
 
@@ -70,5 +78,5 @@ PYTHONPATH="$SCRIPT_DIR" "$PYTHON" run_gradio_ui.py \
     --data-dir        "$SCRIPT_DIR/data" \
     --training-data-dir "$SCRIPT_DIR/training_data" \
     --model-dir       "$SCRIPT_DIR/output_model" \
-    --host 0.0.0.0 \
-    --port 7860
+    --host "$GRADIO_HOST" \
+    --port "$GRADIO_PORT"

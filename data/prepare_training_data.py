@@ -95,27 +95,37 @@ def main():
 
     # From PDFs
     if args.pdf_dir and args.pdf_dir.exists():
+        pdf_files = sorted(Path(args.pdf_dir).glob("*.pdf"))
+        n_pdfs = len(pdf_files)
+        print(f"Found {n_pdfs} PDF(s) to process.", flush=True)
         extractor = PDFExtractor(use_ocr=False)
-        for res in extractor.extract_directory(args.pdf_dir):
+        for i, res in enumerate(extractor.extract_directory(args.pdf_dir), start=1):
+            fname = Path(res.get("source_file", "?")).name
             full_text = res.get("full_text", "")
             if not full_text:
+                print(f"[{i}/{n_pdfs}] {fname} — no text extracted, skipping.", flush=True)
                 continue
             chunks = chunk_text(full_text, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap)
-            qa_pairs.extend(text_to_qa_heuristic(chunks, res.get("source_file", "pdf")))
+            pairs = text_to_qa_heuristic(chunks, res.get("source_file", "pdf"))
+            qa_pairs.extend(pairs)
+            print(f"[{i}/{n_pdfs}] {fname} — {len(chunks)} chunks → {len(pairs)} Q&A pairs", flush=True)
 
     # From CSV
     if args.csv and args.csv.exists():
+        print(f"Loading CSV: {args.csv.name}", flush=True)
         texts, csv_qa = load_csv(args.csv)
         qa_pairs.extend(csv_qa)
         if texts and not csv_qa:
             for t in texts:
                 chunks = chunk_text(t, chunk_size=args.chunk_size, chunk_overlap=args.chunk_overlap)
                 qa_pairs.extend(text_to_qa_heuristic(chunks, args.csv.name))
+        print(f"CSV: {len(csv_qa)} Q&A pairs loaded.", flush=True)
 
     if not qa_pairs:
         print("No training examples generated. Provide --pdf-dir and/or --csv.")
         return 1
 
+    print(f"Total: {len(qa_pairs)} Q&A pairs — shuffling and splitting…", flush=True)
     random.shuffle(qa_pairs)
     n = len(qa_pairs)
     n_val = max(1, int(n * args.val_ratio))
@@ -130,16 +140,16 @@ def main():
         val_alpaca = build_alpaca_examples(val_pairs)
         save_jsonl(train_alpaca, args.output_dir / "train_alpaca.jsonl")
         save_jsonl(val_alpaca, args.output_dir / "val_alpaca.jsonl")
-        print(f"Alpaca: train {len(train_alpaca)}, val {len(val_alpaca)}")
+        print(f"Alpaca: train {len(train_alpaca)}, val {len(val_alpaca)}", flush=True)
 
     if args.format in ("sharegpt", "both"):
         train_sg = build_sharegpt_examples(train_pairs)
         val_sg = build_sharegpt_examples(val_pairs)
         save_jsonl(train_sg, args.output_dir / "train_sharegpt.jsonl")
         save_jsonl(val_sg, args.output_dir / "val_sharegpt.jsonl")
-        print(f"ShareGPT: train {len(train_sg)}, val {len(val_sg)}")
+        print(f"ShareGPT: train {len(train_sg)}, val {len(val_sg)}", flush=True)
 
-    print(f"Output directory: {args.output_dir}")
+    print(f"Output directory: {args.output_dir}", flush=True)
     return 0
 
 
