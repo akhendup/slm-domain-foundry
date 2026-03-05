@@ -21,7 +21,7 @@ import time
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Generator, List, Optional, Tuple
+from typing import Any, Generator, List, Optional, Tuple
 
 import gradio as gr
 import pandas as pd
@@ -1257,6 +1257,26 @@ def _load_model_ui() -> Tuple[str, gr.update]:
         return f"Error loading model: {exc}", gr.update(interactive=True)
 
 
+def _normalize_content(content: Any) -> str:
+    """Ensure content is a string for tokenizer.apply_chat_template (no list concatenation)."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        # Gradio 5.x can send content as list of parts e.g. [{"type": "text", "text": "..."}]
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
+            else:
+                parts.append(str(part))
+        return "\n".join(parts) if parts else ""
+    return str(content)
+
+
 def _chat(message: str, history: List) -> str:
     global _model, _tokenizer
     if _model is None or _tokenizer is None:
@@ -1265,14 +1285,17 @@ def _chat(message: str, history: List) -> str:
     for entry in history:
         if isinstance(entry, dict):
             # Gradio 5.x messages format: {"role": ..., "content": ..., ...}
-            messages.append({"role": entry["role"], "content": entry["content"]})
+            messages.append({
+                "role": entry["role"],
+                "content": _normalize_content(entry.get("content")),
+            })
         else:
             # Gradio 4.x tuples format: (user_msg, assistant_msg)
             user_msg, assistant_msg = entry[0], entry[1]
-            messages.append({"role": "user", "content": user_msg})
+            messages.append({"role": "user", "content": _normalize_content(user_msg)})
             if assistant_msg:
-                messages.append({"role": "assistant", "content": assistant_msg})
-    messages.append({"role": "user", "content": message})
+                messages.append({"role": "assistant", "content": _normalize_content(assistant_msg)})
+    messages.append({"role": "user", "content": _normalize_content(message)})
     return generate_response(_model, _tokenizer, messages)
 
 
