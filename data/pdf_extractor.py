@@ -78,7 +78,13 @@ class PDFExtractor:
         with pdfplumber.open(pdf_path) as pdf:
             for i, page in enumerate(pdf.pages, 1):
                 text = page.extract_text() or ""
-                pages.append({"page": i, "text": text.strip()})
+                tables = []
+                try:
+                    raw_tables = page.extract_tables() or []
+                    tables = [t for t in raw_tables if t]
+                except Exception:
+                    tables = []
+                pages.append({"page": i, "text": text.strip(), "tables": tables})
             meta = {"num_pages": len(pdf.pages), "metadata": pdf.metadata or {}}
         full_text = "\n\n".join(p["text"] for p in pages if p["text"])
         return {"metadata": meta, "pages": pages, "full_text": full_text}

@@ -1,6 +1,6 @@
 """
-End-to-end Gradio UI: Prepare Data → Train → Chat.
-All three stages run inside the same container; training streams live logs.
+End-to-end Gradio UI: Upload → Extract Training Data → Train → Manage Models → Chat.
+All stages run inside the same container; training streams live logs.
 
 Usage:
   python run_gradio_ui.py --host 0.0.0.0          # Docker (all defaults)
@@ -28,6 +28,16 @@ import pandas as pd
 import torch
 
 from demo.model_loader import generate_response, load_model
+from data.knowledge_capture import (
+    FIELD_DEFS,
+    form_to_pattern,
+    save_to_library,
+    load_library_entries,
+    library_stats,
+    delete_from_library,
+    load_pattern_for_edit,
+    preview_qa,
+)
 
 # ---------------------------------------------------------------------------
 # Default paths (Docker layout; overridable via CLI)
@@ -36,6 +46,7 @@ _DATA_DIR = Path("/app/data")
 _TRAINING_DATA_DIR = Path("/app/training_data")
 _OUTPUT_MODEL_DIR = Path("/app/output_model")
 _SAVED_MODELS_DIR = Path("/app/saved_models")
+_LIBRARY_DIR = Path("/app/knowledge_library")
 
 # ---------------------------------------------------------------------------
 # Global model state
@@ -43,8 +54,13 @@ _SAVED_MODELS_DIR = Path("/app/saved_models")
 _model = None
 _tokenizer = None
 
-# Pipeline completion tracking (updated by each tab's generator)
-_pipeline_status: dict = {"data": "pending", "train": "pending"}
+# Pipeline completion tracking — one key per step
+_pipeline_status: dict = {
+    "upload":  "pending",
+    "extract": "pending",
+    "approve": "pending",
+    "train":   "pending",
+}
 
 # Training state — persists across browser reconnections; updated live by _run_training
 _training_state: dict = {
@@ -76,16 +92,17 @@ _training_state: dict = {
 # ---------------------------------------------------------------------------
 
 def _save_dataset_snapshot() -> Tuple[Optional[Path], str]:
-    """Zip all JSONL files in training_data/ into a snapshot archive.
-    Returns (zip_path_or_None, status_message).
-    """
-    files = sorted(_TRAINING_DATA_DIR.glob("*.jsonl"))
+    """Zip all JSONL files in training_data/ (including subdirs) into a snapshot archive."""
+    files = sorted(
+        list(_TRAINING_DATA_DIR.glob("*.jsonl")) +
+        list(_TRAINING_DATA_DIR.glob("*/*.jsonl"))
+    )
     if not files:
-        return None, "No training data found — run Prepare Data first."
+        return None, "No training data found — run Extract first."
     snap_path = _TRAINING_DATA_DIR / "dataset_snapshot.zip"
     with zipfile.ZipFile(snap_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
-            zf.write(f, f.name)
+            zf.write(f, f.relative_to(_TRAINING_DATA_DIR))
     size_kb = snap_path.stat().st_size / 1024
     return snap_path, (
         f"Snapshot ready: {len(files)} JSONL files, {size_kb:.1f} KB — "
@@ -94,9 +111,7 @@ def _save_dataset_snapshot() -> Tuple[Optional[Path], str]:
 
 
 def _load_dataset_snapshot(upload_path: str) -> str:
-    """Extract an uploaded zip (or copy a single JSONL) into training_data/.
-    Returns a status message.
-    """
+    """Extract an uploaded zip (or copy a single JSONL) into training_data/."""
     src = Path(upload_path)
     _TRAINING_DATA_DIR.mkdir(parents=True, exist_ok=True)
     if src.suffix.lower() == ".zip":
@@ -105,14 +120,14 @@ def _load_dataset_snapshot(upload_path: str) -> str:
             zf.extractall(_TRAINING_DATA_DIR)
         return (
             f"Loaded snapshot: extracted {len(names)} file(s) to {_TRAINING_DATA_DIR}. "
-            "You can now start training without running Prepare Data."
+            "You can now start training without running Extract."
         )
     elif src.suffix.lower() == ".jsonl":
         dest = _TRAINING_DATA_DIR / src.name
         shutil.copy2(src, dest)
         return (
             f"Loaded {src.name} → {_TRAINING_DATA_DIR}. "
-            "You can now start training without running Prepare Data."
+            "You can now start training without running Extract."
         )
     return f"Unsupported file type '{src.suffix}'. Upload a .zip snapshot or a .jsonl file."
 
@@ -132,7 +147,6 @@ def _get_device_label() -> str:
         return f"CUDA — {name}"
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
         return "MPS (Apple Silicon)"
-    # Detect Apple Silicon even when running inside Docker (Linux/aarch64)
     machine = platform.machine().lower()
     if machine in ("arm64", "aarch64"):
         return "Apple Silicon (CPU)"
@@ -154,6 +168,61 @@ def _model_ready() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Training data file helpers
+# ---------------------------------------------------------------------------
+
+def _find_train_jsonl() -> Optional[Path]:
+    """Return the first available train_sharegpt.jsonl (root then subdirs)."""
+    root = _TRAINING_DATA_DIR / "train_sharegpt.jsonl"
+    if root.exists():
+        return root
+    files = sorted(_TRAINING_DATA_DIR.glob("*/train_sharegpt.jsonl"))
+    return files[0] if files else None
+
+
+def _merge_jsonl(sources: List[Path], dest: Path) -> None:
+    """Concatenate multiple JSONL source files into dest."""
+    with open(dest, "w", encoding="utf-8") as out:
+        for src in sources:
+            if src.exists():
+                with open(src, encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip():
+                            out.write(line)
+
+
+def _find_training_files() -> Tuple[Optional[Path], Optional[Path]]:
+    """
+    Return (train_path, val_path) for training.
+    If root-level files don't exist but per-manual subdirectory files do,
+    merge them into root-level files first.
+    """
+    train = _TRAINING_DATA_DIR / "train_sharegpt.jsonl"
+    val = _TRAINING_DATA_DIR / "val_sharegpt.jsonl"
+    if train.exists() and val.exists():
+        return train, val
+
+    trains = sorted(_TRAINING_DATA_DIR.glob("*/train_sharegpt.jsonl"))
+    vals = sorted(_TRAINING_DATA_DIR.glob("*/val_sharegpt.jsonl"))
+    if not trains:
+        return None, None
+
+    _merge_jsonl(trains, train)
+    if vals:
+        _merge_jsonl(vals, val)
+    elif train.exists():
+        # Carve a val set from the merged train file
+        import random as _random
+        train_lines = [l for l in train.read_text(encoding="utf-8").splitlines() if l.strip()]
+        n_val = max(1, int(len(train_lines) * 0.15))
+        _random.shuffle(train_lines)
+        val.write_text("\n".join(train_lines[:n_val]) + "\n", encoding="utf-8")
+        train.write_text("\n".join(train_lines[n_val:]) + "\n", encoding="utf-8")
+
+    return (train if train.exists() else None, val if val.exists() else None)
+
+
+# ---------------------------------------------------------------------------
 # Progress parsing helpers
 # ---------------------------------------------------------------------------
 
@@ -169,9 +238,7 @@ _TRAINABLE_RE = re.compile(
 
 
 def _activity_text(log: str, n: int = 15) -> str:
-    """Return the last *n* meaningful training-progress lines from raw log.
-    Filters out transformers/tqdm noise so non-technical users see only what matters.
-    """
+    """Return the last *n* meaningful training-progress lines from raw log."""
     activity = []
     for raw in log.splitlines():
         line = raw.strip()
@@ -201,14 +268,14 @@ def _activity_text(log: str, n: int = 15) -> str:
 
 
 def _data_activity_text(log: str) -> str:
-    """Return meaningful data-prep progress lines, filtering out command/path noise."""
+    """Return meaningful data-prep / extraction progress lines."""
     keep = []
     for raw in log.splitlines():
         line = raw.strip()
         if not line:
             continue
         if (
-            line.startswith("[")          # [1/16] per-file progress
+            line.startswith("[")
             or line.startswith("Found ")
             or line.startswith("Loading CSV")
             or line.startswith("Total:")
@@ -216,19 +283,15 @@ def _data_activity_text(log: str) -> str:
             or line.startswith("ShareGPT:")
             or "complete" in line.lower()
             or "Q&A pairs" in line
-            or "Data preparation" in line
+            or "Extraction" in line
+            or "sections=" in line
         ):
             keep.append(line)
     return "\n".join(keep[-15:])
 
 
 def _rebuild_training_ui():
-    """Reconstruct the training tab UI from _training_state.
-
-    Called on page load and by the auto-refresh timer so the UI automatically
-    recovers after a browser crash or tab reload while training is running.
-    Returns a 7-tuple matching the outputs list of train_btn.click().
-    """
+    """Reconstruct the training tab UI from _training_state on page load / reconnect."""
     s = _training_state
     if not s["active"] and not s["done"] and not s["failed"]:
         return tuple(gr.update() for _ in range(7))
@@ -259,7 +322,7 @@ def _rebuild_training_ui():
     else:
         progress_html = ""
 
-    pipe_html = _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"])
+    pipe_html = _make_pipeline_html()
     quality_html = (
         _make_quality_html(
             s["last_loss"], s["last_eval_loss"], s["initial_loss"], s["n_examples"]
@@ -339,7 +402,6 @@ def _make_training_progress_html(
     )
 
 
-# Ordered phases shown in the training status breadcrumb
 _TRAIN_PHASES = [
     ("loading", "Load model"),
     ("lora",    "Setup LoRA"),
@@ -357,11 +419,9 @@ def _make_train_status_html(
     done: bool = False,
     failed: bool = False,
 ) -> str:
-    """User-friendly training status card: phase breadcrumb + message + warnings/errors."""
     phase_keys = [p for p, _ in _TRAIN_PHASES]
     phase_idx = phase_keys.index(phase) if phase in phase_keys else 0
 
-    # --- Breadcrumb ---
     crumb_parts = []
     for i, (_, plabel) in enumerate(_TRAIN_PHASES):
         if done:
@@ -389,7 +449,6 @@ def _make_train_status_html(
         + sep.join(crumb_parts) + '</div>'
     )
 
-    # --- Current message ---
     if failed:
         bg, border, fg, icon = "#f8d7da", "#dc3545", "#721c24", "✗"
         body = _html.escape(error or current_msg)
@@ -407,7 +466,6 @@ def _make_train_status_html(
         f'<span style="color:{fg};font-size:13px;">{body}</span></div>'
     )
 
-    # --- Warnings ---
     warn_html = "".join(
         f'<div style="display:flex;align-items:flex-start;gap:8px;'
         f'padding:8px 14px;border-top:1px solid #dee2e6;">'
@@ -423,7 +481,8 @@ def _make_train_status_html(
     )
 
 
-def _make_pipeline_html(data_status: str = "pending", train_status: str = "pending") -> str:
+def _make_pipeline_html() -> str:
+    """Render the 5-step pipeline breadcrumb from global _pipeline_status."""
     _CFG = {
         "pending":  ("○", "#adb5bd", "#6c757d"),
         "running":  ("↻", "#4a90d9", "#4a90d9"),
@@ -431,29 +490,31 @@ def _make_pipeline_html(data_status: str = "pending", train_status: str = "pendi
         "warning":  ("⚠", "#ffc107", "#856404"),
         "failed":   ("✗", "#dc3545", "#dc3545"),
     }
-    chat_status = "complete" if train_status == "complete" else "pending"
+    chat_status = "complete" if _pipeline_status.get("train") == "complete" else "pending"
     steps = [
-        ("1", "Prepare Data", data_status),
-        ("2", "Train", train_status),
-        ("3", "Chat", chat_status),
+        ("1", "Upload",  _pipeline_status.get("upload",  "pending")),
+        ("2", "Extract", _pipeline_status.get("extract", "pending")),
+        ("3", "Approve", _pipeline_status.get("approve", "pending")),
+        ("4", "Train",   _pipeline_status.get("train",   "pending")),
+        ("5", "Chat",    chat_status),
     ]
     parts = []
     for num, name, status in steps:
         icon, bg, tc = _CFG.get(status, _CFG["pending"])
         parts.append(
-            f'<div style="display:inline-flex;align-items:center;gap:6px;">'
-            f'<span style="width:22px;height:22px;border-radius:50%;background:{bg};color:white;'
-            f'display:inline-flex;align-items:center;justify-content:center;font-size:11px;'
+            f'<div style="display:inline-flex;align-items:center;gap:5px;">'
+            f'<span style="width:20px;height:20px;border-radius:50%;background:{bg};color:white;'
+            f'display:inline-flex;align-items:center;justify-content:center;font-size:10px;'
             f'font-weight:bold;flex-shrink:0;">{icon}</span>'
-            f'<span style="color:#333;"><b>Step&nbsp;{num}</b>&nbsp;{name}</span>'
-            f'&nbsp;<span style="color:{tc};font-weight:bold;font-size:12px;">[{status.capitalize()}]</span>'
+            f'<span style="color:#333;font-size:12px;"><b>{num}</b>&nbsp;{name}</span>'
+            f'&nbsp;<span style="color:{tc};font-weight:bold;font-size:11px;">[{status.capitalize()}]</span>'
             f'</div>'
         )
-    sep = '&nbsp;<span style="color:#adb5bd;font-size:18px;">&#8594;</span>&nbsp;'
+    sep = '&nbsp;<span style="color:#adb5bd;font-size:14px;">&#8594;</span>&nbsp;'
     return (
-        f'<div style="display:flex;align-items:center;gap:4px;padding:10px 16px;'
+        f'<div style="display:flex;align-items:center;gap:2px;padding:8px 16px;'
         f'background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;'
-        f'font-family:monospace;font-size:13px;flex-wrap:wrap;margin-bottom:6px;">'
+        f'font-family:monospace;flex-wrap:wrap;margin-bottom:6px;">'
         + sep.join(parts) + '</div>'
     )
 
@@ -563,7 +624,6 @@ def _make_data_sample_html(train_jsonl: Path) -> str:
     else:
         size_str = f"{size_bytes / 1024:.1f} KB"
 
-    # Pick 3 indices spread across the middle third of the file
     mid = n_total // 2
     if n_total <= 3:
         indices = list(range(n_total))
@@ -633,8 +693,312 @@ def _make_data_sample_html(train_jsonl: Path) -> str:
     )
 
 
+def _make_qa_review_html(n_samples: int = 15) -> str:
+    """
+    Build the Step-2 approval preview: stats + question-type breakdown +
+    sample Q&A cards spread across all extracted training data.
+    """
+    all_files = (
+        sorted(_TRAINING_DATA_DIR.glob("train_sharegpt.jsonl")) +
+        sorted(_TRAINING_DATA_DIR.glob("*/train_sharegpt.jsonl"))
+    )
+    if not all_files:
+        return (
+            '<p style="color:#888;font-family:monospace;font-size:13px;">'
+            'No training data yet. Click <b>Extract Training Data</b> above.</p>'
+        )
+
+    all_pairs: List[Tuple[str, str, str]] = []  # (source_label, question, answer)
+    for jf in all_files:
+        label = jf.parent.name if jf.parent != _TRAINING_DATA_DIR else "combined"
+        try:
+            for raw in jf.read_text(encoding="utf-8").splitlines():
+                if not raw.strip():
+                    continue
+                obj = json.loads(raw)
+                q, a = "", ""
+                for msg in obj.get("conversations", []):
+                    if msg.get("role") == "user" and not q:
+                        q = msg.get("content", "")
+                    elif msg.get("role") == "assistant" and not a:
+                        a = msg.get("content", "")
+                if q or a:
+                    all_pairs.append((label, q, a))
+        except Exception:
+            continue
+
+    if not all_pairs:
+        return '<p style="color:#888;font-family:monospace;font-size:13px;">No Q&A pairs found.</p>'
+
+    n_total = len(all_pairs)
+
+    # Question-type breakdown
+    q_types: dict = {
+        "What is / Describe": 0,
+        "Syntax / SQL": 0,
+        "Arguments / Params": 0,
+        "Example / Demo": 0,
+        "Usage notes": 0,
+        "Other": 0,
+    }
+    for _, q, _ in all_pairs:
+        ql = q.lower()
+        if "syntax" in ql or "write a" in ql or "expression" in ql:
+            q_types["Syntax / SQL"] += 1
+        elif "argument" in ql or "parameter" in ql:
+            q_types["Arguments / Params"] += 1
+        elif "example" in ql or "demonstrate" in ql or "show me" in ql:
+            q_types["Example / Demo"] += 1
+        elif "usage notes" in ql:
+            q_types["Usage notes"] += 1
+        elif ql.startswith("what is") or ql.startswith("describe"):
+            q_types["What is / Describe"] += 1
+        else:
+            q_types["Other"] += 1
+
+    type_badges = "".join(
+        f'<span style="display:inline-block;background:#e9ecef;border-radius:3px;'
+        f'padding:2px 8px;font-size:11px;margin:2px;">{k}: <b>{v}</b></span>'
+        for k, v in q_types.items() if v > 0
+    )
+
+    # Multi-turn count
+    mt_files = (
+        list(_TRAINING_DATA_DIR.glob("train_multiturn.jsonl")) +
+        list(_TRAINING_DATA_DIR.glob("*/train_multiturn.jsonl"))
+    )
+    n_mt = sum(
+        sum(1 for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip())
+        for f in mt_files if f.exists()
+    )
+    mt_note = (
+        f'&nbsp;&middot;&nbsp;<b>{n_mt:,}</b>&nbsp;multi-turn conversations'
+        if n_mt > 0 else ""
+    )
+
+    # Sample cards spread evenly across the dataset
+    step = max(1, n_total // n_samples)
+    indices = list(range(0, min(n_total, n_samples * step), step))[:n_samples]
+    cards = []
+    for idx in indices:
+        label, q, a = all_pairs[idx]
+        q_disp = (_html.escape(q[:300]) + "…") if len(q) > 300 else _html.escape(q)
+        a_disp = (_html.escape(a[:300]) + "…") if len(a) > 300 else _html.escape(a)
+        src_badge = (
+            f'<span style="font-size:10px;background:#6c757d;color:white;'
+            f'padding:1px 5px;border-radius:3px;margin-left:6px;">{_html.escape(label)}</span>'
+            if label != "combined" else ""
+        )
+        cards.append(
+            f'<div style="border:1px solid #dee2e6;border-radius:6px;margin-bottom:6px;overflow:hidden;">'
+            f'<div style="padding:2px 10px;background:#f8f9fa;border-bottom:1px solid #dee2e6;'
+            f'font-family:monospace;font-size:10px;color:#888;">'
+            f'Pair #{idx + 1:,} of {n_total:,}{src_badge}</div>'
+            f'<div style="padding:8px 12px;">'
+            f'<div style="display:flex;gap:6px;margin-bottom:5px;">'
+            f'<span style="background:#4a90d9;color:white;font-size:10px;padding:1px 6px;'
+            f'border-radius:3px;flex-shrink:0;align-self:flex-start;">Q</span>'
+            f'<span style="color:#333;font-size:12px;line-height:1.5;">{q_disp}</span></div>'
+            f'<div style="display:flex;gap:6px;">'
+            f'<span style="background:#28a745;color:white;font-size:10px;padding:1px 6px;'
+            f'border-radius:3px;flex-shrink:0;align-self:flex-start;">A</span>'
+            f'<span style="color:#555;font-size:12px;line-height:1.5;">{a_disp}</span></div>'
+            f'</div></div>'
+        )
+
+    return (
+        f'<div style="margin-top:10px;">'
+        f'<div style="padding:10px 16px;background:#e8f4fd;border:1px solid #bee5eb;'
+        f'border-radius:8px;font-family:monospace;font-size:13px;margin-bottom:10px;">'
+        f'<b style="color:#0c5460;">{n_total:,} Q&amp;A pairs ready for training</b>'
+        f'{mt_note}'
+        f'<div style="margin-top:6px;">{type_badges}</div>'
+        f'</div>'
+        f'<div style="font-family:monospace;font-size:12px;color:#666;margin-bottom:6px;">'
+        f'Showing {len(cards)} samples spread evenly across the dataset. '
+        f'Review and click <b>✓ Approve Training Data</b> below to proceed to training.</div>'
+        + "".join(cards)
+        + '</div>'
+    )
+
+
+def _make_uploaded_files_html() -> str:
+    """List files currently in _DATA_DIR."""
+    if not _DATA_DIR.exists():
+        return ""
+    files = sorted(list(_DATA_DIR.glob("*.pdf")) + list(_DATA_DIR.glob("*.csv")))
+    if not files:
+        return ""
+    items = "".join(
+        f'<div style="padding:4px 10px;font-family:monospace;font-size:12px;'
+        f'border-bottom:1px solid #dee2e6;">'
+        f'<span style="background:{"#dc3545" if f.suffix == ".pdf" else "#28a745"};'
+        f'color:white;font-size:10px;padding:1px 5px;border-radius:3px;">'
+        f'{f.suffix.upper()[1:]}</span>'
+        f'&nbsp;{_html.escape(f.name)}'
+        f'&nbsp;<span style="color:#888;">({f.stat().st_size // 1024 + 1} KB)</span></div>'
+        for f in files
+    )
+    return (
+        f'<div style="border:1px solid #dee2e6;border-radius:6px;overflow:hidden;'
+        f'font-family:monospace;margin-top:8px;">'
+        f'<div style="padding:6px 10px;background:#f8f9fa;border-bottom:1px solid #dee2e6;'
+        f'font-size:12px;font-weight:bold;color:#333;">'
+        f'{len(files)} file(s) in upload folder</div>'
+        + items + '</div>'
+    )
+
+
 # ---------------------------------------------------------------------------
-# Model artifact management (Tab 4)
+# Knowledge Library helpers
+# ---------------------------------------------------------------------------
+
+def _make_library_html() -> str:
+    """Render the knowledge library as an HTML table."""
+    stats = library_stats(_LIBRARY_DIR)
+    entries = stats.get("entries", [])
+    total_pat = stats.get("total_patterns", 0)
+    total_qa = stats.get("total_qa_pairs", 0)
+    by_cat = stats.get("by_category", {})
+
+    cat_badges = " ".join(
+        f'<span style="background:#6c757d;color:white;font-size:10px;'
+        f'padding:2px 6px;border-radius:10px;margin:2px;">{c}: {n}</span>'
+        for c, n in sorted(by_cat.items())
+    )
+
+    header = (
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'padding:8px 12px;background:#f8f9fa;border:1px solid #dee2e6;border-radius:6px 6px 0 0;">'
+        f'<span style="font-weight:bold;">{total_pat} patterns · {total_qa} Q&A pairs</span>'
+        f'<span>{cat_badges}</span></div>'
+    )
+
+    if not entries:
+        return (
+            header +
+            '<div style="padding:16px;border:1px solid #dee2e6;border-top:none;'
+            'border-radius:0 0 6px 6px;color:#888;text-align:center;">'
+            'No patterns yet. Use the form above to add your first one.</div>'
+        )
+
+    rows = []
+    for e in entries:
+        title = _html.escape(e.get("title", e.get("slug", "?")))
+        cat = _html.escape(e.get("category") or "general")
+        qa_n = e.get("qa_count", 0)
+        created = (e.get("created") or "")[:10]
+        slug = _html.escape(e.get("slug", ""))
+        rows.append(
+            f'<tr>'
+            f'<td style="padding:6px 10px;font-weight:500;">{title}</td>'
+            f'<td style="padding:6px 10px;color:#6c757d;">{cat}</td>'
+            f'<td style="padding:6px 10px;text-align:center;">{qa_n}</td>'
+            f'<td style="padding:6px 10px;color:#6c757d;font-size:12px;">{created}</td>'
+            f'<td style="padding:6px 10px;font-family:monospace;font-size:11px;color:#888;">{slug}</td>'
+            f'</tr>'
+        )
+
+    table = (
+        '<table style="width:100%;border-collapse:collapse;border:1px solid #dee2e6;'
+        'border-top:none;border-radius:0 0 6px 6px;overflow:hidden;">'
+        '<thead><tr style="background:#e9ecef;">'
+        '<th style="padding:6px 10px;text-align:left;">Name</th>'
+        '<th style="padding:6px 10px;text-align:left;">Category</th>'
+        '<th style="padding:6px 10px;text-align:center;">Q&A pairs</th>'
+        '<th style="padding:6px 10px;text-align:left;">Added</th>'
+        '<th style="padding:6px 10px;text-align:left;">Slug (for delete)</th>'
+        '</tr></thead><tbody>'
+        + "".join(rows) +
+        '</tbody></table>'
+    )
+    return header + table
+
+
+def _make_qa_preview_html(qa_pairs: list, max_show: int = 10) -> str:
+    """Render a preview of Q&A pairs for the knowledge capture form."""
+    if not qa_pairs:
+        return '<div style="color:#888;padding:8px;">Fill in the fields above and click Preview.</div>'
+    shown = qa_pairs[:max_show]
+    items = []
+    for q, a in shown:
+        items.append(
+            f'<div style="margin-bottom:10px;padding:8px 12px;'
+            f'background:#f8f9fa;border-radius:6px;border-left:3px solid #0d6efd;">'
+            f'<div style="font-weight:600;color:#0d6efd;font-size:13px;">Q: {_html.escape(q)}</div>'
+            f'<div style="color:#333;font-size:12px;margin-top:4px;white-space:pre-wrap;">'
+            f'{_html.escape(a[:300])}{"..." if len(a) > 300 else ""}</div>'
+            f'</div>'
+        )
+    total = len(qa_pairs)
+    footer = (
+        f'<div style="color:#6c757d;font-size:12px;margin-top:4px;">'
+        f'Showing {len(shown)} of {total} Q&A pairs that would be generated.</div>'
+        if total > max_show else ""
+    )
+    return "".join(items) + footer
+
+
+def _kb_preview(
+    title: str, description: str, use_cases_text: str, parameters_text: str,
+    sql_example: str, sql_description: str, example_output: str,
+    common_errors_text: str, best_practices: str, category: str,
+) -> str:
+    form_data = {
+        "title": title, "description": description, "use_cases_text": use_cases_text,
+        "parameters_text": parameters_text, "sql_example": sql_example,
+        "sql_description": sql_description, "example_output": example_output,
+        "common_errors_text": common_errors_text, "best_practices": best_practices,
+        "category": category,
+    }
+    if not title.strip() or not description.strip():
+        return '<div style="color:#888;padding:8px;">Fill in at least Name and Description to see a preview.</div>'
+    qa, _ = preview_qa(form_data)
+    return _make_qa_preview_html(qa)
+
+
+def _kb_save(
+    title: str, description: str, use_cases_text: str, parameters_text: str,
+    sql_example: str, sql_description: str, example_output: str,
+    common_errors_text: str, best_practices: str, category: str,
+) -> Tuple[str, str]:
+    """Save the form as a library entry. Returns (status_msg, library_html)."""
+    if not title.strip():
+        return "Name is required.", _make_library_html()
+    if not description.strip():
+        return "Description is required.", _make_library_html()
+    form_data = {
+        "title": title, "description": description, "use_cases_text": use_cases_text,
+        "parameters_text": parameters_text, "sql_example": sql_example,
+        "sql_description": sql_description, "example_output": example_output,
+        "common_errors_text": common_errors_text, "best_practices": best_practices,
+        "category": category,
+    }
+    try:
+        pattern = form_to_pattern(form_data)
+        saved_path, qa_count = save_to_library(pattern, _LIBRARY_DIR)
+        return (
+            f"Saved '{title}' to library ({qa_count} Q&A pairs). "
+            f"It will be included automatically next time you extract training data.",
+            _make_library_html(),
+        )
+    except Exception as e:
+        return f"Error saving: {e}", _make_library_html()
+
+
+def _kb_delete(slug: str) -> Tuple[str, str]:
+    """Delete a library entry by slug."""
+    slug = slug.strip()
+    if not slug:
+        return "Enter a slug from the table above.", _make_library_html()
+    deleted = delete_from_library(slug, _LIBRARY_DIR)
+    if deleted:
+        return f"Deleted '{slug}' from library.", _make_library_html()
+    return f"Entry '{slug}' not found.", _make_library_html()
+
+
+# ---------------------------------------------------------------------------
+# Model artifact management
 # ---------------------------------------------------------------------------
 
 def _dir_size_str(path: Path) -> str:
@@ -652,7 +1016,6 @@ def _dir_size_str(path: Path) -> str:
 def _list_all_artifacts() -> list:
     """Return a list of dicts for output_model and all named saved_models."""
     artifacts = []
-    # Current training output
     if _OUTPUT_MODEL_DIR.exists() and (_OUTPUT_MODEL_DIR / "config.json").exists():
         base_model = ""
         try:
@@ -668,7 +1031,6 @@ def _list_all_artifacts() -> list:
             "base_model": base_model,
             "is_current": True,
         })
-    # Named saved models
     if _SAVED_MODELS_DIR.exists():
         for d in sorted(_SAVED_MODELS_DIR.iterdir()):
             if not d.is_dir() or not (d / "config.json").exists():
@@ -706,7 +1068,7 @@ def _make_artifacts_html(artifacts: list) -> str:
     for a in artifacts:
         badge = (
             '<span style="background:#6c757d;color:white;font-size:10px;padding:1px 8px;'
-            'border-radius:3px;margin-left:8px;">Current Output</span>'
+            'border-radius:3px;margin-left:8px;">Active</span>'
             if a["is_current"] else ""
         )
         base_html = (
@@ -721,7 +1083,7 @@ def _make_artifacts_html(artifacts: list) -> str:
             f'<span style="font-family:monospace;font-size:14px;font-weight:bold;color:#222;">'
             f'{_html.escape(a["name"])}</span>{badge}</div>'
             f'<div style="font-family:monospace;font-size:12px;color:#666;">'
-            f'Size:&nbsp;<b>{a["size"]}</b>&nbsp;&nbsp;&middot;&nbsp;&nbsp;'
+            f'Size:&nbsp;<b>{a["size"]}</b>&nbsp;&middot;&nbsp;'
             f'Saved:&nbsp;{a["saved_at"]}{base_html}</div></div>'
         )
     return '<div>' + ''.join(cards) + '</div>'
@@ -776,6 +1138,82 @@ def _save_current_model(name: str) -> Tuple[str, str, object]:
         return f"Error: {exc}", _make_artifacts_html(arts), gr.update()
 
 
+def _rename_artifact(old_name: str, new_name: str) -> Tuple[str, str, object]:
+    """Rename a saved model artifact. Returns (status, html, dropdown_update)."""
+    new_name = new_name.strip()
+    if not old_name:
+        arts = _list_all_artifacts()
+        return "Select an artifact to rename.", _make_artifacts_html(arts), gr.update()
+    if not new_name:
+        arts = _list_all_artifacts()
+        return "Enter a new name.", _make_artifacts_html(arts), gr.update()
+    if old_name == "output_model":
+        arts = _list_all_artifacts()
+        return (
+            "Cannot rename 'output_model' directly. Save it first, then rename the copy.",
+            _make_artifacts_html(arts), gr.update(),
+        )
+    new_name = re.sub(r"[^\w\-\.]", "_", new_name)
+    src = _SAVED_MODELS_DIR / old_name
+    if not src.exists():
+        arts = _list_all_artifacts()
+        return f"'{old_name}' not found.", _make_artifacts_html(arts), gr.update()
+    dest = _SAVED_MODELS_DIR / new_name
+    if dest.exists():
+        arts = _list_all_artifacts()
+        return f"Name '{new_name}' is already in use.", _make_artifacts_html(arts), gr.update()
+    try:
+        src.rename(dest)
+        meta_file = dest / "_meta.json"
+        if meta_file.exists():
+            try:
+                meta = json.loads(meta_file.read_text())
+                meta["name"] = new_name
+                meta_file.write_text(json.dumps(meta, indent=2))
+            except Exception:
+                pass
+        arts = _list_all_artifacts()
+        return (
+            f"Renamed '{old_name}' → '{new_name}'.",
+            _make_artifacts_html(arts),
+            gr.update(choices=_artifact_choices(arts), value=None),
+        )
+    except Exception as exc:
+        arts = _list_all_artifacts()
+        return f"Error: {exc}", _make_artifacts_html(arts), gr.update()
+
+
+def _set_active_model(artifact_name: str) -> Tuple[str, str, object]:
+    """Copy a saved model to _OUTPUT_MODEL_DIR to make it the active model for Chat."""
+    global _model, _tokenizer
+    if not artifact_name:
+        arts = _list_all_artifacts()
+        return "Select a saved model to set as active.", _make_artifacts_html(arts), gr.update()
+    if artifact_name == "output_model":
+        arts = _list_all_artifacts()
+        return "This is already the active model.", _make_artifacts_html(arts), gr.update()
+    src = _SAVED_MODELS_DIR / artifact_name
+    if not src.exists():
+        arts = _list_all_artifacts()
+        return f"'{artifact_name}' not found.", _make_artifacts_html(arts), gr.update()
+    try:
+        _model = None
+        _tokenizer = None
+        if _OUTPUT_MODEL_DIR.exists():
+            shutil.rmtree(str(_OUTPUT_MODEL_DIR))
+        shutil.copytree(str(src), str(_OUTPUT_MODEL_DIR))
+        _pipeline_status["train"] = "complete"
+        arts = _list_all_artifacts()
+        return (
+            f"'{artifact_name}' is now the active model. Go to Step 5 · Chat and click Load Model.",
+            _make_artifacts_html(arts),
+            gr.update(choices=_artifact_choices(arts), value=None),
+        )
+    except Exception as exc:
+        arts = _list_all_artifacts()
+        return f"Error: {exc}", _make_artifacts_html(arts), gr.update()
+
+
 def _delete_artifact(artifact_name: str) -> Tuple[str, str, object]:
     """Delete a named artifact. Returns (status, html, dropdown_update)."""
     global _model, _tokenizer
@@ -814,9 +1252,7 @@ def _refresh_artifacts() -> Tuple[str, object]:
 
 def _iter_lines(proc, heartbeat: float = 1.0) -> Generator[Optional[str], None, None]:
     """Read subprocess stdout in a background thread, yielding lines as they arrive.
-    Yields None roughly every *heartbeat* seconds when the process is silent, so
-    callers can update an elapsed-time display even when no output is produced
-    (e.g. while processing large PDFs).
+    Yields None roughly every *heartbeat* seconds when the process is silent.
     """
     q: "queue.Queue[Optional[str]]" = queue.Queue()
 
@@ -838,7 +1274,7 @@ def _iter_lines(proc, heartbeat: float = 1.0) -> Generator[Optional[str], None, 
             if line:
                 q.put(line + "\n")
         proc.wait()
-        q.put(None)  # sentinel
+        q.put(None)
 
     threading.Thread(target=_reader, daemon=True).start()
     while True:
@@ -848,7 +1284,7 @@ def _iter_lines(proc, heartbeat: float = 1.0) -> Generator[Optional[str], None, 
                 break
             yield item
         except queue.Empty:
-            yield None  # heartbeat tick — no new log line
+            yield None
 
 
 def _popen(cmd: list) -> subprocess.Popen:
@@ -864,46 +1300,81 @@ def _popen(cmd: list) -> subprocess.Popen:
 
 
 # ---------------------------------------------------------------------------
-# Tab 1 — Data Preparation
+# Step 1 — Upload Documents
 # ---------------------------------------------------------------------------
 
-def _run_data_prep(
-    uploaded_files,
-    chunk_size: int,
-    chunk_overlap: int,
-    val_ratio: float,
-    fmt: str,
-) -> Generator[Tuple[str, str, str, str, str], None, None]:
-    start_time = time.time()
-    _pipeline_status["data"] = "running"
-    log_text = "Starting data preparation...\n"
-    pipe_html = _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"])
-    yield log_text, _make_elapsed_html(0.0), pipe_html, "", _data_activity_text(log_text)
-
-    if not uploaded_files:
-        log_text += "ERROR: No files uploaded. Please upload at least one PDF or CSV.\n"
-        _pipeline_status["data"] = "failed"
-        yield log_text, _make_elapsed_html(time.time() - start_time, failed=True), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
-            _data_activity_text(log_text)
-        return
-
+def _save_uploads(files) -> Tuple[str, str, str]:
+    """Copy uploaded files to _DATA_DIR. Returns (status, files_html, pipeline_html)."""
+    if not files:
+        return (
+            "No files selected. Please select at least one PDF or CSV.",
+            _make_uploaded_files_html(),
+            _make_pipeline_html(),
+        )
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _TRAINING_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
     pdfs, csvs = [], []
-    for f in uploaded_files:
+    for f in files:
         src = Path(f)
         dest = _DATA_DIR / src.name
         shutil.copy2(src, dest)
         if src.suffix.lower() == ".csv":
-            csvs.append(str(dest))
+            csvs.append(src.name)
         else:
-            pdfs.append(str(dest))
-    log_text += f"Copied {len(pdfs)} PDF(s) and {len(csvs)} CSV file(s) to {_DATA_DIR}\n"
-    yield log_text, _make_elapsed_html(time.time() - start_time), \
-        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
-        _data_activity_text(log_text)
+            pdfs.append(src.name)
+    _pipeline_status["upload"] = "complete"
+    parts = []
+    if pdfs:
+        parts.append(f"{len(pdfs)} PDF(s): {', '.join(pdfs)}")
+    if csvs:
+        parts.append(f"{len(csvs)} CSV(s): {', '.join(csvs)}")
+    msg = "Uploaded " + "; ".join(parts) + f" → {_DATA_DIR}"
+    return msg, _make_uploaded_files_html(), _make_pipeline_html()
+
+
+# ---------------------------------------------------------------------------
+# Step 2 — Extract Training Data
+# ---------------------------------------------------------------------------
+
+def _run_extraction(
+    chunk_size: int,
+    chunk_overlap: int,
+    val_ratio: float,
+    fmt: str,
+    manual_mode: bool,
+    no_multiturn: bool,
+) -> Generator[Tuple[str, str, str, str, str], None, None]:
+    """
+    Run the extraction pipeline. Yields:
+        (log_text, elapsed_html, pipeline_html, qa_review_html, activity_text)
+    """
+    start_time = time.time()
+    _pipeline_status["extract"] = "running"
+    _pipeline_status["approve"] = "pending"
+    log_text = "Starting training data extraction…\n"
+    blank = '<p style="color:#888;font-family:monospace;font-size:13px;">Running extraction…</p>'
+    yield log_text, _make_elapsed_html(0.0), _make_pipeline_html(), blank, _data_activity_text(log_text)
+
+    if not _DATA_DIR.exists():
+        log_text += f"ERROR: {_DATA_DIR} does not exist. Upload files in Step 1 first.\n"
+        _pipeline_status["extract"] = "failed"
+        yield (log_text, _make_elapsed_html(time.time() - start_time, failed=True),
+               _make_pipeline_html(), "", _data_activity_text(log_text))
+        return
+
+    pdfs = sorted(_DATA_DIR.glob("*.pdf"))
+    csvs = sorted(_DATA_DIR.glob("*.csv"))
+    if not pdfs and not csvs:
+        log_text += f"ERROR: No PDF or CSV files in {_DATA_DIR}. Upload files in Step 1 first.\n"
+        _pipeline_status["extract"] = "failed"
+        yield (log_text, _make_elapsed_html(time.time() - start_time, failed=True),
+               _make_pipeline_html(), "", _data_activity_text(log_text))
+        return
+
+    log_text += f"Found {len(pdfs)} PDF(s) and {len(csvs)} CSV(s) in {_DATA_DIR}\n"
+    yield (log_text, _make_elapsed_html(time.time() - start_time),
+           _make_pipeline_html(), blank, _data_activity_text(log_text))
+
+    _TRAINING_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         sys.executable, "-m", "data.prepare_training_data",
@@ -915,50 +1386,85 @@ def _run_data_prep(
     ]
     if pdfs:
         cmd += ["--pdf-dir", str(_DATA_DIR)]
+        if manual_mode:
+            cmd.append("--manual")
+        if no_multiturn and manual_mode:
+            cmd.append("--no-multiturn")
     if csvs:
-        cmd += ["--csv", csvs[0]]
+        cmd += ["--csv", str(csvs[0])]
+    # Auto-include the knowledge library if it has any entries
+    if _LIBRARY_DIR.exists() and any(_LIBRARY_DIR.glob("*.yaml")):
+        cmd += ["--yaml-dir", str(_LIBRARY_DIR)]
+        lib = library_stats(_LIBRARY_DIR)
+        log_text += (
+            f"Knowledge library: {lib['total_patterns']} pattern(s), "
+            f"{lib['total_qa_pairs']} Q&A pairs — auto-included.\n"
+        )
+        yield (log_text, _make_elapsed_html(time.time() - start_time),
+               _make_pipeline_html(), blank, _data_activity_text(log_text))
 
     log_text += f"Running: {' '.join(cmd)}\n\n"
-    yield log_text, _make_elapsed_html(time.time() - start_time), \
-        _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
-        _data_activity_text(log_text)
+    yield (log_text, _make_elapsed_html(time.time() - start_time),
+           _make_pipeline_html(), blank, _data_activity_text(log_text))
 
     proc = _popen(cmd)
     for line in _iter_lines(proc):
         if line:
             log_text += line
-        yield log_text, _make_elapsed_html(time.time() - start_time), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
-            _data_activity_text(log_text)
+        yield (log_text, _make_elapsed_html(time.time() - start_time),
+               _make_pipeline_html(), blank, _data_activity_text(log_text))
 
     elapsed = time.time() - start_time
-    train_jsonl = _TRAINING_DATA_DIR / "train_sharegpt.jsonl"
     if proc.returncode == 0:
-        log_text += "\nData preparation complete.\n"
-        files = sorted(_TRAINING_DATA_DIR.glob("*.jsonl"))
-        if files:
-            log_text += "Output files:\n" + "\n".join(f"  {f.name}" for f in files) + "\n"
-        # Warn if the training split is very small
-        n_prep = sum(1 for _ in train_jsonl.open()) if train_jsonl.exists() else 0
-        if n_prep < 20:
-            _pipeline_status["data"] = "warning"
-            log_text += f"WARNING: Only {n_prep} training examples generated — quality may be poor.\n"
+        log_text += "\nExtraction complete.\n"
+        out_files = (
+            sorted(_TRAINING_DATA_DIR.glob("*.jsonl")) +
+            sorted(_TRAINING_DATA_DIR.glob("*/*.jsonl"))
+        )
+        if out_files:
+            log_text += "Output files:\n" + "\n".join(f"  {f}" for f in out_files) + "\n"
+
+        train_jsonl = _find_train_jsonl()
+        n_ex = 0
+        if train_jsonl:
+            try:
+                n_ex = sum(1 for ln in train_jsonl.open(encoding="utf-8") if ln.strip())
+            except Exception:
+                pass
+        if n_ex < 20:
+            _pipeline_status["extract"] = "warning"
+            log_text += f"WARNING: Only {n_ex} training examples generated — quality may be poor.\n"
         else:
-            _pipeline_status["data"] = "complete"
-        sample_html = _make_data_sample_html(train_jsonl)
-        yield log_text, _make_elapsed_html(elapsed, done=(_pipeline_status["data"] == "complete")), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), sample_html, \
-            _data_activity_text(log_text)
+            _pipeline_status["extract"] = "complete"
+
+        review_html = _make_qa_review_html()
+        yield (log_text,
+               _make_elapsed_html(elapsed, done=(_pipeline_status["extract"] == "complete")),
+               _make_pipeline_html(), review_html, _data_activity_text(log_text))
     else:
-        log_text += f"\nData preparation FAILED (exit code {proc.returncode}).\n"
-        _pipeline_status["data"] = "failed"
-        yield log_text, _make_elapsed_html(elapsed, failed=True), \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", \
-            _data_activity_text(log_text)
+        log_text += f"\nExtraction FAILED (exit code {proc.returncode}).\n"
+        _pipeline_status["extract"] = "failed"
+        yield (log_text, _make_elapsed_html(elapsed, failed=True),
+               _make_pipeline_html(), "", _data_activity_text(log_text))
+
+
+def _approve_training_data() -> Tuple[str, str]:
+    """Mark training data as approved. Returns (status_text, pipeline_html)."""
+    train_jsonl = _find_train_jsonl()
+    if not train_jsonl:
+        return "No training data found. Run extraction first.", _make_pipeline_html()
+    try:
+        n = sum(1 for ln in train_jsonl.open(encoding="utf-8") if ln.strip())
+    except Exception:
+        n = 0
+    if n == 0:
+        return "Training data file is empty. Re-run extraction.", _make_pipeline_html()
+    _pipeline_status["approve"] = "complete"
+    return f"✓ Approved {n:,} training pairs. Proceed to Step 3 · Train.", _make_pipeline_html()
 
 
 # ---------------------------------------------------------------------------
-# Tab 2 — Training
+# Step 3 — Training
 # ---------------------------------------------------------------------------
 
 def _run_training(
@@ -970,14 +1476,13 @@ def _run_training(
     resume_ckpt: bool = False,
     save_steps: int = 50,
 ) -> Generator[Tuple[str, str, str, str, str], None, None]:
-    """Yields (status_card, progress_bar, pipeline, quality, raw_log) on every update."""
+    """Yields (status_card, progress_bar, pipeline, quality, raw_log, chart, activity)."""
     device_label = _get_device_label()
     use_unsloth = _unsloth_available()
     script = "train.finetune_unsloth" if use_unsloth else "train.finetune_cpu"
 
     _pipeline_status["train"] = "running"
 
-    # ── User-facing status state ──────────────────────────────────────────
     phase = "loading"
     current_msg = f"Loading model {model_name}…"
     warnings: List[str] = []
@@ -989,7 +1494,6 @@ def _run_training(
             "For a 1.1B model expect several minutes per step."
         )
 
-    # ── Training progress state ───────────────────────────────────────────
     current_epoch = 0
     total_epochs_parsed = epochs
     global_step = 0
@@ -999,9 +1503,8 @@ def _run_training(
     last_loss: Optional[float] = None
     last_eval_loss: Optional[float] = None
     n_examples = 0
-    loss_history: List[dict] = []  # [{step, loss, metric}] for live chart
+    loss_history: List[dict] = []
 
-    # ── Initialise persistent reconnect state ────────────────────────────
     _training_state.update({
         "active": True, "done": False, "failed": False,
         "log": "", "phase": phase, "current_msg": current_msg,
@@ -1013,7 +1516,6 @@ def _run_training(
     })
 
     def _sync() -> None:
-        """Snapshot current local training variables into _training_state."""
         _training_state.update({
             "log": log_text,
             "phase": phase,
@@ -1036,8 +1538,8 @@ def _run_training(
         f"Device: {device_label}\n"
         f"Backend: {'Unsloth (GPU fast path)' if use_unsloth else 'HuggingFace Trainer (CPU/MPS)'}\n\n"
     )
-    progress_html = ""   # hidden until training phase starts
-    pipe_html = _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"])
+    progress_html = ""
+    pipe_html = _make_pipeline_html()
 
     def _card(done: bool = False, failed: bool = False) -> str:
         return _make_train_status_html(phase, current_msg, warnings, error, done, failed)
@@ -1046,27 +1548,23 @@ def _run_training(
 
     yield _card(), progress_html, pipe_html, "", log_text, _no_chart, _activity_text(log_text)
 
-    # ── Validate files ────────────────────────────────────────────────────
-    train_file = _TRAINING_DATA_DIR / "train_sharegpt.jsonl"
-    val_file = _TRAINING_DATA_DIR / "val_sharegpt.jsonl"
-    if not train_file.exists():
-        error = "Training data not found. Complete the 'Prepare Data' step first."
+    # ── Validate training files ───────────────────────────────────────────
+    train_file, val_file = _find_training_files()
+    if not train_file:
+        error = "Training data not found. Complete Steps 1–3 (Upload, Extract, Approve) first."
         _pipeline_status["train"] = "failed"
         log_text += f"ERROR: {error}\n"
-        yield _card(failed=True), "", \
-            _make_pipeline_html(_pipeline_status["data"], "failed"), "", log_text, _no_chart, ""
+        yield _card(failed=True), "", _make_pipeline_html(), "", log_text, _no_chart, ""
         return
-    if not val_file.exists():
-        error = "Validation data not found. Complete the 'Prepare Data' step first."
+    if not val_file:
+        error = "Validation data not found. Complete Steps 1–3 first."
         _pipeline_status["train"] = "failed"
         log_text += f"ERROR: {error}\n"
-        yield _card(failed=True), "", \
-            _make_pipeline_html(_pipeline_status["data"], "failed"), "", log_text, _no_chart, ""
+        yield _card(failed=True), "", _make_pipeline_html(), "", log_text, _no_chart, ""
         return
 
     _OUTPUT_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Checkpoint resume
     ckpt = _latest_checkpoint(_OUTPUT_MODEL_DIR) if resume_ckpt else None
     if resume_ckpt:
         if ckpt:
@@ -1089,7 +1587,7 @@ def _run_training(
     if ckpt:
         cmd += ["--resume", str(ckpt)]
     log_text += f"Running: {' '.join(cmd)}\n\n"
-    yield _card(), progress_html, pipe_html, "", log_text, _no_chart, _activity_text(log_text)
+    yield _card(), progress_html, _make_pipeline_html(), "", log_text, _no_chart, _activity_text(log_text)
 
     start_time = time.time()
     _training_state["start_time"] = start_time
@@ -1101,7 +1599,6 @@ def _run_training(
             log_text += line
             clean = line.strip()
 
-            # ── Phase / message transitions ───────────────────────────────
             if "Loading base model:" in clean:
                 phase = "loading"
                 current_msg = f"Loading model weights for {model_name}…"
@@ -1130,13 +1627,11 @@ def _run_training(
             elif "Saved to" in clean:
                 current_msg = "Model saved successfully!"
 
-            # ── Warnings from subprocess (skip the CPU one we already added) ──
             if "WARNING:" in clean and "very slow" not in clean:
                 w = clean.split("WARNING:", 1)[-1].strip()
                 if w and w not in warnings:
                     warnings.append(w)
 
-            # ── Errors / tracebacks ───────────────────────────────────────
             if "Traceback (most recent call last)" in clean:
                 if not error:
                     error = "An error occurred — see developer log for details."
@@ -1144,7 +1639,6 @@ def _run_training(
                 if not error:
                     error = clean
 
-            # ── Training progress metrics ─────────────────────────────────
             m = _EPOCH_RE.search(clean)
             if m:
                 current_epoch = int(m.group(1))
@@ -1170,16 +1664,10 @@ def _run_training(
                 last_eval_loss = float(m.group(1))
                 loss_history.append({"step": global_step, "loss": last_eval_loss, "metric": "eval"})
 
-        # Show training progress bar once we enter the training/saving phase
         if phase in ("training", "saving") or global_step > 0:
             progress_html = _make_training_progress_html(
                 max(current_epoch, 1) if global_step > 0 else current_epoch,
-                total_epochs_parsed,
-                global_step,
-                total_steps,
-                last_pct,
-                elapsed,
-                last_loss,
+                total_epochs_parsed, global_step, total_steps, last_pct, elapsed, last_loss,
             )
 
         chart_update = (
@@ -1187,19 +1675,16 @@ def _run_training(
             if loss_history else _no_chart
         )
         _sync()
-        yield _card(), progress_html, \
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]), "", log_text, \
-            chart_update, _activity_text(log_text)
+        yield _card(), progress_html, _make_pipeline_html(), "", log_text, chart_update, _activity_text(log_text)
 
     elapsed = time.time() - start_time
     final_chart = (
         gr.update(value=pd.DataFrame(loss_history), visible=True)
         if loss_history else _no_chart
     )
-    success = proc.returncode == 0
-    if success:
+    if proc.returncode == 0:
         _pipeline_status["train"] = "complete"
-        current_msg = "Training complete! Switch to the Chat tab and load your model."
+        current_msg = "Training complete! Go to Step 5 · Chat and load your model."
         log_text += "\nTraining complete.\n"
         progress_html = _make_training_progress_html(
             total_epochs_parsed, total_epochs_parsed,
@@ -1209,18 +1694,13 @@ def _run_training(
         _training_state.update({"active": False, "done": True, "elapsed": elapsed})
         _sync()
         yield (
-            _card(done=True),
-            progress_html,
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]),
-            quality_html,
-            log_text,
-            final_chart,
-            _activity_text(log_text),
+            _card(done=True), progress_html, _make_pipeline_html(),
+            quality_html, log_text, final_chart, _activity_text(log_text),
         )
     else:
         _pipeline_status["train"] = "failed"
         if not error:
-            error = f"Training failed (exit code {proc.returncode}). Check the developer log for details."
+            error = f"Training failed (exit code {proc.returncode}). Check the developer log."
         log_text += f"\nTraining FAILED (exit code {proc.returncode}).\n"
         progress_html = _make_training_progress_html(
             total_epochs_parsed, total_epochs_parsed,
@@ -1229,18 +1709,13 @@ def _run_training(
         _training_state.update({"active": False, "failed": True, "elapsed": elapsed})
         _sync()
         yield (
-            _card(failed=True),
-            progress_html,
-            _make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"]),
-            "",
-            log_text,
-            final_chart,
-            _activity_text(log_text),
+            _card(failed=True), progress_html, _make_pipeline_html(),
+            "", log_text, final_chart, _activity_text(log_text),
         )
 
 
 # ---------------------------------------------------------------------------
-# Tab 3 — Chat
+# Step 5 — Chat helpers
 # ---------------------------------------------------------------------------
 
 def _load_model_ui() -> Tuple[str, gr.update]:
@@ -1258,13 +1733,12 @@ def _load_model_ui() -> Tuple[str, gr.update]:
 
 
 def _normalize_content(content: Any) -> str:
-    """Ensure content is a string for tokenizer.apply_chat_template (no list concatenation)."""
+    """Ensure content is a string (handles Gradio 5.x list-of-parts format)."""
     if content is None:
         return ""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        # Gradio 5.x can send content as list of parts e.g. [{"type": "text", "text": "..."}]
         parts = []
         for part in content:
             if isinstance(part, str):
@@ -1284,18 +1758,15 @@ def _chat(message: str, history: List) -> str:
     messages = []
     for entry in history:
         if isinstance(entry, dict):
-            # Gradio 5.x messages format: {"role": ..., "content": ..., ...}
             messages.append({
                 "role": entry["role"],
                 "content": _normalize_content(entry.get("content")),
             })
         else:
-            # Gradio 4.x tuples format: (user_msg, assistant_msg)
             user_msg, assistant_msg = entry[0], entry[1]
             messages.append({"role": "user", "content": _normalize_content(user_msg)})
             if assistant_msg:
                 messages.append({"role": "assistant", "content": _normalize_content(assistant_msg)})
-    # Gradio 5.x passes message as a dict {"role": ..., "content": ..., ...}; 4.x passes a plain string
     msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
     messages.append({"role": "user", "content": msg_text})
     return generate_response(_model, _tokenizer, messages)
@@ -1308,37 +1779,77 @@ def _chat(message: str, history: List) -> str:
 def build_app() -> gr.Blocks:
     device_label = _get_device_label()
 
-    # Reflect any already-completed steps on startup
-    _pipeline_status["data"] = (
-        "complete" if (_TRAINING_DATA_DIR / "train_sharegpt.jsonl").exists() else "pending"
+    # Reflect already-completed steps on startup
+    uploaded = _DATA_DIR.exists() and (
+        any(_DATA_DIR.glob("*.pdf")) or any(_DATA_DIR.glob("*.csv"))
     )
-    _pipeline_status["train"] = "complete" if _model_ready() else "pending"
+    train_jsonl = _find_train_jsonl()
+    _pipeline_status["upload"]  = "complete" if uploaded else "pending"
+    _pipeline_status["extract"] = "complete" if train_jsonl else "pending"
+    _pipeline_status["approve"] = "complete" if train_jsonl else "pending"
+    _pipeline_status["train"]   = "complete" if _model_ready() else "pending"
 
     with gr.Blocks(title="SLM Training Demo") as app:
         gr.Markdown(
             f"# SLM Training Demo\n"
-            f"Train a small language model on your own data and chat with it — "
-            f"all in the browser.\n\n"
+            f"Upload documents → extract Q&A training data → train a small model → chat with it.\n\n"
             f"**Runtime device:** `{device_label}`"
         )
-        pipeline_status = gr.HTML(
-            value=_make_pipeline_html(_pipeline_status["data"], _pipeline_status["train"])
-        )
+        pipeline_status = gr.HTML(value=_make_pipeline_html())
 
         with gr.Tabs():
 
-            # ── Tab 1 ──────────────────────────────────────────────────────
-            with gr.Tab("1 · Prepare Data"):
+            # ── Tab 1 · Upload ─────────────────────────────────────────────
+            with gr.Tab("1 · Upload"):
                 gr.Markdown(
-                    "Upload your source files (PDFs and/or a CSV with `question,answer` columns). "
-                    "The tool chunks the content and writes ShareGPT-format JSONL files for training."
+                    "Upload your source files. **PDFs** are parsed for text content; "
+                    "**CSVs** must have `question,answer` columns (or a single `text` column)."
+                )
+                file_upload = gr.File(
+                    label="Upload files (PDF and/or CSV)",
+                    file_count="multiple",
+                    file_types=[".pdf", ".csv"],
+                )
+                upload_btn = gr.Button("Upload Files", variant="primary")
+                upload_status = gr.Textbox(
+                    label="Status",
+                    lines=2,
+                    interactive=False,
+                    value=(
+                        f"Previously uploaded files found in {_DATA_DIR}. "
+                        "You can re-upload to replace them or proceed to Step 2."
+                        if uploaded else "No files uploaded yet."
+                    ),
+                )
+                uploaded_list = gr.HTML(value=_make_uploaded_files_html())
+
+                upload_btn.click(
+                    fn=_save_uploads,
+                    inputs=[file_upload],
+                    outputs=[upload_status, uploaded_list, pipeline_status],
+                )
+
+            # ── Tab 2 · Extract ────────────────────────────────────────────
+            with gr.Tab("2 · Extract Training Data"):
+                gr.Markdown(
+                    "Configure extraction settings and click **Extract Training Data**. "
+                    "Review the generated Q&A pairs, then click **✓ Approve** to proceed."
                 )
                 with gr.Row():
-                    with gr.Column(scale=2):
-                        file_upload = gr.File(
-                            label="Upload files (PDF and/or CSV)",
-                            file_count="multiple",
-                            file_types=[".pdf", ".csv"],
+                    with gr.Column(scale=1):
+                        manual_mode = gr.Checkbox(
+                            label="Manual / documentation mode",
+                            value=True,
+                            info=(
+                                "Best for SQL manuals and technical docs. "
+                                "Filters TOC, headers/footers, and index pages; "
+                                "extracts section-aware Q&A with typed questions."
+                            ),
+                        )
+                        no_multiturn = gr.Checkbox(
+                            label="Skip multi-turn conversations",
+                            value=False,
+                            info="When unchecked, generates multi-turn ShareGPT conversations in addition to single-turn pairs.",
                         )
                     with gr.Column(scale=1):
                         chunk_size = gr.Slider(
@@ -1347,6 +1858,7 @@ def build_app() -> gr.Blocks:
                         chunk_overlap = gr.Slider(
                             0, 400, value=150, step=25, label="Chunk overlap"
                         )
+                    with gr.Column(scale=1):
                         val_ratio = gr.Slider(
                             0.05, 0.4, value=0.15, step=0.05, label="Validation split ratio"
                         )
@@ -1356,28 +1868,51 @@ def build_app() -> gr.Blocks:
                             label="Output format",
                         )
 
-                prep_btn = gr.Button("Prepare Data", variant="primary")
-                prep_progress = gr.HTML(value="")
-                prep_activity = gr.Textbox(
+                extract_btn = gr.Button("Extract Training Data", variant="primary")
+                extract_progress = gr.HTML(value="")
+                extract_activity = gr.Textbox(
                     label="Processing Status",
-                    lines=8,
-                    max_lines=12,
+                    lines=6,
+                    max_lines=10,
                     interactive=False,
-                    placeholder="Per-file progress will appear here once processing starts…",
+                    placeholder="Per-file extraction progress will appear here…",
                 )
                 with gr.Accordion("Developer log", open=False):
-                    prep_log = gr.Textbox(
-                        label="Raw log",
-                        lines=10,
-                        max_lines=20,
-                        interactive=False,
+                    extract_log = gr.Textbox(
+                        label="Raw log", lines=10, max_lines=20, interactive=False,
                     )
-                data_sample = gr.HTML(value="")
+
+                gr.Markdown("---")
+                gr.Markdown("### Review Extracted Q&A Pairs")
+                qa_review = gr.HTML(
+                    value=(
+                        _make_qa_review_html()
+                        if train_jsonl else
+                        '<p style="color:#888;font-family:monospace;font-size:13px;">'
+                        'No training data yet. Click <b>Extract Training Data</b> above.</p>'
+                    )
+                )
+
+                gr.Markdown("---")
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        approve_btn = gr.Button("✓ Approve Training Data", variant="primary")
+                    with gr.Column(scale=3):
+                        approve_status = gr.Textbox(
+                            label="Approval status",
+                            lines=1,
+                            interactive=False,
+                            value=(
+                                "Training data approved (previously extracted data found)."
+                                if train_jsonl else
+                                "Run extraction first, then click Approve to proceed to training."
+                            ),
+                        )
 
                 gr.Markdown("---")
                 gr.Markdown(
-                    "**Save Dataset Snapshot** — Download the prepared JSONL files as a zip. "
-                    "Re-upload this zip in the Train tab to skip Prepare Data next time."
+                    "**Save Dataset Snapshot** — download the JSONL files as a zip "
+                    "to reuse later without re-extracting."
                 )
                 with gr.Row():
                     snap_btn = gr.Button("Save Dataset Snapshot", variant="secondary")
@@ -1392,22 +1927,32 @@ def build_app() -> gr.Blocks:
                         return msg, gr.update(value=str(p), visible=True)
                     return msg, gr.update(visible=False)
 
+                extract_btn.click(
+                    fn=_run_extraction,
+                    inputs=[chunk_size, chunk_overlap, val_ratio, fmt_choice, manual_mode, no_multiturn],
+                    outputs=[extract_log, extract_progress, pipeline_status, qa_review, extract_activity],
+                )
+                approve_btn.click(
+                    fn=_approve_training_data,
+                    inputs=[],
+                    outputs=[approve_status, pipeline_status],
+                )
                 snap_btn.click(
                     fn=_do_save_snapshot,
                     inputs=[],
                     outputs=[snap_status, snap_file],
                 )
-                prep_btn.click(
-                    fn=_run_data_prep,
-                    inputs=[file_upload, chunk_size, chunk_overlap, val_ratio, fmt_choice],
-                    outputs=[prep_log, prep_progress, pipeline_status, data_sample, prep_activity],
-                )
 
-            # ── Tab 2 ──────────────────────────────────────────────────────
-            with gr.Tab("2 · Train"):
+            # ── Tab 3 · Train ──────────────────────────────────────────────
+            with gr.Tab("3 · Train"):
                 gr.Markdown(
-                    "Configure parameters and click **Start Training**. "
-                    "Logs stream live. Training is done when you see *'Saved to output_model'*."
+                    "Configure fine-tuning parameters and click **Start Training**. "
+                    "Logs stream live. Complete Steps 1 and 2 first.\n\n"
+                    + (
+                        "✓ Training data approved — ready to train."
+                        if _pipeline_status["approve"] == "complete" else
+                        "⚠ Complete Step 2 (Extract & Approve) before training."
+                    )
                 )
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -1433,15 +1978,14 @@ def build_app() -> gr.Blocks:
                         save_steps = gr.Slider(
                             10, 200, value=50, step=10,
                             label="Checkpoint every N steps",
-                            info="Save a checkpoint this often. Lower = safer, higher = faster.",
+                            info="Lower = safer against interruption, higher = faster.",
                         )
 
                 with gr.Accordion("Load saved dataset / Resume training", open=False):
                     gr.Markdown(
-                        "**Load Dataset** — upload a snapshot zip (saved from Prepare Data tab) "
-                        "or individual `.jsonl` files to skip the data preparation step.\n\n"
-                        "**Resume** — if training was interrupted, tick this to continue from "
-                        "the last saved checkpoint instead of starting over."
+                        "**Load Dataset** — upload a snapshot zip (from Step 2) or individual `.jsonl` "
+                        "files to skip extraction.\n\n"
+                        "**Resume** — continue from the last saved checkpoint instead of starting over."
                     )
                     with gr.Row():
                         dataset_upload = gr.File(
@@ -1454,8 +1998,7 @@ def build_app() -> gr.Blocks:
                             label="Load status", lines=1, interactive=False, value=""
                         )
                     resume_ckpt = gr.Checkbox(
-                        label="Resume from last checkpoint (if available)",
-                        value=False,
+                        label="Resume from last checkpoint (if available)", value=False,
                     )
 
                     def _do_load_dataset(f):
@@ -1481,94 +2024,120 @@ def build_app() -> gr.Blocks:
                 )
                 train_loss_plot = gr.LinePlot(
                     value=pd.DataFrame({"step": [], "loss": [], "metric": []}),
-                    x="step",
-                    y="loss",
-                    color="metric",
-                    title="Training Loss",
-                    y_title="Loss",
-                    x_title="Step",
-                    height=220,
-                    visible=False,
+                    x="step", y="loss", color="metric",
+                    title="Training Loss", y_title="Loss", x_title="Step",
+                    height=220, visible=False,
                 )
                 train_quality = gr.HTML(value="")
                 with gr.Accordion("Developer log", open=False):
                     train_log_raw = gr.Textbox(
-                        label="Raw training log",
-                        lines=12,
-                        max_lines=30,
-                        interactive=False,
+                        label="Raw training log", lines=12, max_lines=30, interactive=False,
                     )
+
                 train_btn.click(
                     fn=_run_training,
                     inputs=[model_name, epochs, batch_size, lr, max_seq_len, resume_ckpt, save_steps],
-                    outputs=[train_status_card, train_progress, pipeline_status, train_quality, train_log_raw, train_loss_plot, train_activity],
+                    outputs=[
+                        train_status_card, train_progress, pipeline_status,
+                        train_quality, train_log_raw, train_loss_plot, train_activity,
+                    ],
                 )
 
-            # ── Tab 3 ──────────────────────────────────────────────────────
-            with gr.Tab("3 · Model Manager"):
+            # ── Tab 4 · Model Manager ──────────────────────────────────────
+            with gr.Tab("4 · Model Manager"):
                 gr.Markdown(
-                    "Save the current trained model under a name to preserve it across runs, "
-                    "then manage or delete artifacts to free disk space."
+                    "Save, rename, set active, and delete model artifacts. "
+                    "Use **Set as Active** to switch which model is used for chat."
+                )
+                _init_arts = _list_all_artifacts()
+
+                gr.Markdown("### Artifact List")
+                artifacts_html = gr.HTML(value=_make_artifacts_html(_init_arts))
+                with gr.Row():
+                    artifact_dropdown = gr.Dropdown(
+                        label="Select artifact",
+                        choices=_artifact_choices(_init_arts),
+                        value=None,
+                    )
+                    refresh_btn = gr.Button("Refresh", variant="secondary", min_width=100)
+
+                manage_status = gr.Textbox(
+                    label="Status", interactive=False, lines=1, value=""
                 )
 
-                gr.Markdown("### Save Current Model")
+                gr.Markdown("---")
+                gr.Markdown("### Save Current Output Model")
                 with gr.Row():
                     with gr.Column(scale=3):
                         save_name = gr.Textbox(
-                            label="Model name",
-                            placeholder="e.g. tinyllama-qa-v1",
+                            label="Save as name",
+                            placeholder="e.g. td17-analytic-v1",
                             max_lines=1,
                         )
                     with gr.Column(scale=1, min_width=140):
                         save_btn = gr.Button("Save Model", variant="primary")
-                save_status = gr.Textbox(
-                    label="Save status", interactive=False, lines=1, value=""
-                )
 
-                gr.Markdown("### Artifact List")
-                _init_arts = _list_all_artifacts()
-                artifacts_html = gr.HTML(value=_make_artifacts_html(_init_arts))
-                refresh_btn = gr.Button("Refresh List", variant="secondary")
-
-                gr.Markdown("### Delete Artifact")
+                gr.Markdown("---")
                 gr.Markdown(
-                    "Select an artifact from the dropdown and click **Delete Selected** "
-                    "to permanently remove it from disk. Deleting `output_model` also "
-                    "unloads the model from memory."
+                    "### Rename Selected Artifact\n"
+                    "Select an artifact from the dropdown above, enter a new name, then click Rename."
                 )
                 with gr.Row():
                     with gr.Column(scale=3):
-                        delete_dropdown = gr.Dropdown(
-                            label="Select artifact to delete",
-                            choices=_artifact_choices(_init_arts),
-                            value=None,
+                        rename_input = gr.Textbox(
+                            label="New name",
+                            placeholder="e.g. td17-analytic-v2",
+                            max_lines=1,
                         )
-                    with gr.Column(scale=1, min_width=160):
-                        delete_btn = gr.Button("Delete Selected", variant="stop")
-                delete_status = gr.Textbox(
-                    label="Delete status", interactive=False, lines=1, value=""
+                    with gr.Column(scale=1, min_width=140):
+                        rename_btn = gr.Button("Rename", variant="secondary")
+
+                gr.Markdown("---")
+                gr.Markdown(
+                    "### Set as Active Model\n"
+                    "Makes the selected saved model the active model for Step 5 · Chat."
                 )
+                set_active_btn = gr.Button("Set as Active Model for Chat", variant="secondary")
+
+                gr.Markdown("---")
+                gr.Markdown(
+                    "### Delete Artifact\n"
+                    "Permanently removes the selected artifact from disk. "
+                    "Deleting `output_model` also unloads it from memory."
+                )
+                delete_btn = gr.Button("Delete Selected", variant="stop")
 
                 save_btn.click(
                     fn=_save_current_model,
                     inputs=[save_name],
-                    outputs=[save_status, artifacts_html, delete_dropdown],
+                    outputs=[manage_status, artifacts_html, artifact_dropdown],
+                )
+                rename_btn.click(
+                    fn=_rename_artifact,
+                    inputs=[artifact_dropdown, rename_input],
+                    outputs=[manage_status, artifacts_html, artifact_dropdown],
+                )
+                set_active_btn.click(
+                    fn=_set_active_model,
+                    inputs=[artifact_dropdown],
+                    outputs=[manage_status, artifacts_html, artifact_dropdown],
                 )
                 delete_btn.click(
                     fn=_delete_artifact,
-                    inputs=[delete_dropdown],
-                    outputs=[delete_status, artifacts_html, delete_dropdown],
+                    inputs=[artifact_dropdown],
+                    outputs=[manage_status, artifacts_html, artifact_dropdown],
                 )
                 refresh_btn.click(
                     fn=_refresh_artifacts,
                     inputs=[],
-                    outputs=[artifacts_html, delete_dropdown],
+                    outputs=[artifacts_html, artifact_dropdown],
                 )
 
-            # ── Tab 4 ──────────────────────────────────────────────────────
-            with gr.Tab("4 · Chat"):
+            # ── Tab 5 · Chat ───────────────────────────────────────────────
+            with gr.Tab("5 · Chat"):
                 gr.Markdown(
-                    "Once training is done, load the model and start asking questions."
+                    "Once training is complete, load the model and start asking questions. "
+                    "Use Step 4 · Model Manager to switch between saved models."
                 )
                 load_btn = gr.Button(
                     "Load Model" if not _model_ready() else "Load Model (ready)",
@@ -1578,8 +2147,8 @@ def build_app() -> gr.Blocks:
                     label="Status",
                     value=(
                         "Model found — click Load Model to begin."
-                        if _model_ready()
-                        else "No trained model yet. Complete the Train step first."
+                        if _model_ready() else
+                        "No trained model yet. Complete Steps 1–3 first."
                     ),
                     interactive=False,
                     lines=1,
@@ -1588,25 +2157,158 @@ def build_app() -> gr.Blocks:
                     fn=_chat,
                     examples=[
                         "What is this document about?",
-                        "Summarize the main points.",
-                        "How do I get started?",
+                        "Show me an example SQL query.",
+                        "What is the syntax for RANK?",
+                        "What does CSUM do?",
+                        "What are the arguments to QUANTILE?",
                     ],
                 )
                 try:
-                    # Gradio 5.x: explicit messages format avoids tuple-unpack errors
                     chat_interface = gr.ChatInterface(type="messages", **_chat_kwargs)  # noqa: F841
                 except TypeError:
-                    # Gradio 4.x: type parameter not supported
                     chat_interface = gr.ChatInterface(**_chat_kwargs)  # noqa: F841
+
                 load_btn.click(
                     fn=_load_model_ui,
                     inputs=[],
                     outputs=[load_status, load_btn],
                 )
 
+            # ── Tab 6 · Knowledge Library ───────────────────────────────────
+            with gr.Tab("6 · Knowledge Library"):
+                gr.Markdown(
+                    "**Teach the model what you know** — no YAML or coding required.\n\n"
+                    "Fill in the form below in plain English. The system generates training Q&A pairs "
+                    "from your answers and saves them to a persistent library. "
+                    "You don't need all the answers at once — add what you know now, "
+                    "come back and add more later. Every saved entry is automatically "
+                    "included the next time you run **Step 2 · Extract Training Data**."
+                )
+
+                with gr.Accordion("Add / Edit a Pattern", open=True):
+                    with gr.Row():
+                        with gr.Column(scale=2):
+                            kb_title = gr.Textbox(
+                                label="Name / Title *",
+                                placeholder="e.g. nPath, CSUM, Sessionize, QUANTILE",
+                            )
+                            kb_description = gr.Textbox(
+                                label="What does it do? *",
+                                placeholder=(
+                                    "Explain in plain English what this function or feature does, "
+                                    "what data it works on, and what result it produces..."
+                                ),
+                                lines=4,
+                            )
+                            kb_use_cases = gr.Textbox(
+                                label="When would you use this? (one per line)",
+                                placeholder="User journey analysis\nFunnel analysis\nChurn prediction",
+                                lines=4,
+                            )
+                            kb_params = gr.Textbox(
+                                label="Inputs / Parameters (name: description (example))",
+                                placeholder=(
+                                    "partition_columns: Columns to group by, e.g. user_id (user_id)\n"
+                                    "order_columns: Columns to sort by, e.g. timestamp (event_ts)\n"
+                                    "pattern: Sequence to match (A.B+.C)"
+                                ),
+                                lines=5,
+                            )
+                            kb_category = gr.Textbox(
+                                label="Category (optional)",
+                                placeholder="analytics, data_quality, ml, timeseries, text…",
+                            )
+                        with gr.Column(scale=2):
+                            kb_sql = gr.Textbox(
+                                label="SQL example (paste real SQL — concrete values are fine)",
+                                placeholder=(
+                                    "SELECT * FROM nPath (\n"
+                                    "  ON clickstream PARTITION BY user_id ORDER BY ts\n"
+                                    "  USING\n"
+                                    "    SYMBOLS (event IN ('LOGIN') AS A, event IN ('BUY') AS B)\n"
+                                    "    PATTERN ('A.B')\n"
+                                    "    MODE (NONOVERLAPPING)\n"
+                                    "    RESULT (ACCUMULATE (event OF ANY (A,B)) AS path)\n"
+                                    ")"
+                                ),
+                                lines=8,
+                            )
+                            kb_sql_desc = gr.Textbox(
+                                label="What does this SQL example do?",
+                                placeholder="Find all users who logged in then made a purchase",
+                            )
+                            kb_output = gr.Textbox(
+                                label="What does the result look like? (sample rows or description)",
+                                placeholder=(
+                                    "path                    | count\n"
+                                    "LOGIN|BUY               | 1234\n"
+                                    "LOGIN|BROWSE|BUY        |  876"
+                                ),
+                                lines=4,
+                            )
+                    kb_errors = gr.Textbox(
+                        label="Common errors or gotchas (Problem: solution — one per line)",
+                        placeholder=(
+                            "Spaces in pattern string: Remove all spaces, use A.B.C not 'A B C'\n"
+                            "Reserved keyword as symbol name: Use Exited not Exit, Counted not Count"
+                        ),
+                        lines=3,
+                    )
+                    kb_bp = gr.Textbox(
+                        label="Tips and best practices (free text — write what you know)",
+                        placeholder="Always run EXPLAIN before executing. Start with a simple pattern like A.B.C...",
+                        lines=3,
+                    )
+                    with gr.Row():
+                        kb_preview_btn = gr.Button("Preview Q&A pairs", variant="secondary")
+                        kb_save_btn = gr.Button("Save to Library", variant="primary")
+
+                kb_status = gr.Textbox(label="Status", interactive=False, lines=2)
+                kb_preview_out = gr.HTML(
+                    value='<div style="color:#888;padding:8px;">Click Preview to see generated Q&A pairs.</div>'
+                )
+
+                gr.Markdown("---")
+                gr.Markdown("### Knowledge Library")
+                kb_library_html = gr.HTML(value=_make_library_html())
+                kb_refresh_btn = gr.Button("Refresh Library", variant="secondary", size="sm")
+
+                with gr.Accordion("Delete an entry", open=False):
+                    with gr.Row():
+                        kb_delete_slug = gr.Textbox(
+                            label="Slug (from the table above)",
+                            placeholder="e.g. npath_sequence_analysis",
+                            scale=3,
+                        )
+                        kb_delete_btn = gr.Button("Delete", variant="stop", scale=1)
+
+                # Wire up events
+                _kb_inputs = [
+                    kb_title, kb_description, kb_use_cases, kb_params,
+                    kb_sql, kb_sql_desc, kb_output, kb_errors, kb_bp, kb_category,
+                ]
+                kb_preview_btn.click(
+                    fn=_kb_preview,
+                    inputs=_kb_inputs,
+                    outputs=[kb_preview_out],
+                )
+                kb_save_btn.click(
+                    fn=_kb_save,
+                    inputs=_kb_inputs,
+                    outputs=[kb_status, kb_library_html],
+                )
+                kb_refresh_btn.click(
+                    fn=lambda: _make_library_html(),
+                    inputs=[],
+                    outputs=[kb_library_html],
+                )
+                kb_delete_btn.click(
+                    fn=_kb_delete,
+                    inputs=[kb_delete_slug],
+                    outputs=[kb_status, kb_library_html],
+                )
+
         # ── Auto-reconnect: restore training UI on page load / browser crash ──
-        # app.load fires once when the browser (re)connects; gr.Timer polls every 2 s
-        # so live progress stays visible even if the tab was reloaded mid-training.
         _reconnect_outputs = [
             train_status_card, train_progress, pipeline_status,
             train_quality, train_log_raw, train_loss_plot, train_activity,
@@ -1615,7 +2317,7 @@ def build_app() -> gr.Blocks:
         try:
             gr.Timer(value=2).tick(fn=_rebuild_training_ui, outputs=_reconnect_outputs)
         except AttributeError:
-            pass  # Gradio < 4.20 — page-load restore still works via app.load
+            pass
 
     return app
 
@@ -1626,7 +2328,6 @@ def build_app() -> gr.Blocks:
 
 def main():
     import argparse
-    import os
 
     p = argparse.ArgumentParser(description="End-to-end SLM training and demo UI")
     p.add_argument(
@@ -1651,13 +2352,14 @@ def main():
     p.add_argument("--share", action="store_true", default=False)
     args = p.parse_args()
 
-    global _DATA_DIR, _TRAINING_DATA_DIR, _OUTPUT_MODEL_DIR, _SAVED_MODELS_DIR
+    global _DATA_DIR, _TRAINING_DATA_DIR, _OUTPUT_MODEL_DIR, _SAVED_MODELS_DIR, _LIBRARY_DIR
     if args.data_dir:
         _DATA_DIR = args.data_dir
     if args.training_data_dir:
         _TRAINING_DATA_DIR = args.training_data_dir
+    # Library dir alongside training data dir
+    _LIBRARY_DIR = _TRAINING_DATA_DIR.parent / "knowledge_library"
 
-    # Support old --model-dir flag and MODEL_DIR env var for backwards compat
     model_dir = args.model_dir or Path(os.environ.get("MODEL_DIR", "")) or None
     if model_dir and str(model_dir) not in ("", "."):
         _OUTPUT_MODEL_DIR = model_dir

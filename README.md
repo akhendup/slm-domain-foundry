@@ -57,16 +57,48 @@ From a CSV (with `question` / `answer` columns, or a single `text` column):
 python -m data.prepare_training_data --csv path/to/qa.csv --output-dir training_data
 ```
 
-You can use both:
+From a directory of **YAML pattern files** (see `sample_data/patternexamples/`):
 
 ```bash
-python -m data.prepare_training_data --pdf-dir ./pdfs --csv ./qa.csv --output-dir training_data
+python -m data.prepare_training_data --yaml-dir sample_data/patternexamples --output-dir training_data
 ```
 
-Outputs in `training_data/`:
+YAML patterns are recursively discovered. Each file generates typed Q&A pairs covering: description, use cases, parameters, SQL templates, concrete examples with expected output, common errors + fixes, and best practices — far higher quality than PDF extraction because the knowledge is already curated and structured. Multi-turn conversations are also produced for patterns with enough content.
 
-- `train_sharegpt.jsonl` / `val_sharegpt.jsonl` – for Unsloth fine-tuning.
+You can combine all three sources in one run:
+
+```bash
+python -m data.prepare_training_data \
+  --pdf-dir sample_data --manual \
+  --yaml-dir sample_data/patternexamples \
+  --csv path/to/qa.csv \
+  --output-dir training_data
+```
+
+**Manual mode** (for documentation/manuals). Filters TOC, boilerplate, copyright, and index pages; strips running headers/footers; groups pages into sections; generates typed Q&A (What is X? / syntax / arguments / examples) and multi-turn conversations. Output is written **per-manual** under `training_data/<manual_label>/`:
+
+```bash
+python -m data.prepare_training_data --pdf-dir sample_data --manual --output-dir training_data
+# Add --no-multiturn to skip multi-turn conversation generation
+```
+
+Example: `sample_data/TD17_Analytic_Functions.pdf` → `training_data/td17_analytic_functions/`. The same extraction pattern applies to all manuals in one run.
+
+Outputs per manual (in `training_data/<manual_label>/`):
+
+- `train_sharegpt.jsonl` / `val_sharegpt.jsonl` – single-turn Q&A, for Unsloth fine-tuning.
 - `train_alpaca.jsonl` / `val_alpaca.jsonl` – Alpaca instruction format.
+- `train_multiturn.jsonl` / `val_multiturn.jsonl` – multi-turn conversations (ShareGPT format).
+
+**Diagnostic script** — inspect what the pipeline extracts at every stage before committing to a full run:
+
+```bash
+python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf
+python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf --verbose
+python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf -o report.txt
+```
+
+Shows: pages kept/filtered, headers/footers detected, sections found, parsed section parts (description/syntax/arguments/examples), Q&A type breakdown, and chunking comparison.
 
 ### 3. Train the model
 
@@ -113,10 +145,15 @@ The demo shows how the model responds after training: your data → training →
 ```
 ai_slm_training/
 ├── data/
-│   ├── pdf_extractor.py      # PDF → text (with optional OCR)
-│   ├── csv_loader.py          # CSV → text or Q&A pairs
-│   ├── chunking.py           # Text chunking
-│   └── prepare_training_data.py  # PDF/CSV → Alpaca/ShareGPT JSONL
+│   ├── pdf_extractor.py      # PDF → text + tables per page (pdfplumber/PyPDF2/OCR)
+│   ├── manual_extractor.py   # Manual mode: filter, strip headers, section-aware Q&A
+│   ├── csv_loader.py         # CSV → text or Q&A pairs
+│   ├── chunking.py           # Text chunking (rule-based, SQL-aware, semantic)
+│   ├── yaml_pattern_loader.py  # YAML pattern files → typed Q&A + multi-turn conversations
+│   └── prepare_training_data.py  # PDF/CSV/YAML → Alpaca/ShareGPT JSONL
+├── scripts/
+│   ├── diagnose_manual.py    # Inspect extraction pipeline stage-by-stage
+│   └── export_for_from_scratch.py  # ShareGPT JSONL → single .txt
 ├── train/
 │   ├── finetune_unsloth.py   # Fine-tune TinyLlama (or other) with Unsloth
 │   └── README_FROM_SCRATCH.md
@@ -136,6 +173,6 @@ ai_slm_training/
 
 ## Summary
 
-- **Data:** PDF or CSV → `data/prepare_training_data.py` → `training_data/*.jsonl`.
+- **Data:** PDF, CSV, or YAML patterns → `data/prepare_training_data.py` → `training_data/*.jsonl`.
 - **Train:** Either (a) from scratch (see `train/README_FROM_SCRATCH.md`) or (b) `train/finetune_unsloth.py` (TinyLlama).
 - **Demo:** `demo/gradio_ui.py` (web UI) or `demo/chat.py` (CLI) – ask questions and see answers so anyone can see how the model is trained and used.
