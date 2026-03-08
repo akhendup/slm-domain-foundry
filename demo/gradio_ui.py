@@ -739,7 +739,7 @@ def _make_qa_review_html(n_samples: int = 15) -> str:
     )
     if not all_files:
         return (
-            '<p style="color:#888;font-family:monospace;font-size:13px;">'
+            '<p style="color:#888;font-size:13px;">'
             'No training data yet. Click <b>Extract Training Data</b> above.</p>'
         )
 
@@ -763,7 +763,7 @@ def _make_qa_review_html(n_samples: int = 15) -> str:
             continue
 
     if not all_pairs:
-        return '<p style="color:#888;font-family:monospace;font-size:13px;">No Q&A pairs found.</p>'
+        return '<p style="color:#888;font-size:13px;">No Q&A pairs found.</p>'
 
     n_total = len(all_pairs)
 
@@ -824,32 +824,34 @@ def _make_qa_review_html(n_samples: int = 15) -> str:
             f'padding:1px 5px;border-radius:3px;margin-left:6px;">{_html.escape(label)}</span>'
             if label != "combined" else ""
         )
+        _sf = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
         cards.append(
-            f'<div style="border:1px solid #dee2e6;border-radius:6px;margin-bottom:6px;overflow:hidden;">'
-            f'<div style="padding:2px 10px;background:#f8f9fa;border-bottom:1px solid #dee2e6;'
+            f'<div style="border:1px solid #dee2e6;border-radius:6px;margin-bottom:8px;overflow:hidden;">'
+            f'<div style="padding:3px 10px;background:#f8f9fa;border-bottom:1px solid #dee2e6;'
             f'font-family:monospace;font-size:10px;color:#888;">'
             f'Pair #{idx + 1:,} of {n_total:,}{src_badge}</div>'
-            f'<div style="padding:8px 12px;">'
-            f'<div style="display:flex;gap:6px;margin-bottom:5px;">'
-            f'<span style="background:#4a90d9;color:white;font-size:10px;padding:1px 6px;'
-            f'border-radius:3px;flex-shrink:0;align-self:flex-start;">Q</span>'
-            f'<span style="color:#333;font-size:12px;line-height:1.5;">{q_disp}</span></div>'
-            f'<div style="display:flex;gap:6px;">'
-            f'<span style="background:#28a745;color:white;font-size:10px;padding:1px 6px;'
-            f'border-radius:3px;flex-shrink:0;align-self:flex-start;">A</span>'
-            f'<span style="color:#555;font-size:12px;line-height:1.5;">{a_disp}</span></div>'
+            f'<div style="padding:10px 14px;">'
+            f'<div style="display:flex;gap:8px;margin-bottom:7px;">'
+            f'<span style="background:#4a90d9;color:white;font-size:11px;padding:2px 7px;'
+            f'border-radius:3px;flex-shrink:0;align-self:flex-start;font-weight:600;">Q</span>'
+            f'<span style="color:#1a1a1a;font-size:14px;line-height:1.6;font-family:{_sf};">{q_disp}</span></div>'
+            f'<div style="display:flex;gap:8px;">'
+            f'<span style="background:#28a745;color:white;font-size:11px;padding:2px 7px;'
+            f'border-radius:3px;flex-shrink:0;align-self:flex-start;font-weight:600;">A</span>'
+            f'<span style="color:#444;font-size:13px;line-height:1.7;font-family:{_sf};">{a_disp}</span></div>'
             f'</div></div>'
         )
 
+    _SF = '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     return (
         f'<div style="margin-top:10px;">'
         f'<div style="padding:10px 16px;background:#e8f4fd;border:1px solid #bee5eb;'
-        f'border-radius:8px;font-family:monospace;font-size:13px;margin-bottom:10px;">'
+        f'border-radius:8px;font-family:{_SF};font-size:13px;margin-bottom:10px;">'
         f'<b style="color:#0c5460;">{n_total:,} Q&amp;A pairs ready for training</b>'
         f'{mt_note}'
         f'<div style="margin-top:6px;">{type_badges}</div>'
         f'</div>'
-        f'<div style="font-family:monospace;font-size:12px;color:#666;margin-bottom:6px;">'
+        f'<div style="font-family:{_SF};font-size:13px;color:#555;margin-bottom:8px;">'
         f'Showing {len(cards)} samples spread evenly across the dataset. '
         f'Review and click <b>✓ Approve Training Data</b> below to proceed to training.</div>'
         + "".join(cards)
