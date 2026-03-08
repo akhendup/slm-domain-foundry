@@ -1,10 +1,21 @@
 """
 End-to-end Gradio UI: Upload → Extract Training Data → Train → Manage Models → Chat.
-All stages run inside the same container; training streams live logs.
+Runs in Docker or natively; training streams live logs.
+
+Runtime modes (auto-detected):
+  Docker   — paths default to /app/{data,training_data,output_model,...}
+  Native   — paths default to <project_root>/{data,training_data,output_model,...}
+
+Device/backend (auto-detected):
+  CUDA     — Unsloth fast path for training; transformers for inference
+  MPS      — HuggingFace Trainer + transformers (Apple Silicon)
+  CPU      — HuggingFace Trainer + ONNX Runtime (if optimum installed) for inference
 
 Usage:
-  python run_gradio_ui.py --host 0.0.0.0          # Docker (all defaults)
-  python run_gradio_ui.py --model-dir output_model  # local override
+  python -m demo.gradio_ui                          # auto-detect mode
+  python -m demo.gradio_ui --host 0.0.0.0          # bind to all interfaces
+  python -m demo.gradio_ui --model-dir output_model  # override model path
+  DOCKER_CONTAINER=1 python -m demo.gradio_ui       # force Docker paths
 """
 
 import html as _html
@@ -40,13 +51,37 @@ from data.knowledge_capture import (
 )
 
 # ---------------------------------------------------------------------------
-# Default paths (Docker layout; overridable via CLI)
+# Runtime mode detection: Docker vs native
 # ---------------------------------------------------------------------------
-_DATA_DIR = Path("/app/data")
-_TRAINING_DATA_DIR = Path("/app/training_data")
-_OUTPUT_MODEL_DIR = Path("/app/output_model")
-_SAVED_MODELS_DIR = Path("/app/saved_models")
-_LIBRARY_DIR = Path("/app/knowledge_library")
+def _is_docker() -> bool:
+    """Return True when running inside a Docker container."""
+    # Explicit env override always wins
+    if os.environ.get("DOCKER_CONTAINER", "").lower() in ("1", "true", "yes"):
+        return True
+    # Standard Docker marker file
+    if Path("/.dockerenv").exists():
+        return True
+    # cgroup-based detection (Linux containers)
+    try:
+        with open("/proc/self/cgroup") as f:
+            if "docker" in f.read() or "kubepods" in f.read():
+                return True
+    except OSError:
+        pass
+    return False
+
+_IN_DOCKER = _is_docker()
+
+# ---------------------------------------------------------------------------
+# Default paths — Docker uses /app/, native uses project root
+# ---------------------------------------------------------------------------
+_PROJECT_ROOT = Path(__file__).parent.parent
+_APP_ROOT = Path("/app") if _IN_DOCKER else _PROJECT_ROOT
+_DATA_DIR = _APP_ROOT / "data"
+_TRAINING_DATA_DIR = _APP_ROOT / "training_data"
+_OUTPUT_MODEL_DIR = _APP_ROOT / "output_model"
+_SAVED_MODELS_DIR = _APP_ROOT / "saved_models"
+_LIBRARY_DIR = _APP_ROOT / "knowledge_library"
 
 # ---------------------------------------------------------------------------
 # Global model state
@@ -2332,15 +2367,15 @@ def main():
     p = argparse.ArgumentParser(description="End-to-end SLM training and demo UI")
     p.add_argument(
         "--model-dir", type=Path, default=None,
-        help="Trained model directory (default: /app/output_model)",
+        help="Trained model directory (default: <root>/output_model or /app/output_model in Docker)",
     )
     p.add_argument(
         "--training-data-dir", type=Path, default=None,
-        help="Training data directory (default: /app/training_data)",
+        help="Training data directory (default: <root>/training_data or /app/training_data in Docker)",
     )
     p.add_argument(
         "--data-dir", type=Path, default=None,
-        help="Raw uploaded data directory (default: /app/data)",
+        help="Raw uploaded data directory (default: <root>/data or /app/data in Docker)",
     )
     p.add_argument("--port", type=int, default=int(os.environ.get("GRADIO_PORT", "7860")))
     p.add_argument(
