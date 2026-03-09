@@ -444,6 +444,7 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
     """
     Generate diverse typed Q&A pairs from a parsed section.
     Produces questions for: description, syntax, arguments, notes, examples, diagrams.
+    Each section type generates many question variants to maximise training signal.
     """
     pairs: List[Tuple[str, str]] = []
     heading = (parsed.get("heading") or "").strip()
@@ -456,58 +457,90 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
     examples = [e.strip() for e in parsed.get("examples", []) if e.strip()]
     captions = extract_figure_captions(parsed.get("raw", ""))
 
-    # Description questions
+    # Description questions — 4 → 10
     if desc and fn:
         pairs.append((f"What is {fn}?", desc))
+        pairs.append((f"Define {fn} in one sentence.", desc))
+        pairs.append((f"What category of SQL function is {fn}?", desc))
+        pairs.append((f"What type of analysis does {fn} support?", desc))
+        pairs.append((f"Is {fn} a window function, aggregate, or table function?", desc))
         if len(desc) > 120:
             pairs.append((f"Describe the purpose of {fn}.", desc))
             pairs.append((f"When should {fn} be used?", desc))
             pairs.append((f"What problem does {fn} solve?", desc))
+            pairs.append((f"What are the key features of {fn}?", desc))
+            pairs.append((f"Who would typically use {fn} and for what purpose?", desc))
 
-    # Syntax questions
+    # Syntax questions — 2 → 8
     if syntax and fn:
         pairs.append((f"What is the syntax for {fn}?", syntax))
+        pairs.append((f"What are the required vs optional clauses in {fn}?", syntax))
+        pairs.append((f"Which keyword is mandatory in {fn} syntax?", syntax))
+        pairs.append((f"What is the minimum valid {fn} expression?", syntax))
         if has_sql_content(syntax):
             pairs.append((f"How do you write a {fn} expression in SQL?", syntax))
+            pairs.append((f"Can {fn} be used in a subquery?", syntax))
+            pairs.append((f"Does {fn} require a PARTITION BY clause?", syntax))
+            pairs.append((f"What goes inside the OVER() clause in {fn}?", syntax))
 
-    # Argument/parameter questions
+    # Argument/parameter questions — 2 → 8
     if args and fn:
         pairs.append((f"What are the arguments to {fn}?", args))
         pairs.append((f"What parameters does {fn} accept?", args))
+        pairs.append((f"Which arguments to {fn} are required?", args))
+        pairs.append((f"What is the default behavior when an optional argument is omitted from {fn}?", args))
+        pairs.append((f"What data type must be passed to {fn}?", args))
+        pairs.append((f"Can {fn} accept NULL values in its arguments?", args))
+        pairs.append((f"What happens if you pass invalid input to {fn}?", args))
+        pairs.append((f"How many arguments does {fn} require at minimum?", args))
 
-    # Notes/restrictions questions
+    # Notes/restrictions questions — 3 → 8
     if notes and fn:
         pairs.append((f"What are the usage notes for {fn}?", notes))
         pairs.append((f"What are the prerequisites for {fn}?", notes))
         pairs.append((f"Are there any gotchas or restrictions when using {fn}?", notes))
+        pairs.append((f"What are the performance implications of {fn}?", notes))
+        pairs.append((f"Does {fn} support NULL values?", notes))
+        pairs.append((f"What are the ordering requirements for {fn}?", notes))
+        pairs.append((f"Can {fn} be nested inside another function?", notes))
+        pairs.append((f"What data types does {fn} work with?", notes))
 
-    # Example questions — check for structured Input/SQL Call/Output blocks
+    # Example questions — 3-5 → 8-10 per example
     for i, ex in enumerate(examples):
         if len(ex) < 30:
             continue
         label = "another example of" if i > 0 else "an example of"
 
-        # Check for structured sub-sections
         sub = _split_example_parts(ex)
         sql_part = sub.get("sql", "")
         output_part = sub.get("output", "")
 
         if sql_part:
-            # We have a structured example with a SQL call
             func_name = extract_sql_function_name(sql_part) or fn
             if fn:
                 pairs.append((f"Show me a complete example of {fn} with input and output.", ex))
+                pairs.append((f"What is the purpose of this {fn} example?", ex))
+                pairs.append((f"How would you modify this {fn} example to change the output?", ex))
+                pairs.append((f"What would the result be if the {fn} query partition had only one row?", ex))
+                pairs.append((f"What are the key SQL clauses in this {fn} example?", sql_part))
             pairs.append((f"Write a SQL query using {func_name}.", sql_part))
             if output_part and fn:
                 pairs.append((f"What does {fn} return in this example?", output_part))
+            if fn and len(sql_part) > 20:
+                pairs.append((f"Explain the SQL logic in this {fn} example.", ex))
+                pairs.append((f"What would happen if you changed the ORDER BY in this {fn} example?", ex))
         else:
-            # Generic example
             if fn:
                 pairs.append((f"Show me {label} {fn}.", ex))
+                pairs.append((f"What is the purpose of this {fn} example?", ex))
+                pairs.append((f"How would you modify this {fn} example to change the output?", ex))
             if has_sql_content(ex):
                 func_name = extract_sql_function_name(ex) or fn
                 if func_name:
                     pairs.append((f"What SQL demonstrates how to use {func_name}?", ex))
+                if fn:
+                    pairs.append((f"Explain the SQL logic in this {fn} example.", ex))
+                    pairs.append((f"What would happen if you changed the ORDER BY in this {fn} example?", ex))
 
     for cap in captions:
         if fn:
@@ -570,11 +603,14 @@ def _fingerprint(text: str) -> str:
 
 
 def deduplicate_qa_pairs(pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-    """Remove pairs where the answer is a near-duplicate of a previously seen answer."""
+    """Remove exact duplicate (question, answer) pairs.
+    Different questions with the same answer are preserved — they are valuable
+    training signal teaching the model to respond to varied phrasings.
+    """
     seen: set = set()
     out = []
     for q, a in pairs:
-        fp = _fingerprint(a)
+        fp = _fingerprint(q + "\n" + a)
         if fp not in seen:
             seen.add(fp)
             out.append((q, a))

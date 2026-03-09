@@ -141,6 +141,7 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
 
     # MPS supports float16 but not bfloat16; CUDA gets bfloat16; CPU gets float32
     if device.type == "cuda":
@@ -157,6 +158,11 @@ def main():
     )
     if device.type in ("cpu", "mps"):
         model = model.to(device)
+
+    # Align model config with tokenizer to suppress pad_token_id mismatch warnings.
+    model.config.pad_token_id = tokenizer.pad_token_id
+    if hasattr(model, "generation_config"):
+        model.generation_config.pad_token_id = tokenizer.pad_token_id
 
     print("Model loaded.", flush=True)
     print("Adding LoRA adapters...", flush=True)

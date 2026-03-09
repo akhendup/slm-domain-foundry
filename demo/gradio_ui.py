@@ -1053,11 +1053,17 @@ def _dir_size_str(path: Path) -> str:
 def _list_all_artifacts() -> list:
     """Return a list of dicts for output_model and all named saved_models."""
     artifacts = []
+    active_source = ""
     if _OUTPUT_MODEL_DIR.exists() and (_OUTPUT_MODEL_DIR / "config.json").exists():
         base_model = ""
         try:
             cfg = json.loads((_OUTPUT_MODEL_DIR / "config.json").read_text())
             base_model = cfg.get("_name_or_path", "")
+        except Exception:
+            pass
+        try:
+            om_meta = json.loads((_OUTPUT_MODEL_DIR / "_meta.json").read_text())
+            active_source = om_meta.get("active_source", "")
         except Exception:
             pass
         artifacts.append({
@@ -1067,6 +1073,7 @@ def _list_all_artifacts() -> list:
             "saved_at": datetime.fromtimestamp(_OUTPUT_MODEL_DIR.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
             "base_model": base_model,
             "is_current": True,
+            "active_source": active_source,
         })
     if _SAVED_MODELS_DIR.exists():
         for d in sorted(_SAVED_MODELS_DIR.iterdir()):
@@ -1088,7 +1095,8 @@ def _list_all_artifacts() -> list:
                 "size": _dir_size_str(d),
                 "saved_at": saved_at,
                 "base_model": meta.get("base_model", ""),
-                "is_current": False,
+                "is_current": d.name == active_source,
+                "active_source": "",
             })
     return artifacts
 
@@ -1103,11 +1111,15 @@ def _make_artifacts_html(artifacts: list) -> str:
         )
     cards = []
     for a in artifacts:
-        badge = (
-            '<span style="background:#6c757d;color:white;font-size:10px;padding:1px 8px;'
-            'border-radius:3px;margin-left:8px;">Active</span>'
-            if a["is_current"] else ""
-        )
+        if a["is_current"]:
+            src = a.get("active_source", "")
+            label = f"Active · loaded from {src}" if src else "Active"
+            badge = (
+                f'<span style="background:#6c757d;color:white;font-size:10px;padding:1px 8px;'
+                f'border-radius:3px;margin-left:8px;">{label}</span>'
+            )
+        else:
+            badge = ""
         base_html = (
             f'&nbsp;&middot;&nbsp;Base:&nbsp;<span style="color:#444;">'
             f'{_html.escape(a["base_model"])}</span>'
@@ -1228,7 +1240,7 @@ def _set_active_model(artifact_name: str) -> Tuple[str, str, object]:
         return "Select a saved model to set as active.", _make_artifacts_html(arts), gr.update()
     if artifact_name == "output_model":
         arts = _list_all_artifacts()
-        return "This is already the active model.", _make_artifacts_html(arts), gr.update()
+        return "output_model is already the active model.", _make_artifacts_html(arts), gr.update()
     src = _SAVED_MODELS_DIR / artifact_name
     if not src.exists():
         arts = _list_all_artifacts()
@@ -1239,6 +1251,16 @@ def _set_active_model(artifact_name: str) -> Tuple[str, str, object]:
         if _OUTPUT_MODEL_DIR.exists():
             shutil.rmtree(str(_OUTPUT_MODEL_DIR))
         shutil.copytree(str(src), str(_OUTPUT_MODEL_DIR))
+        # Record which saved model is the active source so the UI can display it
+        try:
+            meta_path = _OUTPUT_MODEL_DIR / "_meta.json"
+            meta: dict = {}
+            if meta_path.exists():
+                meta = json.loads(meta_path.read_text())
+            meta["active_source"] = artifact_name
+            meta_path.write_text(json.dumps(meta, indent=2))
+        except Exception:
+            pass
         _pipeline_status["train"] = "complete"
         arts = _list_all_artifacts()
         return (
@@ -1788,24 +1810,45 @@ def _normalize_content(content: Any) -> str:
     return str(content)
 
 
+_CHAT_SYSTEM_PROMPT = (
+    "You are a concise SQL and Teradata documentation assistant. "
+    "Answer questions directly and briefly based on the documentation you were trained on. "
+    "Do not repeat the question. Do not include unrelated examples."
+)
+_CHAT_MAX_HISTORY_TURNS = 3  # keep last N user/assistant turn pairs
+
+
 def _chat(message: str, history: List) -> str:
     global _model, _tokenizer
     if _model is None or _tokenizer is None:
         return "Model not loaded. Click 'Load Model' first."
-    messages = []
+
+    # Flatten history into message dicts
+    history_messages = []
     for entry in history:
         if isinstance(entry, dict):
-            messages.append({
+            history_messages.append({
                 "role": entry["role"],
                 "content": _normalize_content(entry.get("content")),
             })
         else:
             user_msg, assistant_msg = entry[0], entry[1]
-            messages.append({"role": "user", "content": _normalize_content(user_msg)})
+            history_messages.append({"role": "user", "content": _normalize_content(user_msg)})
             if assistant_msg:
-                messages.append({"role": "assistant", "content": _normalize_content(assistant_msg)})
+                history_messages.append({"role": "assistant", "content": _normalize_content(assistant_msg)})
+
+    # Cap to last N complete turns to avoid context overflow
+    # Each turn = 2 messages (user + assistant), so keep last 2*N messages
+    if len(history_messages) > _CHAT_MAX_HISTORY_TURNS * 2:
+        history_messages = history_messages[-(_CHAT_MAX_HISTORY_TURNS * 2):]
+
     msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
+
+    # Build final message list: system prompt + trimmed history + current user message
+    messages = [{"role": "system", "content": _CHAT_SYSTEM_PROMPT}]
+    messages.extend(history_messages)
     messages.append({"role": "user", "content": msg_text})
+
     return generate_response(_model, _tokenizer, messages)
 
 
@@ -2098,6 +2141,11 @@ def build_app() -> gr.Blocks:
                     )
                     refresh_btn = gr.Button("Refresh", variant="secondary", min_width=100)
 
+                set_active_btn = gr.Button(
+                    "Set as Active Model for Chat",
+                    variant="primary",
+                )
+
                 manage_status = gr.Textbox(
                     label="Status", interactive=False, lines=1, value=""
                 )
@@ -2128,13 +2176,6 @@ def build_app() -> gr.Blocks:
                         )
                     with gr.Column(scale=1, min_width=140):
                         rename_btn = gr.Button("Rename", variant="secondary")
-
-                gr.Markdown("---")
-                gr.Markdown(
-                    "### Set as Active Model\n"
-                    "Makes the selected saved model the active model for Step 5 · Chat."
-                )
-                set_active_btn = gr.Button("Set as Active Model for Chat", variant="secondary")
 
                 gr.Markdown("---")
                 gr.Markdown(

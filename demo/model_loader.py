@@ -183,7 +183,7 @@ def generate_response(
     tokenizer: Any,
     messages: list,
     max_new_tokens: int = 256,
-    temperature: float = 0.7,
+    temperature: float = 0.2,
 ) -> str:
     """Generate assistant reply given messages (e.g. [{"role": "user", "content": "..."}])."""
     # Normalise content to str — Gradio 5.x can pass list-of-parts e.g. [{"type":"text","text":"..."}]
@@ -199,29 +199,27 @@ def generate_response(
             content = str(content) if content else ""
         safe_messages.append({"role": msg["role"], "content": content})
 
-    prompt = tokenizer.apply_chat_template(
-        safe_messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    inputs = tokenizer([prompt], return_tensors="pt")
     device = next(model.parameters()).device if hasattr(model, "parameters") else _get_device()
-    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    # Tokenize using the chat template — returns a plain tensor (not a dict)
+    input_ids = tokenizer.apply_chat_template(
+        safe_messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors="pt",
+    ).to(device)
+    input_length = input_ids.shape[1]
 
     with torch.no_grad():
         out = model.generate(
-            **inputs,
+            input_ids,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
             top_p=0.9,
-            do_sample=True,
+            do_sample=temperature > 0.0,
             pad_token_id=tokenizer.eos_token_id,
         )
 
-    response = tokenizer.batch_decode(out, skip_special_tokens=True)[0]
-    if prompt in response:
-        response = response.replace(prompt, "").strip()
-    for marker in ["<|im_start|>assistant", "<|start_header_id|>assistant<|end_header_id|>"]:
-        if marker in response:
-            response = response.split(marker)[-1].strip()
-    return response
+    # Decode only the newly generated tokens — avoids prompt-stripping issues
+    new_tokens = out[0][input_length:]
+    return tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
