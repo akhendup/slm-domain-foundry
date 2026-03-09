@@ -123,6 +123,10 @@ def main():
         "--resume", type=str, default=None, metavar="CHECKPOINT_DIR",
         help="Path to a checkpoint-N directory to resume training from.",
     )
+    p.add_argument(
+        "--no-eval", action="store_true",
+        help="Disable evaluation during training to save memory (useful on CPU with limited RAM).",
+    )
     args = p.parse_args()
 
     if not args.train_file.exists():
@@ -202,7 +206,7 @@ def main():
         "warmup_steps": 5,
         "logging_steps": 10,
         "save_steps": args.save_steps,
-        "save_total_limit": 1,
+        "save_total_limit": 2,
         "eval_steps": args.save_steps,
         "weight_decay": 0.01,
         "lr_scheduler_type": "cosine",
@@ -217,10 +221,16 @@ def main():
         train_args_dict["no_cuda"] = device.type != "cuda"
     elif "use_cpu" in _sig.parameters and device.type == "cpu":
         train_args_dict["use_cpu"] = True
-    if USE_EVAL_STRATEGY:
-        train_args_dict["eval_strategy"] = "steps"
+    if args.no_eval:
+        if USE_EVAL_STRATEGY:
+            train_args_dict["eval_strategy"] = "no"
+        else:
+            train_args_dict["evaluation_strategy"] = "no"
     else:
-        train_args_dict["evaluation_strategy"] = "steps"
+        if USE_EVAL_STRATEGY:
+            train_args_dict["eval_strategy"] = "steps"
+        else:
+            train_args_dict["evaluation_strategy"] = "steps"
 
     # Build SFTTrainer kwargs compatible with both old TRL (<0.10) and new TRL (>=0.10).
     # In TRL >=0.10 max_seq_length moved into SFTConfig; tokenizer was renamed processing_class.
@@ -229,7 +239,7 @@ def main():
     _trainer_kwargs: dict = {
         "model": model,
         "train_dataset": dataset["train"],
-        "eval_dataset": dataset["validation"],
+        "eval_dataset": None if args.no_eval else dataset["validation"],
         "callbacks": [_PrintProgressCallback()],
     }
     if _SFT_USES_DATASET_TEXT_FIELD:
