@@ -271,6 +271,23 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
     # -- Examples -------------------------------------------------------------
     examples = pattern.get("examples", [])
     if isinstance(examples, list) and fn:
+        # Canonical "Show me an example of nPath SQL" -> full SQL (fixes wrong filesystem-path answers)
+        first_sql = ""
+        for ex in examples:
+            if isinstance(ex, dict):
+                sq = (ex.get("sql") or "").strip()
+                if sq:
+                    first_sql = sq
+                    break
+        if first_sql:
+            short = (pattern.get("teradata_function") or fn or "").strip()
+            if short.upper() == "NPATH":
+                short = "nPath"
+            pairs.append((f"Show me an example of {short} SQL.", first_sql))
+            pairs.append((f"Show me an example of {short}.", first_sql))
+            if short != fn:
+                pairs.append((f"Show me an example of {fn} SQL.", first_sql))
+
         for ex in examples:
             if not isinstance(ex, dict):
                 continue

@@ -314,7 +314,36 @@ templates:
 # === TEMPLATES END ===
 
 # === EXAMPLES START ===
+# Canonical Teradata nPath example from TD17 Analytic Functions (e.g. pages 98-99).
 examples:
+  # --- Example 0: Teradata nPath (bank_web_clicks) — canonical from TD17 ---
+  - name: "Teradata nPath (bank_web_clicks)"
+    description: "nPath over web click data with PARTITION BY customer and session, Mode NONOVERLAPPING, Pattern (DUP|A)*"
+    sql: |
+      SELECT * FROM nPath (
+        ON (SELECT customer_id, session_id, datestamp, page FROM bank_web_clicks)
+        AS dt1
+        PARTITION BY customer_id, session_id
+        ORDER BY datestamp
+        USING
+        Mode (NONOVERLAPPING)
+        Pattern ('(DUP|A)*')
+        Symbols (
+          TRUE AS A,
+          page = LAG (page,1) AS DUP
+        )
+        Result (
+          FIRST (customer_id OF any (A)) AS customer_id,
+          FIRST (session_id OF A) AS session_id,
+          FIRST (datestamp OF A) AS first_date,
+          LAST (datestamp OF ANY(A,DUP)) AS last_date,
+          ACCUMULATE (page OF A) AS page_path,
+          ACCUMULATE (page of DUP) AS dup_path
+        )
+      ) AS dt2;
+    expected_result: |
+      Returns one row per (customer_id, session_id) with first_date, last_date, page_path (pages matching A), and dup_path (duplicate page sequences). Pattern (DUP|A)* matches zero-or-more duplicate-or-A events per partition in timestamp order.
+
   # --- Example 1: E-commerce Purchase Funnel ---
   - name: "E-commerce Purchase Funnel"
     description: "Track users who view products, add to cart, and complete purchase"
