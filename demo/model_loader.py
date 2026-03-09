@@ -201,13 +201,17 @@ def generate_response(
 
     device = next(model.parameters()).device if hasattr(model, "parameters") else _get_device()
 
-    # Tokenize using the chat template — returns a plain tensor (not a dict)
-    input_ids = tokenizer.apply_chat_template(
+    # Tokenize using the chat template — may return a tensor or BatchEncoding
+    _tpl_out = tokenizer.apply_chat_template(
         safe_messages,
         tokenize=True,
         add_generation_prompt=True,
         return_tensors="pt",
-    ).to(device)
+    )
+    if hasattr(_tpl_out, "input_ids"):
+        input_ids = _tpl_out.input_ids.to(device)
+    else:
+        input_ids = _tpl_out.to(device)
     input_length = input_ids.shape[1]
 
     with torch.no_grad():
