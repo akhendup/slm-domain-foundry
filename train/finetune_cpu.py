@@ -74,6 +74,11 @@ class _PrintProgressCallback(TrainerCallback):
     def on_epoch_end(self, args, state, control, **kwargs):
         print(f"  Epoch {int(state.epoch)} complete.", flush=True)
 
+    def on_evaluate(self, args, state, control, **kwargs):
+        """Free CUDA cache after every eval to avoid OOM on the next backward pass."""
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
 
 def _get_device() -> torch.device:
     if torch.cuda.is_available():
@@ -127,6 +132,10 @@ def main():
         "--no-eval", action="store_true",
         help="Disable evaluation during training to save memory (useful on CPU with limited RAM).",
     )
+    p.add_argument(
+        "--gradient-checkpointing", action="store_true",
+        help="Enable gradient checkpointing to reduce memory usage (slower but uses much less RAM/VRAM).",
+    )
     args = p.parse_args()
 
     if not args.train_file.exists():
@@ -179,6 +188,9 @@ def main():
         bias="none",
     )
     model = get_peft_model(model, lora_config)
+    if args.gradient_checkpointing:
+        model.enable_input_require_grads()
+        model.gradient_checkpointing_enable()
     model.print_trainable_parameters()
 
     print("Loading dataset...", flush=True)
@@ -214,6 +226,7 @@ def main():
         "fp16": device.type == "mps",
         "bf16": device.type == "cuda" and torch.cuda.is_bf16_supported(),
         "report_to": "none",
+        "gradient_checkpointing": args.gradient_checkpointing,
     }
     # no_cuda was removed in Transformers >=4.46; use_cpu replaced it for CPU-only mode.
     # For MPS the Trainer auto-detects it in newer versions without any flag.
