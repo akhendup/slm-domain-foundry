@@ -222,6 +222,8 @@ def generate_response(
             top_p=0.9,
             do_sample=temperature > 0.0,
             pad_token_id=tokenizer.eos_token_id,
+            repetition_penalty=1.3,
+            no_repeat_ngram_size=4,
         )
 
     # Decode only the newly generated tokens — avoids prompt-stripping issues

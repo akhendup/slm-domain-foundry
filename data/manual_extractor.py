@@ -457,19 +457,28 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
     examples = [e.strip() for e in parsed.get("examples", []) if e.strip()]
     captions = extract_figure_captions(parsed.get("raw", ""))
 
-    # Description questions — 4 → 10
+    # Description questions — answer must match the actual question being asked
     if desc and fn:
+        # "What is X?" / "What does X do?" → full description
         pairs.append((f"What is {fn}?", desc))
-        pairs.append((f"Define {fn} in one sentence.", desc))
-        pairs.append((f"What category of SQL function is {fn}?", desc))
-        pairs.append((f"What type of analysis does {fn} support?", desc))
-        pairs.append((f"Is {fn} a window function, aggregate, or table function?", desc))
-        if len(desc) > 120:
-            pairs.append((f"Describe the purpose of {fn}.", desc))
-            pairs.append((f"When should {fn} be used?", desc))
-            pairs.append((f"What problem does {fn} solve?", desc))
-            pairs.append((f"What are the key features of {fn}?", desc))
-            pairs.append((f"Who would typically use {fn} and for what purpose?", desc))
+        pairs.append((f"What does {fn} do?", desc))
+
+        # Single-sentence definition → first sentence only, not the full description
+        sentences = re.split(r"(?<=[.!?])\s+", desc)
+        first_sentence = sentences[0].strip() if sentences else ""
+        if first_sentence and len(first_sentence) < len(desc) - 20:
+            pairs.append((f"Define {fn} in one sentence.", first_sentence))
+
+        # "Is X a window/aggregate/table function?" → only if description contains classification clues
+        func_type_keywords = {"window", "aggregate", "table function", "ordered analytical", "olap", "analytic"}
+        desc_lower = desc.lower()
+        if any(kw in desc_lower for kw in func_type_keywords):
+            # Extract the classification sentence specifically
+            for sent in sentences:
+                if any(kw in sent.lower() for kw in func_type_keywords):
+                    pairs.append((f"Is {fn} a window function, aggregate, or table function?", sent.strip()))
+                    pairs.append((f"What category of SQL function is {fn}?", sent.strip()))
+                    break
 
     # Syntax questions — 2 → 8
     if syntax and fn:
@@ -494,7 +503,7 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
         pairs.append((f"What happens if you pass invalid input to {fn}?", args))
         pairs.append((f"How many arguments does {fn} require at minimum?", args))
 
-    # Notes/restrictions questions — 3 → 8
+    # Notes/restrictions questions — answer is always `notes`, which is the right source
     if notes and fn:
         pairs.append((f"What are the usage notes for {fn}?", notes))
         pairs.append((f"What are the prerequisites for {fn}?", notes))
@@ -504,6 +513,10 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
         pairs.append((f"What are the ordering requirements for {fn}?", notes))
         pairs.append((f"Can {fn} be nested inside another function?", notes))
         pairs.append((f"What data types does {fn} work with?", notes))
+        # "When should I use" and "what problem does it solve" belong with notes when no use_cases section
+        if not any("use case" in q.lower() for q, _ in pairs):
+            pairs.append((f"When should I use {fn}?", notes))
+            pairs.append((f"What problem does {fn} solve?", f"{desc}\n\n{notes}" if desc else notes))
 
     # Example questions — 3-5 → 8-10 per example
     for i, ex in enumerate(examples):

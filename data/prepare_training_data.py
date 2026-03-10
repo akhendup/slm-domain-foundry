@@ -159,6 +159,15 @@ def main():
         action="store_true",
         help="Disable multi-turn conversation generation in manual mode",
     )
+    parser.add_argument(
+        "--memory-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory containing conversation_memory interactions.jsonl. "
+            "Approved interactions (approved=true) are included in training data."
+        ),
+    )
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -303,6 +312,35 @@ def main():
             flush=True,
         )
 
+    # From approved conversation memory
+    memory_multiturn: List[Dict] = []
+    if args.memory_dir and args.memory_dir.exists():
+        mem_jsonl = args.memory_dir / "interactions.jsonl"
+        if mem_jsonl.exists():
+            import json as _json
+            approved_count = 0
+            for line in mem_jsonl.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = _json.loads(line)
+                    if rec.get("approved") is True:
+                        q = (rec.get("question") or "").strip()
+                        a = (rec.get("answer") or "").strip()
+                        if q and a:
+                            qa_pairs.append((q, a))
+                            memory_multiturn.append({
+                                "conversations": [
+                                    {"role": "user",      "content": q},
+                                    {"role": "assistant", "content": a},
+                                ]
+                            })
+                            approved_count += 1
+                except Exception:
+                    pass
+            print(f"Conversation memory: {approved_count} approved interactions loaded.", flush=True)
+
     # Manual mode wrote per-manual output; nothing to aggregate globally
     has_yaml = bool(args.yaml_dir and args.yaml_dir.exists())
     if args.pdf_dir and args.manual and not qa_pairs and not (args.csv and args.csv.exists()) and not has_yaml:
@@ -336,13 +374,18 @@ def main():
         save_jsonl(train_sg, args.output_dir / "train_sharegpt.jsonl")
         save_jsonl(val_sg, args.output_dir / "val_sharegpt.jsonl")
         print(f"ShareGPT: train {len(train_sg)}, val {len(val_sg)}", flush=True)
-        # YAML multi-turn conversations (if any)
-        if yaml_multiturn and not args.no_multiturn:
-            random.shuffle(yaml_multiturn)
-            train_mt, val_mt = _split_train_val(yaml_multiturn, args.val_ratio)
+        # Multi-turn conversations: YAML patterns + approved conversation memory
+        all_multiturn = yaml_multiturn + memory_multiturn
+        if all_multiturn and not args.no_multiturn:
+            random.shuffle(all_multiturn)
+            train_mt, val_mt = _split_train_val(all_multiturn, args.val_ratio)
             save_jsonl(train_mt, args.output_dir / "train_multiturn.jsonl")
             save_jsonl(val_mt, args.output_dir / "val_multiturn.jsonl")
-            print(f"Multi-turn: train {len(train_mt)}, val {len(val_mt)}", flush=True)
+            print(
+                f"Multi-turn: train {len(train_mt)}, val {len(val_mt)} "
+                f"({len(yaml_multiturn)} from patterns, {len(memory_multiturn)} from memory)",
+                flush=True,
+            )
 
     print(f"Output directory: {args.output_dir}", flush=True)
     return 0

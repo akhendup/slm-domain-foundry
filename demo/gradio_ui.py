@@ -39,6 +39,15 @@ import pandas as pd
 import torch
 
 from demo.model_loader import generate_response, load_model
+from data.knowledge_retriever import KnowledgeRetriever
+from data.conversation_memory import (
+    log_interaction,
+    load_interactions,
+    set_approval,
+    memory_stats,
+    export_approved_to_jsonl,
+    mine_frequent_questions,
+)
 from data.knowledge_capture import (
     FIELD_DEFS,
     form_to_pattern,
@@ -82,12 +91,38 @@ _TRAINING_DATA_DIR = _APP_ROOT / "training_data"
 _OUTPUT_MODEL_DIR = _APP_ROOT / "output_model"
 _SAVED_MODELS_DIR = _APP_ROOT / "saved_models"
 _LIBRARY_DIR = _APP_ROOT / "knowledge_library"
+_MEMORY_DIR = _APP_ROOT / "conversation_memory"
 
 # ---------------------------------------------------------------------------
 # Global model state
 # ---------------------------------------------------------------------------
 _model = None
 _tokenizer = None
+
+# Knowledge Library retriever — loaded lazily on first chat query
+_knowledge_retriever: Optional["KnowledgeRetriever"] = None
+
+# Chat session ID — changes each time the model is (re)loaded
+_chat_session_id: str = ""
+
+
+def _get_retriever() -> "KnowledgeRetriever":
+    global _knowledge_retriever
+    if _knowledge_retriever is None:
+        _knowledge_retriever = KnowledgeRetriever(_LIBRARY_DIR)
+    return _knowledge_retriever
+
+
+def _active_model_name() -> str:
+    """Return the name of the currently loaded model, best-effort."""
+    try:
+        meta_path = _OUTPUT_MODEL_DIR / "_meta.json"
+        if meta_path.exists():
+            meta = json.loads(meta_path.read_text())
+            return meta.get("name") or meta.get("active_source") or "output_model"
+    except Exception:
+        pass
+    return "output_model"
 
 # Pipeline completion tracking — one key per step
 _pipeline_status: dict = {
@@ -887,6 +922,182 @@ def _make_uploaded_files_html() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Conversation Memory helpers
+# ---------------------------------------------------------------------------
+
+def _make_memory_stats_html() -> str:
+    """Render a stats bar for the conversation memory."""
+    try:
+        stats = memory_stats(_MEMORY_DIR)
+    except Exception:
+        stats = {"total": 0, "approved": 0, "rejected": 0, "pending": 0}
+    total    = stats["total"]
+    approved = stats["approved"]
+    rejected = stats["rejected"]
+    pending  = stats["pending"]
+    if total == 0:
+        return (
+            '<div style="padding:10px 14px;background:#f8f9fa;border:1px solid #dee2e6;'
+            'border-radius:6px;font-family:monospace;font-size:13px;color:#6c757d;">'
+            'No conversations logged yet. Start chatting in Step 5 · Chat to build memory.</div>'
+        )
+    badges = "".join([
+        f'<span style="background:#6c757d;color:white;font-size:11px;padding:2px 8px;'
+        f'border-radius:10px;margin-right:6px;">{total} total</span>',
+        f'<span style="background:#28a745;color:white;font-size:11px;padding:2px 8px;'
+        f'border-radius:10px;margin-right:6px;">{approved} approved</span>',
+        f'<span style="background:#ffc107;color:#333;font-size:11px;padding:2px 8px;'
+        f'border-radius:10px;margin-right:6px;">{pending} pending</span>',
+        f'<span style="background:#dc3545;color:white;font-size:11px;padding:2px 8px;'
+        f'border-radius:10px;">{rejected} rejected</span>',
+    ])
+    return (
+        f'<div style="padding:10px 14px;background:#f8f9fa;border:1px solid #dee2e6;'
+        f'border-radius:6px;font-family:monospace;font-size:13px;">'
+        f'<b>Conversation Memory</b>&nbsp;&nbsp;{badges}</div>'
+    )
+
+
+def _memory_interaction_choices(limit: int = 100) -> List[str]:
+    """Return dropdown choices: 'id | Q: <truncated question>'."""
+    try:
+        records = load_interactions(_MEMORY_DIR, limit=limit)
+    except Exception:
+        return []
+    choices = []
+    for r in records:
+        ts = r.get("timestamp", "")[:16].replace("T", " ")
+        q = r.get("question", "")[:60].rstrip()
+        status = {"approved": "✓", "rejected": "✗"}.get(
+            {True: "approved", False: "rejected"}.get(r.get("approved"), "pending"), "·"
+        )
+        choices.append(f"{r['id']} | {status} {ts}  {q!r}")
+    return choices
+
+
+def _parse_interaction_id(choice: str) -> str:
+    """Extract the record ID from a dropdown choice string."""
+    if not choice:
+        return ""
+    return choice.split(" | ")[0].strip()
+
+
+def _make_interaction_detail_html(record_id: str) -> str:
+    """Render a single interaction Q+A for review."""
+    if not record_id:
+        return ""
+    try:
+        records = load_interactions(_MEMORY_DIR)
+    except Exception:
+        return ""
+    rec = next((r for r in records if r.get("id") == record_id), None)
+    if not rec:
+        return ""
+    approved_val = rec.get("approved")
+    status_label = {True: "✓ Approved", False: "✗ Rejected", None: "· Pending review"}[approved_val]
+    status_color = {True: "#28a745",     False: "#dc3545",    None: "#ffc107"}[approved_val]
+    ts = rec.get("timestamp", "")[:19].replace("T", " ") + " UTC"
+    model = rec.get("model_name", "")
+    kb = " · KB context injected" if rec.get("kb_context_used") else ""
+    return (
+        f'<div style="border:1px solid #dee2e6;border-radius:8px;padding:14px 16px;'
+        f'font-family:monospace;font-size:13px;">'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:10px;">'
+        f'<span style="color:#555;font-size:11px;">{ts}{(" · " + model) if model else ""}{kb}</span>'
+        f'<span style="background:{status_color};color:white;font-size:11px;padding:2px 8px;'
+        f'border-radius:10px;">{status_label}</span></div>'
+        f'<div style="background:#e8f4fd;border-radius:4px;padding:8px 12px;margin-bottom:8px;">'
+        f'<b style="color:#0c5460;">Q:</b>&nbsp;{_html.escape(rec.get("question", ""))}</div>'
+        f'<div style="background:#f8f9fa;border-radius:4px;padding:8px 12px;white-space:pre-wrap;">'
+        f'<b style="color:#333;">A:</b>&nbsp;{_html.escape(rec.get("answer", ""))}</div></div>'
+    )
+
+
+def _make_frequent_questions_html(min_count: int = 2) -> str:
+    """Render frequently-asked questions for pattern promotion."""
+    try:
+        frequent = mine_frequent_questions(_MEMORY_DIR, min_count=min_count)
+    except Exception:
+        return ""
+    if not frequent:
+        return (
+            '<div style="padding:10px;color:#888;font-family:monospace;font-size:12px;">'
+            f'No question asked {min_count}+ times yet.</div>'
+        )
+    rows = "".join(
+        f'<tr style="border-bottom:1px solid #dee2e6;">'
+        f'<td style="padding:5px 8px;font-weight:bold;color:#333;">{cnt}×</td>'
+        f'<td style="padding:5px 8px;color:#0c5460;">{_html.escape(q[:80])}</td>'
+        f'<td style="padding:5px 8px;font-size:11px;color:#555;">'
+        f'{_html.escape(a[:60])}…</td></tr>'
+        for q, cnt, a in frequent[:20]
+    )
+    return (
+        f'<table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:12px;">'
+        f'<thead><tr style="background:#f8f9fa;">'
+        f'<th style="padding:5px 8px;text-align:left;color:#666;">Count</th>'
+        f'<th style="padding:5px 8px;text-align:left;color:#666;">Question</th>'
+        f'<th style="padding:5px 8px;text-align:left;color:#666;">Latest answer (preview)</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+    )
+
+
+# Memory action handlers
+
+def _memory_refresh() -> Tuple[str, str, List[str]]:
+    """Refresh stats, reset dropdown."""
+    return (
+        _make_memory_stats_html(),
+        _make_frequent_questions_html(),
+        _memory_interaction_choices(),
+    )
+
+
+def _memory_select(choice: str) -> Tuple[str, str]:
+    """Load detail for selected interaction."""
+    rid = _parse_interaction_id(choice)
+    return rid, _make_interaction_detail_html(rid)
+
+
+def _memory_approve(record_id: str) -> Tuple[str, str, str, List[str]]:
+    if record_id:
+        set_approval(_MEMORY_DIR, record_id, True)
+    return (
+        "Approved." if record_id else "No interaction selected.",
+        _make_memory_stats_html(),
+        _make_interaction_detail_html(record_id),
+        _memory_interaction_choices(),
+    )
+
+
+def _memory_reject(record_id: str) -> Tuple[str, str, str, List[str]]:
+    if record_id:
+        set_approval(_MEMORY_DIR, record_id, False)
+    return (
+        "Rejected." if record_id else "No interaction selected.",
+        _make_memory_stats_html(),
+        _make_interaction_detail_html(record_id),
+        _memory_interaction_choices(),
+    )
+
+
+def _memory_export() -> Tuple[str, object]:
+    """Export approved interactions to training_data/memory_approved.jsonl."""
+    out_path = _TRAINING_DATA_DIR / "memory_approved.jsonl"
+    try:
+        count = export_approved_to_jsonl(_MEMORY_DIR, out_path)
+        if count == 0:
+            return "No approved interactions to export. Approve some conversations first.", gr.update(visible=False)
+        return (
+            f"Exported {count} approved interactions → {out_path}. "
+            f"They will be included in the next training run if 'Include conversation memory' is checked.",
+            gr.update(value=str(out_path), visible=True),
+        )
+    except Exception as exc:
+        return f"Export error: {exc}", gr.update(visible=False)
+
+
+# ---------------------------------------------------------------------------
 # Knowledge Library helpers
 # ---------------------------------------------------------------------------
 
@@ -1014,9 +1225,12 @@ def _kb_save(
     try:
         pattern = form_to_pattern(form_data)
         saved_path, qa_count = save_to_library(pattern, _LIBRARY_DIR)
+        # Reload retriever so the new entry is immediately available at chat time
+        _get_retriever().reload()
         return (
             f"Saved '{title}' to library ({qa_count} Q&A pairs). "
-            f"It will be included automatically next time you extract training data.",
+            f"It will be included automatically next time you extract training data "
+            f"and is immediately available in Chat.",
             _make_library_html(),
         )
     except Exception as e:
@@ -1037,6 +1251,29 @@ def _kb_delete(slug: str) -> Tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Model artifact management
 # ---------------------------------------------------------------------------
+
+def _compute_quality_rating(
+    final_loss: Optional[float],
+    final_eval_loss: Optional[float],
+    initial_loss: Optional[float],
+) -> str:
+    """Return quality label matching _make_quality_html logic."""
+    if final_loss is None:
+        return ""
+    primary = final_eval_loss if final_eval_loss is not None else final_loss
+    reduction_pct: Optional[float] = None
+    if initial_loss and initial_loss > 0:
+        reduction_pct = (initial_loss - final_loss) / initial_loss * 100
+    if primary < 1.2 and (reduction_pct is None or reduction_pct > 40):
+        return "Excellent"
+    if primary < 1.8 and (reduction_pct is None or reduction_pct > 25):
+        return "Good"
+    if primary < 2.2 and (reduction_pct is None or reduction_pct > 10):
+        return "Okay"
+    if primary < 2.8:
+        return "Fair"
+    return "Poor"
+
 
 def _dir_size_str(path: Path) -> str:
     try:
@@ -1095,10 +1332,20 @@ def _list_all_artifacts() -> list:
                 "size": _dir_size_str(d),
                 "saved_at": saved_at,
                 "base_model": meta.get("base_model", ""),
+                "quality": meta.get("quality", ""),
                 "is_current": d.name == active_source,
                 "active_source": "",
             })
     return artifacts
+
+
+_QUALITY_COLORS = {
+    "Excellent": ("#28a745", "#d4edda", "#155724"),
+    "Good":      ("#34a853", "#d4edda", "#1b6b3a"),
+    "Okay":      ("#ffc107", "#fff3cd", "#7d5a00"),
+    "Fair":      ("#fd7e14", "#ffe5d0", "#7d3200"),
+    "Poor":      ("#dc3545", "#f8d7da", "#721c24"),
+}
 
 
 def _make_artifacts_html(artifacts: list) -> str:
@@ -1106,34 +1353,47 @@ def _make_artifacts_html(artifacts: list) -> str:
         return (
             '<div style="padding:16px;background:#f8f9fa;border:1px solid #dee2e6;'
             'border-radius:8px;font-family:monospace;font-size:13px;color:#6c757d;">'
-            'No model artifacts found. Train a model and click <b>Save Model</b> to preserve it.'
+            'No saved models found. Train a model and click <b>Save Model</b> to preserve it.'
             '</div>'
         )
     cards = []
     for a in artifacts:
+        # Active badge
         if a["is_current"]:
             src = a.get("active_source", "")
-            label = f"Active · loaded from {src}" if src else "Active"
-            badge = (
-                f'<span style="background:#6c757d;color:white;font-size:10px;padding:1px 8px;'
-                f'border-radius:3px;margin-left:8px;">{label}</span>'
+            label = f"Active · {src}" if src else "Active"
+            active_badge = (
+                f'<span style="background:#0d6efd;color:white;font-size:10px;padding:2px 8px;'
+                f'border-radius:3px;margin-left:6px;">{label}</span>'
             )
         else:
-            badge = ""
+            active_badge = ""
+        # Quality badge
+        quality = a.get("quality", "")
+        if quality and quality in _QUALITY_COLORS:
+            qc, _, _ = _QUALITY_COLORS[quality]
+            quality_badge = (
+                f'<span style="background:{qc};color:white;font-size:10px;padding:2px 8px;'
+                f'border-radius:3px;margin-left:6px;">{quality}</span>'
+            )
+        else:
+            quality_badge = ""
         base_html = (
-            f'&nbsp;&middot;&nbsp;Base:&nbsp;<span style="color:#444;">'
-            f'{_html.escape(a["base_model"])}</span>'
+            f'<span style="color:#555;">Base:&nbsp;{_html.escape(a["base_model"])}</span>&nbsp;&middot;&nbsp;'
             if a.get("base_model") else ""
         )
+        border_color = "#0d6efd" if a["is_current"] else "#dee2e6"
+        bg_color = "#f0f5ff" if a["is_current"] else "white"
         cards.append(
-            f'<div style="border:1px solid #dee2e6;border-radius:8px;padding:12px 16px;'
-            f'margin-bottom:8px;background:{"#fff8e1" if a["is_current"] else "white"};">'
-            f'<div style="display:flex;align-items:center;margin-bottom:4px;">'
+            f'<div style="border:1px solid {border_color};border-radius:8px;padding:10px 14px;'
+            f'margin-bottom:6px;background:{bg_color};">'
+            f'<div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-bottom:4px;">'
             f'<span style="font-family:monospace;font-size:14px;font-weight:bold;color:#222;">'
-            f'{_html.escape(a["name"])}</span>{badge}</div>'
-            f'<div style="font-family:monospace;font-size:12px;color:#666;">'
-            f'Size:&nbsp;<b>{a["size"]}</b>&nbsp;&middot;&nbsp;'
-            f'Saved:&nbsp;{a["saved_at"]}{base_html}</div></div>'
+            f'{_html.escape(a["name"])}</span>{active_badge}{quality_badge}</div>'
+            f'<div style="font-family:monospace;font-size:11px;color:#777;">'
+            f'{base_html}'
+            f'<span>{a["size"]}</span>&nbsp;&middot;&nbsp;'
+            f'<span>Saved&nbsp;{a["saved_at"]}</span></div></div>'
         )
     return '<div>' + ''.join(cards) + '</div>'
 
@@ -1171,10 +1431,16 @@ def _save_current_model(name: str) -> Tuple[str, str, object]:
             base_model = cfg.get("_name_or_path", "")
         except Exception:
             pass
+        quality = _compute_quality_rating(
+            _training_state.get("last_loss"),
+            _training_state.get("last_eval_loss"),
+            _training_state.get("initial_loss"),
+        )
         (dest / "_meta.json").write_text(json.dumps({
             "name": name,
             "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "base_model": base_model,
+            "quality": quality,
         }, indent=2))
         arts = _list_all_artifacts()
         return (
@@ -1362,13 +1628,24 @@ def _popen(cmd: list) -> subprocess.Popen:
 # Step 1 — Upload Documents
 # ---------------------------------------------------------------------------
 
-def _save_uploads(files) -> Tuple[str, str, str]:
-    """Copy uploaded files to _DATA_DIR. Returns (status, files_html, pipeline_html)."""
+def _upload_file_choices() -> list:
+    """Return list of filenames currently in _DATA_DIR."""
+    if not _DATA_DIR.exists():
+        return []
+    return sorted(
+        f.name for f in _DATA_DIR.iterdir()
+        if f.suffix.lower() in (".pdf", ".csv")
+    )
+
+
+def _save_uploads(files) -> Tuple[str, str, str, object]:
+    """Copy uploaded files to _DATA_DIR. Returns (status, files_html, pipeline_html, dropdown_update)."""
     if not files:
         return (
             "No files selected. Please select at least one PDF or CSV.",
             _make_uploaded_files_html(),
             _make_pipeline_html(),
+            gr.update(choices=_upload_file_choices()),
         )
     _DATA_DIR.mkdir(parents=True, exist_ok=True)
     pdfs, csvs = [], []
@@ -1387,7 +1664,44 @@ def _save_uploads(files) -> Tuple[str, str, str]:
     if csvs:
         parts.append(f"{len(csvs)} CSV(s): {', '.join(csvs)}")
     msg = "Uploaded " + "; ".join(parts) + f" → {_DATA_DIR}"
-    return msg, _make_uploaded_files_html(), _make_pipeline_html()
+    return msg, _make_uploaded_files_html(), _make_pipeline_html(), gr.update(choices=_upload_file_choices())
+
+
+def _remove_file(filename: str) -> Tuple[str, str, str, object]:
+    """Delete a file from _DATA_DIR. Returns (status, files_html, pipeline_html, dropdown_update)."""
+    if not filename:
+        return (
+            "No file selected.",
+            _make_uploaded_files_html(),
+            _make_pipeline_html(),
+            gr.update(choices=_upload_file_choices()),
+        )
+    target = _DATA_DIR / filename
+    if not target.exists():
+        return (
+            f"File '{filename}' not found.",
+            _make_uploaded_files_html(),
+            _make_pipeline_html(),
+            gr.update(choices=_upload_file_choices()),
+        )
+    try:
+        target.unlink()
+        remaining = _upload_file_choices()
+        if not remaining:
+            _pipeline_status["upload"] = "pending"
+        return (
+            f"Removed '{filename}'.",
+            _make_uploaded_files_html(),
+            _make_pipeline_html(),
+            gr.update(choices=remaining, value=None),
+        )
+    except Exception as exc:
+        return (
+            f"Error removing '{filename}': {exc}",
+            _make_uploaded_files_html(),
+            _make_pipeline_html(),
+            gr.update(choices=_upload_file_choices()),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1401,6 +1715,7 @@ def _run_extraction(
     fmt: str,
     manual_mode: bool,
     no_multiturn: bool,
+    include_memory: bool = True,
 ) -> Generator[Tuple[str, str, str, str, str], None, None]:
     """
     Run the extraction pipeline. Yields:
@@ -1454,6 +1769,10 @@ def _run_extraction(
     # Auto-include the knowledge library if it has any entries
     if _LIBRARY_DIR.exists() and any(_LIBRARY_DIR.glob("*.yaml")):
         cmd += ["--yaml-dir", str(_LIBRARY_DIR)]
+    # Include approved conversation memory if requested and available
+    mem_file = _MEMORY_DIR / "interactions.jsonl"
+    if include_memory and mem_file.exists():
+        cmd += ["--memory-dir", str(_MEMORY_DIR)]
         lib = library_stats(_LIBRARY_DIR)
         log_text += (
             f"Knowledge library: {lib['total_patterns']} pattern(s), "
@@ -1778,7 +2097,7 @@ def _run_training(
 # ---------------------------------------------------------------------------
 
 def _load_model_ui() -> Tuple[str, gr.update]:
-    global _model, _tokenizer
+    global _model, _tokenizer, _chat_session_id
     if not _model_ready():
         return (
             "No trained model found at output_model/. Complete the Train step first.",
@@ -1786,6 +2105,7 @@ def _load_model_ui() -> Tuple[str, gr.update]:
         )
     try:
         _model, _tokenizer = load_model(_OUTPUT_MODEL_DIR)
+        _chat_session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         return "Model loaded. Start chatting!", gr.update(interactive=False, value="Model loaded")
     except Exception as exc:
         return f"Error loading model: {exc}", gr.update(interactive=True)
@@ -1844,12 +2164,37 @@ def _chat(message: str, history: List) -> str:
 
     msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
 
-    # Build final message list: system prompt + trimmed history + current user message
-    messages = [{"role": "system", "content": _CHAT_SYSTEM_PROMPT}]
+    # Retrieve relevant knowledge library entries and inject into system prompt
+    try:
+        kb_context = _get_retriever().get_context(msg_text, max_entries=2)
+    except Exception:
+        kb_context = ""
+
+    system_content = _CHAT_SYSTEM_PROMPT
+    if kb_context:
+        system_content = _CHAT_SYSTEM_PROMPT + "\n\n" + kb_context
+
+    # Build final message list: system prompt (+ context) + trimmed history + current user message
+    messages = [{"role": "system", "content": system_content}]
     messages.extend(history_messages)
     messages.append({"role": "user", "content": msg_text})
 
-    return generate_response(_model, _tokenizer, messages)
+    answer = generate_response(_model, _tokenizer, messages)
+
+    # Log every interaction to conversation memory (fire-and-forget — never block the response)
+    try:
+        log_interaction(
+            _MEMORY_DIR,
+            question=msg_text,
+            answer=answer,
+            session_id=_chat_session_id,
+            model_name=_active_model_name(),
+            kb_context_used=bool(kb_context),
+        )
+    except Exception:
+        pass
+
+    return answer
 
 
 # ---------------------------------------------------------------------------
@@ -1903,10 +2248,27 @@ def build_app() -> gr.Blocks:
                 )
                 uploaded_list = gr.HTML(value=_make_uploaded_files_html())
 
+                gr.Markdown("---")
+                gr.Markdown("### Remove Uploaded File")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        remove_file_dd = gr.Dropdown(
+                            label="Select file to remove",
+                            choices=_upload_file_choices(),
+                            value=None,
+                        )
+                    with gr.Column(scale=1, min_width=160):
+                        remove_file_btn = gr.Button("Remove File", variant="stop")
+
                 upload_btn.click(
                     fn=_save_uploads,
                     inputs=[file_upload],
-                    outputs=[upload_status, uploaded_list, pipeline_status],
+                    outputs=[upload_status, uploaded_list, pipeline_status, remove_file_dd],
+                )
+                remove_file_btn.click(
+                    fn=_remove_file,
+                    inputs=[remove_file_dd],
+                    outputs=[upload_status, uploaded_list, pipeline_status, remove_file_dd],
                 )
 
             # ── Tab 2 · Extract ────────────────────────────────────────────
@@ -1930,6 +2292,14 @@ def build_app() -> gr.Blocks:
                             label="Skip multi-turn conversations",
                             value=False,
                             info="When unchecked, generates multi-turn ShareGPT conversations in addition to single-turn pairs.",
+                        )
+                        include_memory = gr.Checkbox(
+                            label="Include approved conversation memory",
+                            value=True,
+                            info=(
+                                "Include approved interactions from Tab 7 · Memory in this extraction run. "
+                                "Closes the continuous learning loop."
+                            ),
                         )
                     with gr.Column(scale=1):
                         chunk_size = gr.Slider(
@@ -2009,7 +2379,7 @@ def build_app() -> gr.Blocks:
 
                 extract_btn.click(
                     fn=_run_extraction,
-                    inputs=[chunk_size, chunk_overlap, val_ratio, fmt_choice, manual_mode, no_multiturn],
+                    inputs=[chunk_size, chunk_overlap, val_ratio, fmt_choice, manual_mode, no_multiturn, include_memory],
                     outputs=[extract_log, extract_progress, pipeline_status, qa_review, extract_activity],
                 )
                 approve_btn.click(
@@ -2126,29 +2496,30 @@ def build_app() -> gr.Blocks:
             # ── Tab 4 · Model Manager ──────────────────────────────────────
             with gr.Tab("4 · Model Manager"):
                 gr.Markdown(
-                    "Save, rename, set active, and delete model artifacts. "
-                    "Use **Set as Active** to switch which model is used for chat."
+                    "Select a saved model, then use **Set as Active** to load it for chat "
+                    "or **Delete** to remove it. Save the current trained model with a name "
+                    "to keep it for later."
                 )
                 _init_arts = _list_all_artifacts()
 
-                gr.Markdown("### Artifact List")
                 artifacts_html = gr.HTML(value=_make_artifacts_html(_init_arts))
+
                 with gr.Row():
                     artifact_dropdown = gr.Dropdown(
-                        label="Select artifact",
+                        label="Select model",
                         choices=_artifact_choices(_init_arts),
                         value=None,
+                        scale=3,
                     )
-                    refresh_btn = gr.Button("Refresh", variant="secondary", min_width=100)
-
-                set_active_btn = gr.Button(
-                    "Set as Active Model for Chat",
-                    variant="primary",
-                )
+                    refresh_btn = gr.Button("Refresh", variant="secondary", min_width=100, scale=1)
 
                 manage_status = gr.Textbox(
                     label="Status", interactive=False, lines=1, value=""
                 )
+
+                with gr.Row():
+                    set_active_btn = gr.Button("Set as Active Model for Chat", variant="primary", scale=2)
+                    delete_btn = gr.Button("Delete Selected Model", variant="stop", scale=1)
 
                 gr.Markdown("---")
                 gr.Markdown("### Save Current Output Model")
@@ -2162,28 +2533,16 @@ def build_app() -> gr.Blocks:
                     with gr.Column(scale=1, min_width=140):
                         save_btn = gr.Button("Save Model", variant="primary")
 
-                gr.Markdown("---")
-                gr.Markdown(
-                    "### Rename Selected Artifact\n"
-                    "Select an artifact from the dropdown above, enter a new name, then click Rename."
-                )
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        rename_input = gr.Textbox(
-                            label="New name",
-                            placeholder="e.g. td17-analytic-v2",
-                            max_lines=1,
-                        )
-                    with gr.Column(scale=1, min_width=140):
-                        rename_btn = gr.Button("Rename", variant="secondary")
-
-                gr.Markdown("---")
-                gr.Markdown(
-                    "### Delete Artifact\n"
-                    "Permanently removes the selected artifact from disk. "
-                    "Deleting `output_model` also unloads it from memory."
-                )
-                delete_btn = gr.Button("Delete Selected", variant="stop")
+                with gr.Accordion("Rename Selected Model", open=False):
+                    with gr.Row():
+                        with gr.Column(scale=3):
+                            rename_input = gr.Textbox(
+                                label="New name",
+                                placeholder="e.g. td17-analytic-v2",
+                                max_lines=1,
+                            )
+                        with gr.Column(scale=1, min_width=140):
+                            rename_btn = gr.Button("Rename", variant="secondary")
 
                 save_btn.click(
                     fn=_save_current_model,
@@ -2384,6 +2743,84 @@ def build_app() -> gr.Blocks:
                     fn=_kb_delete,
                     inputs=[kb_delete_slug],
                     outputs=[kb_status, kb_library_html],
+                )
+
+            # ── Tab 7 · Memory ───────────────────────────────────────────────
+            with gr.Tab("7 · Memory"):
+                gr.Markdown(
+                    "**Conversation Memory** — every chat interaction is logged here automatically.\n\n"
+                    "Review answers, **Approve** the good ones and **Reject** the bad ones. "
+                    "Approved interactions are exported as training data and fed into the next "
+                    "fine-tuning run, closing the continuous-learning loop. "
+                    "Frequently-asked questions surface as candidate patterns for the Knowledge Library."
+                )
+
+                mem_stats_html = gr.HTML(value=_make_memory_stats_html())
+
+                gr.Markdown("---")
+                gr.Markdown("### Review Interactions")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        mem_dd = gr.Dropdown(
+                            label="Select an interaction to review",
+                            choices=_memory_interaction_choices(),
+                            value=None,
+                        )
+                    with gr.Column(scale=1, min_width=120):
+                        mem_refresh_btn = gr.Button("Refresh", variant="secondary")
+
+                mem_current_id = gr.Textbox(visible=False, value="")
+                mem_detail_html = gr.HTML(value="")
+                mem_action_status = gr.Textbox(label="Status", lines=1, interactive=False, value="")
+
+                with gr.Row():
+                    mem_approve_btn = gr.Button("✓ Approve — Good answer", variant="primary", scale=2)
+                    mem_reject_btn  = gr.Button("✗ Reject — Bad answer",  variant="stop",    scale=1)
+
+                gr.Markdown("---")
+                gr.Markdown(
+                    "### Export to Training Data\n"
+                    "Exports all **Approved** interactions as ShareGPT JSONL. "
+                    "Check **Include conversation memory** in Step 3 · Train to include them in the next run."
+                )
+                with gr.Row():
+                    mem_export_btn = gr.Button("Export Approved to Training Data", variant="primary")
+                    mem_export_status = gr.Textbox(label="Status", lines=1, interactive=False, value="")
+                mem_export_file = gr.File(label="Download exported file", visible=False)
+
+                gr.Markdown("---")
+                gr.Markdown("### Frequently-Asked Questions")
+                gr.Markdown(
+                    "Questions asked 2+ times — these are strong candidates to add to the "
+                    "Knowledge Library as structured patterns."
+                )
+                mem_freq_html = gr.HTML(value=_make_frequent_questions_html())
+
+                # ── Event wiring ──────────────────────────────────────────
+                mem_dd.change(
+                    fn=_memory_select,
+                    inputs=[mem_dd],
+                    outputs=[mem_current_id, mem_detail_html],
+                )
+                mem_refresh_btn.click(
+                    fn=_memory_refresh,
+                    inputs=[],
+                    outputs=[mem_stats_html, mem_freq_html, mem_dd],
+                )
+                mem_approve_btn.click(
+                    fn=_memory_approve,
+                    inputs=[mem_current_id],
+                    outputs=[mem_action_status, mem_stats_html, mem_detail_html, mem_dd],
+                )
+                mem_reject_btn.click(
+                    fn=_memory_reject,
+                    inputs=[mem_current_id],
+                    outputs=[mem_action_status, mem_stats_html, mem_detail_html, mem_dd],
+                )
+                mem_export_btn.click(
+                    fn=_memory_export,
+                    inputs=[],
+                    outputs=[mem_export_status, mem_export_file],
                 )
 
         # ── Auto-reconnect: restore training UI on page load / browser crash ──

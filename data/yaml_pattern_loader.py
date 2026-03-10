@@ -14,6 +14,22 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 try:
+    from data.question_templates import (
+        DESCRIPTION_QUESTIONS,
+        ONE_SENTENCE_QUESTIONS,
+        CATEGORY_QUESTIONS,
+        USE_CASE_QUESTIONS,
+        PARAMETER_QUESTIONS,
+    )
+except ImportError:
+    # Fallback if run standalone (tests, scripts)
+    DESCRIPTION_QUESTIONS = ["What is {fn}?", "What does {fn} do?"]
+    ONE_SENTENCE_QUESTIONS = ["Define {fn} in one sentence."]
+    CATEGORY_QUESTIONS = ["What category of SQL function is {fn}?"]
+    USE_CASE_QUESTIONS = ["What are the use cases for {fn}?", "When should I use {fn}?"]
+    PARAMETER_QUESTIONS = ["What are the parameters for {fn}?"]
+
+try:
     import yaml
     _YAML_AVAILABLE = True
 except ImportError:
@@ -103,18 +119,29 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
 
     # -- Description ----------------------------------------------------------
     desc = (pattern.get("description") or "").strip()
+    category = (pattern.get("category") or "").strip()
     if desc and fn:
-        pairs.append((f"What is {fn}?", desc))
-        pairs.append((f"What does {fn} do?", desc))
-        pairs.append((f"Define {fn} in one sentence.", desc))
-        pairs.append((f"What category of SQL function is {fn}?", desc))
-        pairs.append((f"What type of analysis does {fn} support?", desc))
-        if len(desc) > 120:
-            pairs.append((f"When should I use {fn}?", desc))
-            pairs.append((f"Describe the purpose of {fn}.", desc))
-            pairs.append((f"What are the key features of {fn}?", desc))
-            pairs.append((f"Who would typically use {fn} and for what purpose?", desc))
-            pairs.append((f"What problem does {fn} solve?", desc))
+        # Full-description questions (from template list — easy to add more)
+        for q_tmpl in DESCRIPTION_QUESTIONS:
+            pairs.append((q_tmpl.format(fn=fn), desc))
+
+        # Single-sentence questions — first sentence only
+        sentences = re.split(r"(?<=[.!?])\s+", desc)
+        first_sentence = sentences[0].strip() if sentences else ""
+        if first_sentence and len(first_sentence) < len(desc) - 20:
+            for q_tmpl in ONE_SENTENCE_QUESTIONS:
+                pairs.append((q_tmpl.format(fn=fn), first_sentence))
+
+        # Category questions — only if category field is populated
+        if category:
+            cat_answer = (
+                f"{fn} is a {category} function. {first_sentence}"
+                if first_sentence else f"{fn} is a {category} function. {desc}"
+            )
+            for q_tmpl in CATEGORY_QUESTIONS:
+                pairs.append((q_tmpl.format(fn=fn), cat_answer))
+
+        # td_func alias question
         if td_func and td_func.upper() != name.upper():
             pairs.append((f"What is the {td_func} function in Teradata?", desc))
 
@@ -123,9 +150,12 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
     use_cases_list = [str(uc).strip() for uc in (use_cases or []) if str(uc).strip()]
     if use_cases_list and fn:
         uc_text = _join_list(use_cases_list)
-        pairs.append((f"What are the use cases for {fn}?", uc_text))
-        pairs.append((f"What problems can {fn} solve?", uc_text))
-        pairs.append((f"In what scenarios is {fn} most useful?", uc_text))
+        # Use-case questions driven by template list (easy to add more in question_templates.py)
+        for q_tmpl in USE_CASE_QUESTIONS:
+            pairs.append((q_tmpl.format(fn=fn), uc_text))
+        if desc:
+            pairs.append((f"Who would typically use {fn} and for what purpose?",
+                          f"Use cases:\n{uc_text}\n\nOverview: {desc}"))
         for uc in use_cases_list[:10]:
             if len(uc) > 10:
                 pairs.append((
@@ -136,18 +166,23 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                     f"How would you use {fn} to handle {uc.lower()}?",
                     f"{fn} can be applied to: {uc}\n\n{desc}" if desc else uc_text,
                 ))
-                pairs.append((
-                    f"What parameters are most important when using {fn} for {uc.lower()}?",
-                    uc_text,
-                ))
+                # NOTE: parameter-relevance-per-use-case is added after params are computed below
 
     # -- Parameters -----------------------------------------------------------
     parameters = pattern.get("parameters", [])
     valid_params = [p for p in parameters if isinstance(p, dict) and p.get("name") and p.get("description")]
     if valid_params and fn:
         all_params_text = "\n\n".join(_fmt_param(p) for p in valid_params)
-        pairs.append((f"What are the parameters for {fn}?", all_params_text))
-        pairs.append((f"What inputs does {fn} require?", all_params_text))
+        # Parameter questions driven by template list
+        for q_tmpl in PARAMETER_QUESTIONS:
+            pairs.append((q_tmpl.format(fn=fn), all_params_text))
+        # Now that we have all_params_text, add per-use-case parameter questions
+        for uc in use_cases_list[:5]:
+            if len(uc) > 10:
+                pairs.append((
+                    f"What parameters are most important when using {fn} for {uc.lower()}?",
+                    f"When using {fn} for {uc}, configure these parameters:\n\n{all_params_text}",
+                ))
 
         required_params = [p for p in valid_params if p.get("required") is not False]
         optional_params = [p for p in valid_params if p.get("required") is False]
