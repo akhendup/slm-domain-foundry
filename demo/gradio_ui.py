@@ -1767,12 +1767,15 @@ def _run_extraction(
     if csvs:
         cmd += ["--csv", str(csvs[0])]
     # Auto-include the knowledge library if it has any entries
-    if _LIBRARY_DIR.exists() and any(_LIBRARY_DIR.glob("*.yaml")):
+    library_included = _LIBRARY_DIR.exists() and any(_LIBRARY_DIR.glob("*.yaml"))
+    if library_included:
         cmd += ["--yaml-dir", str(_LIBRARY_DIR)]
     # Include approved conversation memory if requested and available
     mem_file = _MEMORY_DIR / "interactions.jsonl"
     if include_memory and mem_file.exists():
         cmd += ["--memory-dir", str(_MEMORY_DIR)]
+    # Log knowledge library stats when the library was included (not gated by memory)
+    if library_included:
         lib = library_stats(_LIBRARY_DIR)
         log_text += (
             f"Knowledge library: {lib['total_patterns']} pattern(s), "
