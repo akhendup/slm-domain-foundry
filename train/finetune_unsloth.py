@@ -56,28 +56,31 @@ class _PrintProgressCallback(TrainerCallback):
         print(f"  Epoch {int(state.epoch)} complete.", flush=True)
 
 
-def formatting_func_sharegpt(examples):
-    """Format ShareGPT conversations for the trainer."""
-    conversations = examples.get("conversations", [])
-    if not conversations:
-        return []
-    if isinstance(conversations[0], dict) and "role" in conversations[0]:
-        conversations = [conversations]
-    texts = []
-    for convo in conversations:
-        if not convo:
-            continue
-        messages = []
-        for msg in convo:
-            if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                role = "user" if msg["role"] == "user" else "assistant"
-                messages.append({"role": role, "content": msg["content"]})
-        if messages:
-            text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False
-            )
-            texts.append(text)
-    return texts
+def _make_formatting_func(tok):
+    """Return a ShareGPT formatting function bound to *tok* (avoids globals)."""
+    def formatting_func_sharegpt(examples):
+        """Format ShareGPT conversations for the trainer."""
+        conversations = examples.get("conversations", [])
+        if not conversations:
+            return []
+        if isinstance(conversations[0], dict) and "role" in conversations[0]:
+            conversations = [conversations]
+        texts = []
+        for convo in conversations:
+            if not convo:
+                continue
+            messages = []
+            for msg in convo:
+                if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                    role = "user" if msg["role"] == "user" else "assistant"
+                    messages.append({"role": role, "content": msg["content"]})
+            if messages:
+                text = tok.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=False
+                )
+                texts.append(text)
+        return texts
+    return formatting_func_sharegpt
 
 
 def main():
@@ -103,7 +106,6 @@ def main():
         print(f"Val file not found: {args.val_file}")
         raise SystemExit(1)
 
-    global tokenizer
     print("Loading model:", args.model_name, flush=True)
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=args.model_name,
@@ -161,7 +163,7 @@ def main():
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
         max_seq_length=args.max_seq_length,
-        formatting_func=formatting_func_sharegpt,
+        formatting_func=_make_formatting_func(tokenizer),
         args=TrainingArguments(**train_args_dict),
         callbacks=[_PrintProgressCallback()],
     )
