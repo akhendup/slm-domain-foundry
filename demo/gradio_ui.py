@@ -39,6 +39,7 @@ import pandas as pd
 import torch
 
 from demo.model_loader import generate_response, load_model
+from demo.swarm import get_swarm
 from data.knowledge_retriever import KnowledgeRetriever
 from data.conversation_memory import (
     log_interaction,
@@ -2201,6 +2202,144 @@ def _chat(message: str, history: List) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Swarm helpers
+# ---------------------------------------------------------------------------
+
+def _swarm_status_html() -> str:
+    """Render the current swarm pool as an HTML status card."""
+    swarm = get_swarm()
+    names = swarm.names()
+    if not names:
+        return (
+            '<div style="padding:12px 16px;background:#f8f9fa;border:1px solid #dee2e6;'
+            'border-radius:8px;font-family:monospace;font-size:13px;color:#6c757d;">'
+            'Swarm is empty — add at least one model using the form below.</div>'
+        )
+    badges = "".join(
+        f'<span style="display:inline-block;background:#0d6efd;color:white;font-size:12px;'
+        f'padding:3px 10px;border-radius:12px;margin:3px;">{_html.escape(n)}</span>'
+        for n in names
+    )
+    return (
+        f'<div style="padding:12px 16px;background:#e8f0fe;border:1px solid #4a90d9;'
+        f'border-radius:8px;font-family:monospace;font-size:13px;">'
+        f'<b style="color:#0c5460;">{len(names)} model(s) in swarm:</b>&nbsp;&nbsp;{badges}</div>'
+    )
+
+
+def _swarm_available_choices() -> list:
+    """Models available to add: output_model + all saved_models with a config.json."""
+    choices = []
+    if _OUTPUT_MODEL_DIR.exists() and (_OUTPUT_MODEL_DIR / "config.json").exists():
+        choices.append("output_model")
+    if _SAVED_MODELS_DIR.exists():
+        for d in sorted(_SAVED_MODELS_DIR.iterdir()):
+            if d.is_dir() and (d / "config.json").exists():
+                choices.append(d.name)
+    return choices
+
+
+def _swarm_add_model(
+    model_source: str, display_name: str
+) -> Tuple[str, str, object, object, object]:
+    """Load *model_source* into the swarm as *display_name*.
+
+    Returns (status_msg, swarm_html, unload_dd_update, single_dd_update, add_dd_update).
+    """
+    if not model_source:
+        names = get_swarm().names()
+        return (
+            "Select a model to add.",
+            _swarm_status_html(),
+            gr.update(choices=names, value=None),
+            gr.update(choices=names, value=None),
+            gr.update(choices=_swarm_available_choices()),
+        )
+    name = re.sub(r"[^\w\-\.]", "_", display_name.strip() or model_source)
+    model_dir = (
+        _OUTPUT_MODEL_DIR
+        if model_source == "output_model"
+        else _SAVED_MODELS_DIR / model_source
+    )
+    status = get_swarm().load(name, model_dir)
+    names = get_swarm().names()
+    return (
+        status,
+        _swarm_status_html(),
+        gr.update(choices=names, value=None),
+        gr.update(choices=names, value=None),
+        gr.update(choices=_swarm_available_choices()),
+    )
+
+
+def _swarm_unload_model(name: str) -> Tuple[str, str, object, object]:
+    """Remove *name* from the swarm.
+
+    Returns (status_msg, swarm_html, unload_dd_update, single_dd_update).
+    """
+    if not name:
+        names = get_swarm().names()
+        return (
+            "Select a model to unload.",
+            _swarm_status_html(),
+            gr.update(choices=names, value=None),
+            gr.update(choices=names, value=None),
+        )
+    status = get_swarm().unload(name)
+    names = get_swarm().names()
+    return (
+        status,
+        _swarm_status_html(),
+        gr.update(choices=names, value=None),
+        gr.update(choices=names, value=None),
+    )
+
+
+def _swarm_responses_html(responses: dict) -> str:
+    """Render {name: response} as labelled comparison cards."""
+    if not responses:
+        return '<p style="color:#888;font-family:monospace;font-size:13px;">No responses yet.</p>'
+    _BORDER_COLORS = ["#4a90d9", "#28a745", "#fd7e14", "#6f42c1", "#dc3545", "#17a2b8"]
+    cards = []
+    for i, (name, resp) in enumerate(sorted(responses.items())):
+        color = _BORDER_COLORS[i % len(_BORDER_COLORS)]
+        cards.append(
+            f'<div style="border:2px solid {color};border-radius:8px;padding:12px 14px;'
+            f'margin-bottom:10px;font-family:monospace;font-size:13px;">'
+            f'<div style="color:{color};font-weight:bold;font-size:14px;margin-bottom:8px;">'
+            f'[{_html.escape(name)}]</div>'
+            f'<div style="color:#333;white-space:pre-wrap;line-height:1.6;">'
+            f'{_html.escape(str(resp))}</div></div>'
+        )
+    return "".join(cards)
+
+
+def _swarm_query(
+    message: str,
+    mode: str,
+    selected_model: str,
+) -> Tuple[str, str]:
+    """Query swarm or a single model.  Returns (status_msg, responses_html)."""
+    msg = message.strip()
+    if not msg:
+        return "Enter a question first.", _swarm_responses_html({})
+    swarm = get_swarm()
+    if swarm.size() == 0:
+        return "Swarm is empty — add at least one model first.", _swarm_responses_html({})
+    messages = [{"role": "user", "content": msg}]
+    if mode == "All models (parallel)":
+        responses = swarm.generate_all(messages)
+    else:
+        if not selected_model or not swarm.is_loaded(selected_model):
+            return (
+                f"Model '{selected_model}' is not in the swarm.",
+                _swarm_responses_html({}),
+            )
+        responses = {selected_model: swarm.generate_one(selected_model, messages)}
+    return f"Got {len(responses)} response(s).", _swarm_responses_html(responses)
+
+
+# ---------------------------------------------------------------------------
 # App builder
 # ---------------------------------------------------------------------------
 
@@ -2824,6 +2963,112 @@ def build_app() -> gr.Blocks:
                     fn=_memory_export,
                     inputs=[],
                     outputs=[mem_export_status, mem_export_file],
+                )
+
+            # ── Tab 8 · Swarm ──────────────────────────────────────────────
+            with gr.Tab("8 · Swarm"):
+                gr.Markdown(
+                    "**Multi-model swarm** — load several fine-tuned (or pretrained) SLMs "
+                    "simultaneously and query them in parallel or individually.\n\n"
+                    "Add models from your saved collection, then send a question to all of "
+                    "them at once to compare answers, or route to a specific specialist model."
+                )
+
+                swarm_html = gr.HTML(value=_swarm_status_html())
+
+                gr.Markdown("### Add a Model to the Swarm")
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        swarm_source_dd = gr.Dropdown(
+                            label="Model to add",
+                            choices=_swarm_available_choices(),
+                            value=None,
+                            info="Models from output_model/ and saved_models/",
+                        )
+                    with gr.Column(scale=2):
+                        swarm_display_name = gr.Textbox(
+                            label="Name in swarm (leave blank to use model directory name)",
+                            placeholder="e.g. analyst-v1, general-v2",
+                            max_lines=1,
+                        )
+                    with gr.Column(scale=1, min_width=140):
+                        swarm_add_btn = gr.Button("Add to Swarm", variant="primary")
+                swarm_add_status = gr.Textbox(
+                    label="Status", interactive=False, lines=1, value=""
+                )
+
+                gr.Markdown("### Remove a Model")
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        swarm_unload_dd = gr.Dropdown(
+                            label="Select model to unload",
+                            choices=get_swarm().names(),
+                            value=None,
+                        )
+                    with gr.Column(scale=1, min_width=140):
+                        swarm_unload_btn = gr.Button("Unload", variant="stop")
+                swarm_unload_status = gr.Textbox(
+                    label="Status", interactive=False, lines=1, value=""
+                )
+
+                gr.Markdown("---")
+                gr.Markdown("### Query the Swarm")
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        swarm_mode = gr.Radio(
+                            choices=["All models (parallel)", "Single model"],
+                            value="All models (parallel)",
+                            label="Query mode",
+                            info=(
+                                "Parallel: fan out to every loaded model simultaneously. "
+                                "Single: route to one specialist."
+                            ),
+                        )
+                    with gr.Column(scale=2):
+                        swarm_single_dd = gr.Dropdown(
+                            label="Model (for Single model mode)",
+                            choices=get_swarm().names(),
+                            value=None,
+                            visible=False,
+                        )
+                swarm_question = gr.Textbox(
+                    label="Question",
+                    placeholder="Ask a question — all swarm models will answer…",
+                    lines=2,
+                )
+                swarm_query_btn = gr.Button("Ask Swarm", variant="primary")
+                swarm_query_status = gr.Textbox(
+                    label="Status", interactive=False, lines=1, value=""
+                )
+                swarm_responses_out = gr.HTML(value="")
+
+                # ── Event wiring ──────────────────────────────────────────
+
+                def _toggle_single_dd(mode):
+                    return gr.update(visible=(mode == "Single model"))
+
+                swarm_mode.change(
+                    fn=_toggle_single_dd,
+                    inputs=[swarm_mode],
+                    outputs=[swarm_single_dd],
+                )
+                swarm_add_btn.click(
+                    fn=_swarm_add_model,
+                    inputs=[swarm_source_dd, swarm_display_name],
+                    outputs=[
+                        swarm_add_status, swarm_html,
+                        swarm_unload_dd, swarm_single_dd, swarm_source_dd,
+                    ],
+                )
+                swarm_unload_btn.click(
+                    fn=_swarm_unload_model,
+                    inputs=[swarm_unload_dd],
+                    outputs=[swarm_unload_status, swarm_html, swarm_unload_dd, swarm_single_dd],
+                )
+                swarm_query_btn.click(
+                    fn=_swarm_query,
+                    inputs=[swarm_question, swarm_mode, swarm_single_dd],
+                    outputs=[swarm_query_status, swarm_responses_out],
                 )
 
         # ── Auto-reconnect: restore training UI on page load / browser crash ──
