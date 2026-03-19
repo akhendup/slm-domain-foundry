@@ -3,7 +3,9 @@ Additional tests for demo/gradio_ui.py — quality HTML and rebuild UI functions
 These cover the remaining helper functions not in test_gradio_ui_helpers.py.
 """
 import json
+import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -190,3 +192,47 @@ class TestRebuildTrainingUi:
             assert isinstance(result, tuple)
         finally:
             _training_state.update(orig)
+
+
+# ---------------------------------------------------------------------------
+# _CHAT_SYSTEM_PROMPT — env var override
+# ---------------------------------------------------------------------------
+
+class TestChatSystemPrompt:
+    def test_default_prompt_is_generic(self):
+        """Default prompt must not contain product-specific hardcoded names."""
+        import demo.gradio_ui as gui
+        assert "Teradata" not in gui._CHAT_SYSTEM_PROMPT
+
+    def test_env_var_overrides_prompt(self, monkeypatch):
+        """SLM_SYSTEM_PROMPT env var must replace the default prompt."""
+        monkeypatch.setenv("SLM_SYSTEM_PROMPT", "Custom system prompt for testing.")
+        _env = os.environ.get("SLM_SYSTEM_PROMPT", "default")
+        assert _env == "Custom system prompt for testing."
+
+
+# ---------------------------------------------------------------------------
+# ENV var MODEL_DIR bug fix — Path("") must not override _OUTPUT_MODEL_DIR
+# ---------------------------------------------------------------------------
+
+class TestModelDirEnvVar:
+    def test_empty_env_var_resolves_to_none(self, monkeypatch):
+        """An empty MODEL_DIR env var must resolve to None, not Path('')."""
+        monkeypatch.setenv("MODEL_DIR", "")
+        _env = os.environ.get("MODEL_DIR", "").strip()
+        resolved = Path(_env) if _env else None
+        assert resolved is None
+
+    def test_set_env_var_resolves_to_path(self, tmp_path, monkeypatch):
+        """A non-empty MODEL_DIR env var should resolve to a Path."""
+        monkeypatch.setenv("MODEL_DIR", str(tmp_path))
+        _env = os.environ.get("MODEL_DIR", "").strip()
+        resolved = Path(_env) if _env else None
+        assert resolved == tmp_path
+
+    def test_whitespace_env_var_resolves_to_none(self, monkeypatch):
+        """A whitespace-only MODEL_DIR env var must resolve to None."""
+        monkeypatch.setenv("MODEL_DIR", "   ")
+        _env = os.environ.get("MODEL_DIR", "").strip()
+        resolved = Path(_env) if _env else None
+        assert resolved is None

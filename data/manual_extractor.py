@@ -13,6 +13,41 @@ from typing import Dict, List, Optional, Tuple
 
 from data.pdf_extractor import PDFExtractor
 
+try:
+    from data.question_templates import (
+        SYNTAX_QUESTIONS,
+        ARGUMENT_QUESTIONS,
+        NOTES_QUESTIONS,
+        EXAMPLE_QUESTIONS,
+        GENERAL_OVERVIEW_QUESTIONS,
+        GENERAL_KEYCONCEPT_QUESTIONS,
+        GENERAL_DETAIL_QUESTIONS,
+        GENERAL_COMPARISON_QUESTIONS,
+        GENERAL_APPLICATION_QUESTIONS,
+        GENERAL_CAUSES_QUESTIONS,
+        GENERAL_REQUIREMENTS_QUESTIONS,
+        FINANCIAL_TRANSACTION_QUESTIONS,
+        FINANCIAL_ACCOUNT_QUESTIONS,
+        FINANCIAL_ANALYSIS_QUESTIONS,
+    )
+    _TEMPLATES_LOADED = True
+except ImportError:
+    _TEMPLATES_LOADED = False
+    SYNTAX_QUESTIONS = ["What is the syntax for {fn}?"]
+    ARGUMENT_QUESTIONS = ["What are the arguments to {fn}?"]
+    NOTES_QUESTIONS = ["What are the usage notes for {fn}?"]
+    EXAMPLE_QUESTIONS = ["Show me a complete example of {fn} with input and output."]
+    GENERAL_OVERVIEW_QUESTIONS = ["What is {fn}?", "Summarize {fn}."]
+    GENERAL_KEYCONCEPT_QUESTIONS = ["What are the key concepts in {fn}?"]
+    GENERAL_DETAIL_QUESTIONS = ["Explain {fn} in detail.", "How does {fn} work?"]
+    GENERAL_COMPARISON_QUESTIONS = ["What makes {fn} unique?"]
+    GENERAL_APPLICATION_QUESTIONS = ["Give an example of {fn}."]
+    GENERAL_CAUSES_QUESTIONS = ["What causes {fn}?"]
+    GENERAL_REQUIREMENTS_QUESTIONS = ["What are the requirements for {fn}?"]
+    FINANCIAL_TRANSACTION_QUESTIONS = ["What transactions appear in {fn}?"]
+    FINANCIAL_ACCOUNT_QUESTIONS = ["What is the opening balance in {fn}?"]
+    FINANCIAL_ANALYSIS_QUESTIONS = ["What spending categories appear in {fn}?"]
+
 
 # ---------------------------------------------------------------------------
 # Page classification
@@ -43,7 +78,8 @@ def is_boilerplate_page(text: str, page_num: int) -> bool:
         return True
     if "trademark" in lower and "safety" in lower and len(t) < 800:
         return True
-    if "docs.teradata.com" in lower and len(t) < 300:
+    # Short pages that are dominated by a URL (cover/redirect pages from any vendor)
+    if re.search(r"https?://\S+", lower) and len(t) < 300:
         return True
     return False
 
@@ -443,7 +479,12 @@ def extract_figure_captions(text: str) -> List[str]:
 def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, str]]:
     """
     Generate diverse typed Q&A pairs from a parsed section.
-    Produces questions for: description, syntax, arguments, notes, examples, diagrams.
+
+    For technical sections (those with structured syntax/arguments/notes), generates
+    SQL-oriented Q&A using the shared template lists from question_templates.py/yaml.
+    For general prose sections (textbooks, non-technical manuals), falls back to the
+    GENERAL_* template lists, producing 5-10 pairs per section instead of one.
+
     Each section type generates many question variants to maximise training signal.
     """
     pairs: List[Tuple[str, str]] = []
@@ -459,71 +500,53 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
 
     # Description questions — answer must match the actual question being asked
     if desc and fn:
-        # "What is X?" / "What does X do?" → full description
         pairs.append((f"What is {fn}?", desc))
         pairs.append((f"What does {fn} do?", desc))
 
-        # Single-sentence definition → first sentence only, not the full description
         sentences = re.split(r"(?<=[.!?])\s+", desc)
         first_sentence = sentences[0].strip() if sentences else ""
         if first_sentence and len(first_sentence) < len(desc) - 20:
             pairs.append((f"Define {fn} in one sentence.", first_sentence))
 
-        # "Is X a window/aggregate/table function?" → only if description contains classification clues
         func_type_keywords = {"window", "aggregate", "table function", "ordered analytical", "olap", "analytic"}
         desc_lower = desc.lower()
         if any(kw in desc_lower for kw in func_type_keywords):
-            # Extract the classification sentence specifically
             for sent in sentences:
                 if any(kw in sent.lower() for kw in func_type_keywords):
                     pairs.append((f"Is {fn} a window function, aggregate, or table function?", sent.strip()))
                     pairs.append((f"What category of SQL function is {fn}?", sent.strip()))
                     break
 
-    # Syntax questions — 2 → 8
+    # Syntax questions — use shared SYNTAX_QUESTIONS + SQL-specific extensions
     if syntax and fn:
-        pairs.append((f"What is the syntax for {fn}?", syntax))
-        pairs.append((f"What are the required vs optional clauses in {fn}?", syntax))
-        pairs.append((f"Which keyword is mandatory in {fn} syntax?", syntax))
-        pairs.append((f"What is the minimum valid {fn} expression?", syntax))
+        for tmpl in SYNTAX_QUESTIONS:
+            pairs.append((tmpl.format(fn=fn), syntax))
         if has_sql_content(syntax):
-            pairs.append((f"How do you write a {fn} expression in SQL?", syntax))
-            pairs.append((f"Can {fn} be used in a subquery?", syntax))
-            pairs.append((f"Does {fn} require a PARTITION BY clause?", syntax))
-            pairs.append((f"What goes inside the OVER() clause in {fn}?", syntax))
+            for sql_q in [
+                f"Can {fn} be used in a subquery?",
+                f"Does {fn} require a PARTITION BY clause?",
+                f"What goes inside the OVER() clause in {fn}?",
+            ]:
+                pairs.append((sql_q, syntax))
 
-    # Argument/parameter questions — 2 → 8
+    # Argument/parameter questions — use shared ARGUMENT_QUESTIONS
     if args and fn:
-        pairs.append((f"What are the arguments to {fn}?", args))
-        pairs.append((f"What parameters does {fn} accept?", args))
-        pairs.append((f"Which arguments to {fn} are required?", args))
-        pairs.append((f"What is the default behavior when an optional argument is omitted from {fn}?", args))
-        pairs.append((f"What data type must be passed to {fn}?", args))
-        pairs.append((f"Can {fn} accept NULL values in its arguments?", args))
-        pairs.append((f"What happens if you pass invalid input to {fn}?", args))
-        pairs.append((f"How many arguments does {fn} require at minimum?", args))
+        for tmpl in ARGUMENT_QUESTIONS:
+            pairs.append((tmpl.format(fn=fn), args))
 
-    # Notes/restrictions questions — answer is always `notes`, which is the right source
+    # Notes/restrictions questions — use shared NOTES_QUESTIONS
     if notes and fn:
-        pairs.append((f"What are the usage notes for {fn}?", notes))
-        pairs.append((f"What are the prerequisites for {fn}?", notes))
-        pairs.append((f"Are there any gotchas or restrictions when using {fn}?", notes))
-        pairs.append((f"What are the performance implications of {fn}?", notes))
-        pairs.append((f"Does {fn} support NULL values?", notes))
-        pairs.append((f"What are the ordering requirements for {fn}?", notes))
-        pairs.append((f"Can {fn} be nested inside another function?", notes))
-        pairs.append((f"What data types does {fn} work with?", notes))
-        # "When should I use" and "what problem does it solve" belong with notes when no use_cases section
+        for tmpl in NOTES_QUESTIONS:
+            pairs.append((tmpl.format(fn=fn), notes))
         if not any("use case" in q.lower() for q, _ in pairs):
             pairs.append((f"When should I use {fn}?", notes))
             pairs.append((f"What problem does {fn} solve?", f"{desc}\n\n{notes}" if desc else notes))
 
-    # Example questions — 3-5 → 8-10 per example
+    # Example questions — use shared EXAMPLE_QUESTIONS + SQL-specific additions
     for i, ex in enumerate(examples):
         if len(ex) < 30:
             continue
         label = "another example of" if i > 0 else "an example of"
-
         sub = _split_example_parts(ex)
         sql_part = sub.get("sql", "")
         output_part = sub.get("output", "")
@@ -531,17 +554,13 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
         if sql_part:
             func_name = extract_sql_function_name(sql_part) or fn
             if fn:
-                pairs.append((f"Show me a complete example of {fn} with input and output.", ex))
-                pairs.append((f"What is the purpose of this {fn} example?", ex))
-                pairs.append((f"How would you modify this {fn} example to change the output?", ex))
+                for tmpl in EXAMPLE_QUESTIONS:
+                    pairs.append((tmpl.format(fn=fn), ex))
                 pairs.append((f"What would the result be if the {fn} query partition had only one row?", ex))
                 pairs.append((f"What are the key SQL clauses in this {fn} example?", sql_part))
             pairs.append((f"Write a SQL query using {func_name}.", sql_part))
             if output_part and fn:
                 pairs.append((f"What does {fn} return in this example?", output_part))
-            if fn and len(sql_part) > 20:
-                pairs.append((f"Explain the SQL logic in this {fn} example.", ex))
-                pairs.append((f"What would happen if you changed the ORDER BY in this {fn} example?", ex))
         else:
             if fn:
                 pairs.append((f"Show me {label} {fn}.", ex))
@@ -559,15 +578,66 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
         if fn:
             pairs.append((f"What does the diagram show in the {fn} section?", cap))
 
-    # Fallback: don't discard sections that didn't parse into labeled parts
+    # Fallback for general / non-technical content:
+    # If no structured technical pairs were generated, apply GENERAL_* templates
+    # so textbook chapters, prose sections, and non-SQL manuals still produce rich Q&A.
     if not pairs:
         raw = (parsed.get("raw") or "").strip()
-        if raw and len(raw) > 60:
-            q = (
-                f"What does the documentation say about {fn}?"
-                if fn else "What does this section describe?"
-            )
-            pairs.append((q, raw))
+        if raw and len(raw) > 60 and fn:
+            pairs.extend(_generate_generic_qa(fn, raw))
+        elif raw and len(raw) > 60:
+            pairs.append(("What does this section describe?", raw))
+
+    return pairs
+
+
+def _generate_generic_qa(topic: str, text: str) -> List[Tuple[str, str]]:
+    """
+    Generate Q&A pairs for general (non-technical) text using GENERAL_* templates.
+
+    Applies different template groups depending on what the text signals:
+    - All sections get overview + detail templates.
+    - Sections mentioning comparisons, causes, or requirements get those groups too.
+    - Each template group produces 3-8 pairs per section (vs 1 in the old fallback).
+    """
+    pairs: List[Tuple[str, str]] = []
+    lower = text.lower()
+
+    # Overview and detail are always useful
+    for tmpl in GENERAL_OVERVIEW_QUESTIONS:
+        pairs.append((tmpl.format(fn=topic), text))
+    for tmpl in GENERAL_DETAIL_QUESTIONS:
+        pairs.append((tmpl.format(fn=topic), text))
+
+    # Key concepts — if the section defines terms or lists principles
+    definition_signals = ("is defined as", "refers to", "means", "is a", "is the")
+    if any(sig in lower for sig in definition_signals):
+        for tmpl in GENERAL_KEYCONCEPT_QUESTIONS:
+            pairs.append((tmpl.format(fn=topic), text))
+
+    # Application — if the section gives examples or describes use
+    application_signals = ("for example", "such as", "in practice", "can be used", "is used")
+    if any(sig in lower for sig in application_signals):
+        for tmpl in GENERAL_APPLICATION_QUESTIONS:
+            pairs.append((tmpl.format(fn=topic), text))
+
+    # Comparison — if the section contrasts approaches
+    comparison_signals = ("compared to", "unlike", "whereas", "in contrast", "however", "advantage", "disadvantage")
+    if any(sig in lower for sig in comparison_signals):
+        for tmpl in GENERAL_COMPARISON_QUESTIONS:
+            pairs.append((tmpl.format(fn=topic), text))
+
+    # Causes/effects — causal language
+    causal_signals = ("because", "therefore", "as a result", "leads to", "causes", "results in")
+    if any(sig in lower for sig in causal_signals):
+        for tmpl in GENERAL_CAUSES_QUESTIONS:
+            pairs.append((tmpl.format(fn=topic), text))
+
+    # Requirements — conditional or prerequisite language
+    requirement_signals = ("must", "required", "necessary", "prerequisite", "need to", "in order to")
+    if any(sig in lower for sig in requirement_signals):
+        for tmpl in GENERAL_REQUIREMENTS_QUESTIONS:
+            pairs.append((tmpl.format(fn=topic), text))
 
     return pairs
 

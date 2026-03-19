@@ -1,4 +1,6 @@
 """Unit tests for data/knowledge_retriever.py"""
+import logging
+
 import pytest
 
 from data.knowledge_retriever import (
@@ -370,3 +372,58 @@ class TestKnowledgeRetriever:
         (tmp_path / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         kr.reload()
         assert len(kr._patterns) == 1
+
+
+# ---------------------------------------------------------------------------
+# _pattern_searchable_text — generic field extraction (no hardcoded product fields)
+# ---------------------------------------------------------------------------
+
+class TestPatternSearchableTextGeneric:
+    def test_includes_arbitrary_string_fields(self):
+        """Any top-level string field should be included in searchable text."""
+        pattern = {
+            "name": "myFunc",
+            "custom_field": "uniqueXYZvalue",
+            "another_field": "anotherABCvalue",
+        }
+        text = _pattern_searchable_text(pattern)
+        assert "uniquexyzvalue" in text
+        assert "anotherAbcvalue".lower() in text
+
+    def test_excludes_structured_keys(self):
+        """Structured list/dict keys (use_cases, parameters, etc.) are not blindly stringified."""
+        pattern = {
+            "name": "fn",
+            "use_cases": ["uc1", "uc2"],
+            "parameters": [{"name": "p1", "description": "desc"}],
+            "_source_file": "/some/path.yaml",
+        }
+        text = _pattern_searchable_text(pattern)
+        # use_cases items should appear (handled explicitly)
+        assert "uc1" in text
+        # _source_file should NOT appear
+        assert "/some/path.yaml" not in text
+
+    def test_non_string_top_level_values_excluded(self):
+        """Non-string top-level values (numbers, lists) are not included raw."""
+        pattern = {
+            "name": "fn",
+            "version": 3,
+        }
+        text = _pattern_searchable_text(pattern)
+        # version is an int, not a string — should not crash and not appear as "3"
+        assert isinstance(text, str)
+
+
+# ---------------------------------------------------------------------------
+# _load_all_patterns — warning logged for bad YAML
+# ---------------------------------------------------------------------------
+
+class TestLoadAllPatternsWarning:
+    def test_bad_yaml_logs_warning(self, tmp_path, caplog):
+        """A corrupt YAML file should log a warning, not silently ignore."""
+        (tmp_path / "bad.yaml").write_text("key: [\nunclosed bracket", encoding="utf-8")
+        with caplog.at_level(logging.WARNING, logger="data.knowledge_retriever"):
+            patterns = _load_all_patterns(tmp_path)
+        assert patterns == []
+        assert any("bad.yaml" in r.message or "bad" in r.message for r in caplog.records)

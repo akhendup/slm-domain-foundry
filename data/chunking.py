@@ -5,8 +5,11 @@ Optional: use sentence-transformers for semantic chunking if installed.
 SQL-aware chunking treats SQL paragraphs as atomic units (never split mid-query).
 """
 
+import logging
 import re
 from typing import List
+
+_log = logging.getLogger(__name__)
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -45,8 +48,8 @@ def chunk_text(
     if use_semantic and SEMANTIC_AVAILABLE:
         try:
             return _chunk_semantic(text, chunk_size, chunk_overlap)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Semantic chunking failed, falling back to rule-based: %s", exc)
     return _chunk_rule_based(text, chunk_size, chunk_overlap)
 
 

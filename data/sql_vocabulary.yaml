@@ -1,0 +1,1741 @@
+# sql_vocabulary.yaml
+#
+# Structured SQL knowledge base for combinatorial Q&A training data generation.
+# Each topic under 'topics' is one SQL concept with rich content across multiple answer fields.
+#
+# The VocabularyExpander in data/template_expander.py applies question_templates.yaml
+# to each topic's answer fields, generating thousands of Q&A pairs automatically.
+#
+# To add a new SQL concept: copy any existing entry, change name/category/content.
+# To scale to millions: add more topics covering additional SQL dialects and functions.
+#
+# Answer fields and the template categories they map to:
+#   description      → DESCRIPTION_QUESTIONS + ONE_SENTENCE_QUESTIONS
+#   syntax           → SYNTAX_QUESTIONS
+#   null_behavior    → NULL_BEHAVIOR_QUESTIONS
+#   performance_tips → PERFORMANCE_QUESTIONS
+#   common_errors    → ERROR_QUESTIONS (per-error pairs + aggregate)
+#   examples         → EXAMPLE_QUESTIONS
+#   related          → COMPARISON_QUESTIONS (cross-product with related topic names)
+
+metadata:
+  domain: sql
+  version: "1.0"
+  description: "SQL functions, clauses, and concepts across ANSI SQL and common dialects"
+
+topics:
+
+  # ==========================================================================
+  # Core DML
+  # ==========================================================================
+
+  - name: "SELECT"
+    category: "DML"
+    description: |
+      SELECT retrieves rows and columns from one or more tables, views, or subqueries.
+      It is the most fundamental SQL statement, supporting filtering (WHERE), aggregation
+      (GROUP BY/HAVING), sorting (ORDER BY), and result-set limiting (TOP/FETCH FIRST).
+      The logical processing order is: FROM → JOIN → WHERE → GROUP BY → HAVING → SELECT → DISTINCT → ORDER BY → LIMIT.
+    one_sentence: "SELECT fetches data from tables and views based on specified column projections and row conditions."
+    syntax: |
+      SELECT [ALL | DISTINCT] { * | expression [AS alias] [, ...] }
+      FROM table_reference
+      [WHERE condition]
+      [GROUP BY column [, ...]]
+      [HAVING group_condition]
+      [ORDER BY expression [ASC | DESC] [, ...]]
+      [TOP n | FETCH FIRST n ROWS ONLY | LIMIT n]
+    null_behavior: |
+      NULL values appear in result rows unless filtered by IS NOT NULL.
+      DISTINCT treats all NULLs as equal — multiple NULL rows collapse to one.
+      Aggregate functions (SUM, AVG, MIN, MAX) ignore NULLs by default; COUNT(*) counts every row.
+    performance_tips:
+      - "Specify exact column names instead of SELECT * to reduce I/O and network transfer."
+      - "Push WHERE filters as early as possible to minimize rows processed."
+      - "Use covering indexes on columns referenced in WHERE and JOIN conditions."
+      - "Avoid applying functions to indexed columns in WHERE (e.g., YEAR(date_col) = 2024 prevents index use)."
+      - "Use column aliases and subqueries to avoid re-computing the same expression multiple times."
+    common_errors:
+      - error: "Ambiguous column name"
+        cause: "Two joined tables share a column name without a table qualifier."
+        solution: "Qualify every column with its table alias: t1.id, orders.customer_id."
+      - error: "Non-aggregated column not in GROUP BY"
+        cause: "A column in SELECT is neither aggregated nor listed in GROUP BY."
+        solution: "Add the column to GROUP BY or wrap it in an aggregate function."
+      - error: "Column alias not recognized in WHERE or GROUP BY"
+        cause: "Aliases defined in SELECT are evaluated after WHERE and GROUP BY."
+        solution: "Repeat the expression or wrap the query in a CTE/subquery and filter on the alias."
+    examples:
+      - sql: "SELECT customer_id, COUNT(*) AS orders, SUM(amount) AS total FROM orders WHERE status = 'COMPLETED' GROUP BY customer_id HAVING COUNT(*) > 5 ORDER BY total DESC;"
+        description: "Customers with more than 5 completed orders, sorted by total spend descending."
+      - sql: "SELECT DISTINCT category FROM products WHERE discontinued = FALSE ORDER BY category;"
+        description: "Unique active product categories in alphabetical order."
+    related: ["WHERE", "GROUP BY", "HAVING", "ORDER BY", "JOIN", "SUBQUERY", "CTE", "DISTINCT"]
+
+  - name: "INSERT"
+    category: "DML"
+    description: |
+      INSERT adds one or more rows to a table. It can insert literal values (INSERT INTO … VALUES),
+      copy rows from another query (INSERT INTO … SELECT), or use a combination.
+      Multi-row inserts (VALUES with multiple tuples) are typically more efficient than separate single-row inserts.
+    one_sentence: "INSERT adds new rows to a table, either from literal values or from a SELECT query."
+    syntax: |
+      -- Single/multi-row literal insert
+      INSERT INTO table_name (col1, col2, ...) VALUES (val1, val2, ...) [, (val1b, val2b, ...)];
+      -- Insert from SELECT
+      INSERT INTO table_name (col1, col2) SELECT expr1, expr2 FROM source_table [WHERE condition];
+    null_behavior: |
+      Omitting a column with a NOT NULL constraint and no DEFAULT causes an error.
+      Omitting a nullable column inserts NULL into that column automatically.
+    performance_tips:
+      - "Batch multi-row inserts into a single statement rather than looping single-row inserts."
+      - "Disable non-critical indexes before bulk inserts and rebuild them afterward."
+      - "Use INSERT … SELECT for large-volume copies; it avoids client round-trips."
+    common_errors:
+      - error: "Constraint violation (NOT NULL, UNIQUE, FK)"
+        cause: "Inserted value violates a table constraint."
+        solution: "Validate or cleanse source data before inserting; use MERGE for upsert semantics."
+      - error: "Column count mismatch"
+        cause: "Number of values in VALUES clause differs from the column list."
+        solution: "Ensure the column list and VALUES list have exactly the same number of items."
+    examples:
+      - sql: "INSERT INTO customers (name, email, created_at) VALUES ('Alice', 'alice@example.com', CURRENT_DATE);"
+        description: "Add a single customer row."
+      - sql: "INSERT INTO archive_orders SELECT * FROM orders WHERE order_date < '2023-01-01';"
+        description: "Copy historical orders into an archive table."
+    related: ["UPDATE", "DELETE", "MERGE", "SELECT"]
+
+  - name: "UPDATE"
+    category: "DML"
+    description: |
+      UPDATE modifies existing rows in a table by changing column values.
+      It targets specific rows using a WHERE clause; omitting WHERE updates every row.
+      UPDATE can reference other tables via a FROM clause (or correlated subquery) for set-based lookups.
+    one_sentence: "UPDATE modifies column values in existing rows, optionally limited by a WHERE condition."
+    syntax: |
+      UPDATE table_name
+      SET col1 = expr1 [, col2 = expr2 ...]
+      [FROM join_table ON condition]
+      [WHERE condition];
+    null_behavior: |
+      Setting a column to NULL is valid if the column allows NULLs; it replaces any existing value with NULL.
+      If no WHERE matches, no rows are changed and the statement succeeds with zero rows affected.
+    performance_tips:
+      - "Always include a WHERE clause to avoid full-table updates."
+      - "Index the WHERE columns to enable row-level seeks instead of full scans."
+      - "For large-scale updates, batch by primary key range to avoid long lock contention."
+    common_errors:
+      - error: "Updating the wrong rows due to missing WHERE"
+        cause: "Forgot the WHERE clause; all rows are updated."
+        solution: "Always run a SELECT with the same WHERE before executing UPDATE."
+      - error: "Correlated subquery returns multiple rows"
+        cause: "Subquery in SET returns more than one row."
+        solution: "Add TOP 1 or aggregate the subquery to guarantee a single value."
+    examples:
+      - sql: "UPDATE orders SET status = 'SHIPPED', shipped_at = CURRENT_TIMESTAMP WHERE order_id = 1001;"
+        description: "Mark a specific order as shipped."
+      - sql: "UPDATE products SET price = price * 1.10 WHERE category = 'Electronics';"
+        description: "Apply a 10% price increase to all electronics."
+    related: ["INSERT", "DELETE", "MERGE", "WHERE"]
+
+  - name: "DELETE"
+    category: "DML"
+    description: |
+      DELETE removes rows from a table that match a WHERE condition.
+      Without WHERE, it removes all rows (equivalent to TRUNCATE but slower and logged).
+      DELETE fires row-level triggers and can be rolled back within a transaction.
+    one_sentence: "DELETE removes rows from a table that satisfy the WHERE condition."
+    syntax: |
+      DELETE FROM table_name
+      [WHERE condition];
+    null_behavior: "NULL in WHERE comparisons — NULL = NULL is always UNKNOWN, so IS NULL must be used to target NULL rows."
+    performance_tips:
+      - "Always include WHERE to avoid deleting all rows accidentally."
+      - "For full-table clears, prefer TRUNCATE TABLE which is not fully logged."
+      - "Batch large deletes using TOP or primary-key ranges to avoid excessive lock escalation."
+    common_errors:
+      - error: "Deleting rows referenced by foreign keys"
+        cause: "Rows being deleted are referenced by rows in a child table."
+        solution: "Delete child rows first or use ON DELETE CASCADE on the FK constraint."
+      - error: "Full-table delete when WHERE was intended"
+        cause: "Missing or incorrect WHERE clause."
+        solution: "Test with a SELECT using the same WHERE before executing DELETE."
+    examples:
+      - sql: "DELETE FROM sessions WHERE last_activity < CURRENT_DATE - INTERVAL '30 days';"
+        description: "Remove sessions inactive for more than 30 days."
+    related: ["INSERT", "UPDATE", "TRUNCATE", "MERGE"]
+
+  - name: "MERGE"
+    category: "DML"
+    description: |
+      MERGE (also called UPSERT) combines INSERT, UPDATE, and DELETE into a single statement based on
+      whether source rows match target rows. It eliminates the need for separate existence checks and is
+      commonly used for slowly-changing dimensions, incremental loads, and synchronization tasks.
+    one_sentence: "MERGE performs conditional INSERT, UPDATE, or DELETE based on whether rows match between source and target."
+    syntax: |
+      MERGE INTO target_table AS t
+      USING source_table AS s
+        ON t.key = s.key
+      WHEN MATCHED AND condition THEN UPDATE SET t.col = s.col
+      WHEN MATCHED AND condition THEN DELETE
+      WHEN NOT MATCHED THEN INSERT (col1, col2) VALUES (s.col1, s.col2);
+    null_behavior: "NULLs in join key columns never match (NULL ≠ NULL), so NULL-key source rows always hit WHEN NOT MATCHED."
+    performance_tips:
+      - "Keep source query small by pre-filtering; large unfiltered sources hurt performance."
+      - "Index the join key columns in the target table."
+      - "Avoid multiple WHEN MATCHED clauses for the same row — only the first match fires."
+    common_errors:
+      - error: "Duplicate rows in source causing multiple matches per target row"
+        cause: "Source query returns more than one row per target key."
+        solution: "Deduplicate the source with ROW_NUMBER or GROUP BY before the MERGE."
+    examples:
+      - sql: "MERGE INTO inventory t USING daily_shipments s ON t.product_id = s.product_id WHEN MATCHED THEN UPDATE SET t.qty = t.qty + s.qty WHEN NOT MATCHED THEN INSERT (product_id, qty) VALUES (s.product_id, s.qty);"
+        description: "Update inventory quantities for existing products and insert new ones."
+    related: ["INSERT", "UPDATE", "DELETE", "UPSERT"]
+
+  # ==========================================================================
+  # Query clauses
+  # ==========================================================================
+
+  - name: "WHERE"
+    category: "clause"
+    description: |
+      WHERE filters rows before aggregation and grouping. It evaluates a Boolean condition
+      for each row in the FROM/JOIN result and passes only rows where the condition is TRUE.
+      Rows where the condition is FALSE or UNKNOWN (NULL comparison) are excluded.
+    one_sentence: "WHERE filters rows from the FROM clause before GROUP BY or SELECT processing."
+    syntax: "SELECT ... FROM table WHERE condition [AND | OR condition2 ...];"
+    null_behavior: |
+      NULL comparisons using = or <> return UNKNOWN, not FALSE, so the row is excluded.
+      To test for NULL, use IS NULL or IS NOT NULL, not = NULL.
+    performance_tips:
+      - "Place the most selective filter first in compound conditions (helps the optimizer)."
+      - "Avoid wrapping indexed columns in functions: use col > date instead of YEAR(col) > year."
+      - "Use sargable predicates (=, <, >, BETWEEN, IN, LIKE 'prefix%') to enable index seeks."
+    common_errors:
+      - error: "Using = NULL instead of IS NULL"
+        cause: "NULL = NULL evaluates to UNKNOWN and no rows match."
+        solution: "Replace = NULL with IS NULL and <> NULL with IS NOT NULL."
+      - error: "HAVING used instead of WHERE for row-level filters"
+        cause: "HAVING applies after GROUP BY; using it for row filters is slower."
+        solution: "Move row-level conditions to WHERE to filter before aggregation."
+    examples:
+      - sql: "SELECT * FROM employees WHERE department = 'Engineering' AND salary > 80000;"
+        description: "Engineers earning more than $80,000."
+    related: ["HAVING", "SELECT", "JOIN", "CASE WHEN"]
+
+  - name: "GROUP BY"
+    category: "clause"
+    description: |
+      GROUP BY collapses multiple rows into one row per unique combination of grouping columns.
+      Aggregate functions (COUNT, SUM, AVG, MIN, MAX) are computed per group.
+      Every column in SELECT that is not inside an aggregate must appear in GROUP BY.
+    one_sentence: "GROUP BY groups rows with identical values in specified columns so aggregate functions can summarize each group."
+    syntax: "SELECT col1 [, col2], AGG(col3) FROM table [WHERE cond] GROUP BY col1 [, col2] [HAVING agg_cond];"
+    null_behavior: |
+      NULL values are treated as a single group — all rows with NULL in a GROUP BY column are grouped together.
+      COUNT(*) counts NULL-key rows; COUNT(col) excludes them.
+    performance_tips:
+      - "Index the GROUP BY columns to enable hash or merge aggregation on sorted data."
+      - "Pre-filter rows with WHERE before GROUP BY to reduce the number of groups."
+      - "Use ROLLUP or CUBE for multi-level aggregation instead of UNION-ing separate GROUP BYs."
+    common_errors:
+      - error: "Column in SELECT not in GROUP BY and not aggregated"
+        cause: "SQL requires all non-aggregate SELECT columns to be in GROUP BY."
+        solution: "Add the column to GROUP BY or apply an aggregate (MAX, MIN, FIRST_VALUE)."
+    examples:
+      - sql: "SELECT region, product_id, SUM(revenue) AS total_rev FROM sales GROUP BY region, product_id ORDER BY total_rev DESC;"
+        description: "Total revenue per product per region."
+    related: ["HAVING", "SELECT", "WHERE", "ROLLUP", "CUBE", "AGGREGATE FUNCTIONS"]
+
+  - name: "HAVING"
+    category: "clause"
+    description: |
+      HAVING filters groups produced by GROUP BY, just as WHERE filters individual rows.
+      It is the only place aggregate conditions (e.g., HAVING SUM(amount) > 1000) can appear.
+      HAVING is evaluated after GROUP BY, so it can reference aggregate results.
+    one_sentence: "HAVING filters aggregated groups after GROUP BY, allowing conditions on aggregate functions."
+    syntax: "SELECT col, AGG(col2) FROM table GROUP BY col HAVING AGG(col2) condition;"
+    null_behavior: "Groups where the HAVING condition evaluates to UNKNOWN (due to NULL in aggregate) are excluded."
+    performance_tips:
+      - "Move non-aggregate conditions to WHERE to filter rows before grouping."
+      - "Use HAVING only for aggregate conditions; WHERE processes rows more efficiently."
+    common_errors:
+      - error: "Using HAVING without GROUP BY"
+        cause: "HAVING applied to ungrouped result treats the whole result as one group."
+        solution: "Always pair HAVING with GROUP BY; use WHERE for row-level conditions."
+    examples:
+      - sql: "SELECT customer_id, COUNT(*) AS cnt FROM orders GROUP BY customer_id HAVING COUNT(*) >= 10;"
+        description: "Customers who have placed at least 10 orders."
+    related: ["GROUP BY", "WHERE", "AGGREGATE FUNCTIONS"]
+
+  - name: "ORDER BY"
+    category: "clause"
+    description: |
+      ORDER BY sorts the final result set by one or more columns or expressions.
+      Ascending (ASC) is the default. NULLs sort last in ASC and first in DESC by default (dialect-dependent).
+      ORDER BY is the last logical step and operates on the final projection.
+    one_sentence: "ORDER BY sorts query results by specified columns or expressions in ascending or descending order."
+    syntax: "SELECT ... FROM ... ORDER BY col1 [ASC | DESC] [NULLS FIRST | NULLS LAST] [, col2 ...];"
+    null_behavior: "NULLs sort as the smallest value by default in most dialects (first with ASC, last with DESC). Use NULLS FIRST/LAST to override."
+    performance_tips:
+      - "Sorting large result sets is expensive; add TOP/FETCH FIRST to stop early."
+      - "If a query is sorted frequently, create an index on the ORDER BY column(s)."
+      - "Avoid ORDER BY in subqueries or CTEs where order is not guaranteed to propagate."
+    common_errors:
+      - error: "Ordering by a column alias that doesn't exist in the outer scope"
+        cause: "Some dialects don't allow aliases from a subquery to be used in ORDER BY of the outer query."
+        solution: "Use the column position number (ORDER BY 1) or repeat the expression."
+    examples:
+      - sql: "SELECT product_name, price FROM products ORDER BY price DESC NULLS LAST FETCH FIRST 10 ROWS ONLY;"
+        description: "Top 10 most expensive products, NULLs treated as cheapest."
+    related: ["SELECT", "TOP", "FETCH FIRST", "LIMIT", "WINDOW FUNCTIONS"]
+
+  - name: "DISTINCT"
+    category: "clause"
+    description: |
+      DISTINCT removes duplicate rows from the result set. It applies to the entire row, not individual columns.
+      COUNT(DISTINCT col) counts unique non-null values in a column independently of row deduplication.
+    one_sentence: "DISTINCT eliminates duplicate rows from the SELECT result, returning only unique combinations."
+    syntax: "SELECT DISTINCT col1 [, col2 ...] FROM table;"
+    null_behavior: "All NULL values in a DISTINCT column are treated as equal — multiple NULL rows collapse into one."
+    performance_tips:
+      - "DISTINCT implies a sort or hash operation; it is expensive on large result sets."
+      - "If only one column needs to be unique, consider GROUP BY that column instead — it can be more optimizer-friendly."
+      - "Use EXISTS or NOT EXISTS instead of DISTINCT when checking for existence."
+    common_errors:
+      - error: "DISTINCT applied to many columns returns 'too many' rows"
+        cause: "DISTINCT applies to the full row, not just one column."
+        solution: "To deduplicate on a single column, use GROUP BY that column or a subquery with ROW_NUMBER."
+    examples:
+      - sql: "SELECT DISTINCT country, region FROM customers ORDER BY country, region;"
+        description: "All unique country-region combinations."
+    related: ["SELECT", "GROUP BY", "COUNT DISTINCT"]
+
+  - name: "TOP / FETCH FIRST"
+    category: "clause"
+    description: |
+      TOP (SQL Server, Teradata) and FETCH FIRST n ROWS ONLY (ANSI SQL, DB2, Oracle 12c+) limit the number
+      of rows returned. LIMIT n (MySQL, PostgreSQL, SQLite) is the most widely-used shorthand.
+      These clauses operate after ORDER BY, making them essential for top-N queries.
+    one_sentence: "TOP / FETCH FIRST limits the number of rows returned, typically combined with ORDER BY for top-N queries."
+    syntax: |
+      -- Teradata / SQL Server
+      SELECT TOP n col FROM table ORDER BY col DESC;
+      -- ANSI SQL
+      SELECT col FROM table ORDER BY col DESC FETCH FIRST n ROWS ONLY;
+      -- PostgreSQL / MySQL
+      SELECT col FROM table ORDER BY col DESC LIMIT n;
+    null_behavior: "NULLs may appear in the top-N if the ORDER BY column contains NULLs; use NULLS LAST to exclude them."
+    performance_tips:
+      - "Always pair with ORDER BY; without it the returned rows are non-deterministic."
+      - "The optimizer can use an index on the ORDER BY column to avoid sorting the full table."
+    common_errors:
+      - error: "Non-deterministic results when ORDER BY is omitted"
+        cause: "Without ORDER BY, the database returns any n rows."
+        solution: "Always specify ORDER BY to get a deterministic top-N result."
+    examples:
+      - sql: "SELECT TOP 5 employee_id, salary FROM employees ORDER BY salary DESC;"
+        description: "The five highest-paid employees (Teradata / SQL Server syntax)."
+    related: ["ORDER BY", "FETCH FIRST", "LIMIT", "ROW_NUMBER"]
+
+  # ==========================================================================
+  # Joins
+  # ==========================================================================
+
+  - name: "INNER JOIN"
+    category: "join"
+    description: |
+      INNER JOIN returns only rows where the join condition is satisfied in both tables.
+      Rows with no match in the other table are excluded from the result.
+      It is the most common join type and the default when JOIN is written without a qualifier.
+    one_sentence: "INNER JOIN returns rows that have matching values in both joined tables."
+    syntax: "SELECT ... FROM table1 t1 INNER JOIN table2 t2 ON t1.key = t2.key [WHERE ...];"
+    null_behavior: "NULL keys never match: ON t1.id = t2.id excludes all rows where either side is NULL."
+    performance_tips:
+      - "Index the join columns in both tables to enable nested-loop or merge joins."
+      - "Join smaller (driving) table to larger table for nested-loop joins."
+      - "Collect statistics on join columns so the optimizer can pick the best join strategy."
+    common_errors:
+      - error: "Unexpected row reduction after INNER JOIN"
+        cause: "Rows in the left table have no matching rows in the right table."
+        solution: "Switch to LEFT JOIN to see which left-side rows have no match."
+      - error: "Row multiplication (fan-out) when right table has duplicates"
+        cause: "Multiple rows on the right side match each left-side row."
+        solution: "Deduplicate the right table first or aggregate before joining."
+    examples:
+      - sql: "SELECT o.order_id, c.name FROM orders o INNER JOIN customers c ON o.customer_id = c.customer_id;"
+        description: "Order IDs paired with customer names — only orders that have a matching customer."
+    related: ["LEFT JOIN", "RIGHT JOIN", "FULL OUTER JOIN", "CROSS JOIN"]
+
+  - name: "LEFT JOIN"
+    category: "join"
+    description: |
+      LEFT JOIN (or LEFT OUTER JOIN) returns all rows from the left table plus matched rows from the right.
+      When no right-side row matches, right-side columns in the result are NULL.
+      It is the most commonly used outer join for preserving all records from a primary table.
+    one_sentence: "LEFT JOIN returns all left-table rows plus matching right-table rows; non-matching right-side columns are NULL."
+    syntax: "SELECT ... FROM left_table l LEFT JOIN right_table r ON l.key = r.key;"
+    null_behavior: |
+      Unmatched right-side rows produce NULLs for all right-table columns.
+      Adding WHERE r.col IS NULL after a LEFT JOIN produces an anti-join (rows with no match).
+    performance_tips:
+      - "Filter the right table in the ON clause, not in WHERE, to avoid inadvertently converting to INNER JOIN."
+      - "Index the join key on the right table for efficient lookup."
+    common_errors:
+      - error: "LEFT JOIN silently becomes an INNER JOIN"
+        cause: "A WHERE filter on a right-table column excludes NULL rows."
+        solution: "Move right-table filters to the ON clause or use IS NOT NULL explicitly."
+    examples:
+      - sql: "SELECT c.name, o.order_id FROM customers c LEFT JOIN orders o ON c.customer_id = o.customer_id WHERE o.order_id IS NULL;"
+        description: "Customers who have never placed an order (anti-join pattern)."
+    related: ["INNER JOIN", "RIGHT JOIN", "FULL OUTER JOIN"]
+
+  - name: "RIGHT JOIN"
+    category: "join"
+    description: |
+      RIGHT JOIN (or RIGHT OUTER JOIN) returns all rows from the right table plus matched rows from the left.
+      It is the mirror image of LEFT JOIN. In practice, most developers re-write RIGHT JOINs as LEFT JOINs
+      by reversing the table order for readability.
+    one_sentence: "RIGHT JOIN returns all right-table rows plus matching left-table rows; unmatched left columns are NULL."
+    syntax: "SELECT ... FROM left_table l RIGHT JOIN right_table r ON l.key = r.key;"
+    null_behavior: "Unmatched left-table rows produce NULLs for all left-table columns."
+    performance_tips:
+      - "Consider rewriting as LEFT JOIN (swapping table order) for consistency and readability."
+    common_errors:
+      - error: "Confusion about which table is 'preserved'"
+        cause: "RIGHT preserves the right-side (second) table, not the left."
+        solution: "Rewrite as a LEFT JOIN by swapping table order to reduce confusion."
+    examples:
+      - sql: "SELECT e.name, d.department_name FROM employees e RIGHT JOIN departments d ON e.dept_id = d.dept_id;"
+        description: "All departments including those with no employees."
+    related: ["LEFT JOIN", "INNER JOIN", "FULL OUTER JOIN"]
+
+  - name: "FULL OUTER JOIN"
+    category: "join"
+    description: |
+      FULL OUTER JOIN returns all rows from both tables. Where a match exists, both sides are populated;
+      where no match exists, the non-matching side has NULLs.
+      It is useful for comparing two data sets or finding records missing from either side.
+    one_sentence: "FULL OUTER JOIN returns all rows from both tables, with NULLs where either side has no match."
+    syntax: "SELECT ... FROM table1 t1 FULL OUTER JOIN table2 t2 ON t1.key = t2.key;"
+    null_behavior: "Both tables can have NULL-filled columns for unmatched rows."
+    performance_tips:
+      - "FULL OUTER JOIN requires sorting or hashing both sides; it is expensive on large tables."
+      - "Index the join columns on both sides."
+    common_errors:
+      - error: "FULL OUTER JOIN not supported in all databases"
+        cause: "MySQL (prior to 8.x) does not natively support FULL OUTER JOIN."
+        solution: "Emulate with UNION of a LEFT JOIN and a RIGHT JOIN."
+    examples:
+      - sql: "SELECT a.id, b.id FROM table_a a FULL OUTER JOIN table_b b ON a.id = b.id WHERE a.id IS NULL OR b.id IS NULL;"
+        description: "Rows that exist in either table but not both (symmetric difference)."
+    related: ["INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "UNION"]
+
+  - name: "CROSS JOIN"
+    category: "join"
+    description: |
+      CROSS JOIN produces the Cartesian product of two tables — every row from the left combined with
+      every row from the right. A 100-row table CROSS JOINed with a 200-row table yields 20,000 rows.
+      It is used for generating combinations, date spines, and parameter grids.
+    one_sentence: "CROSS JOIN produces every combination of rows from two tables with no join condition."
+    syntax: "SELECT ... FROM table1 CROSS JOIN table2;"
+    null_behavior: "NULL values in either table are included; no filtering based on NULL keys."
+    performance_tips:
+      - "Always add a WHERE or SAMPLE clause when using CROSS JOIN to limit the Cartesian product."
+      - "Use CROSS JOIN with a small dimension table (dates, categories) to generate all combinations."
+    common_errors:
+      - error: "Accidental huge result set"
+        cause: "CROSS JOIN on two large tables produces rows = left_count × right_count."
+        solution: "Always estimate the expected row count before executing a CROSS JOIN."
+    examples:
+      - sql: "SELECT p.product_id, d.date FROM products p CROSS JOIN (SELECT date FROM calendar WHERE date BETWEEN '2024-01-01' AND '2024-12-31') d;"
+        description: "All product–date combinations for every day in 2024."
+    related: ["INNER JOIN", "LEFT JOIN", "DATE SPINE"]
+
+  # ==========================================================================
+  # Set operations
+  # ==========================================================================
+
+  - name: "UNION ALL"
+    category: "set_operation"
+    description: |
+      UNION ALL stacks the result sets of two or more SELECT statements vertically,
+      preserving all rows including duplicates. It is faster than UNION because it skips
+      the deduplication step.
+    one_sentence: "UNION ALL combines two SELECT result sets vertically, keeping all rows including duplicates."
+    syntax: "SELECT col1, col2 FROM table1 UNION ALL SELECT col1, col2 FROM table2;"
+    null_behavior: "NULLs are preserved and treated as regular values; no deduplication is applied."
+    performance_tips:
+      - "Prefer UNION ALL over UNION when duplicates are acceptable; it avoids an expensive sort/hash."
+      - "Ensure column count, order, and data types match between SELECT statements."
+    common_errors:
+      - error: "Mismatched column counts between UNION ALL branches"
+        cause: "The two SELECT statements have different numbers of columns."
+        solution: "Use NULL placeholders to align column counts: SELECT a, b, NULL AS c UNION ALL SELECT x, y, z."
+    examples:
+      - sql: "SELECT id, name, 'customer' AS type FROM customers UNION ALL SELECT id, name, 'supplier' AS type FROM suppliers;"
+        description: "Combined list of customers and suppliers with a type label."
+    related: ["UNION", "INTERSECT", "EXCEPT"]
+
+  - name: "UNION"
+    category: "set_operation"
+    description: |
+      UNION combines result sets of two SELECT statements and removes duplicate rows.
+      It is equivalent to UNION ALL followed by DISTINCT. The deduplication makes it slower
+      than UNION ALL; use UNION only when duplicates must be eliminated.
+    one_sentence: "UNION combines two SELECT result sets and removes duplicate rows."
+    syntax: "SELECT col1 FROM table1 UNION SELECT col1 FROM table2;"
+    null_behavior: "NULL values are treated as equal for deduplication — two NULL rows collapse to one."
+    performance_tips:
+      - "Use UNION ALL instead of UNION when duplicates are acceptable for better performance."
+    common_errors:
+      - error: "Using UNION when UNION ALL is sufficient"
+        cause: "Unnecessary deduplication adds cost."
+        solution: "Verify whether duplicates are actually possible before choosing UNION over UNION ALL."
+    examples:
+      - sql: "SELECT email FROM newsletter_subscribers UNION SELECT email FROM purchase_history;"
+        description: "Unique list of email addresses from two sources."
+    related: ["UNION ALL", "INTERSECT", "EXCEPT", "DISTINCT"]
+
+  - name: "INTERSECT"
+    category: "set_operation"
+    description: |
+      INTERSECT returns only rows that appear in both result sets. Rows in one but not the other
+      are excluded. It is equivalent to an INNER JOIN on all selected columns with deduplication.
+    one_sentence: "INTERSECT returns rows common to both SELECT result sets."
+    syntax: "SELECT col FROM table1 INTERSECT SELECT col FROM table2;"
+    null_behavior: "NULL values match each other for the INTERSECT deduplication — two NULLs are considered equal."
+    performance_tips:
+      - "Can often be rewritten as EXISTS or INNER JOIN, which may be more optimizer-friendly."
+    common_errors:
+      - error: "Not supported in all databases (e.g., MySQL before 8.0)"
+        cause: "Dialect limitation."
+        solution: "Emulate with INNER JOIN on all selected columns."
+    examples:
+      - sql: "SELECT customer_id FROM 2022_buyers INTERSECT SELECT customer_id FROM 2023_buyers;"
+        description: "Customers who purchased in both 2022 and 2023."
+    related: ["UNION", "UNION ALL", "EXCEPT", "INNER JOIN"]
+
+  - name: "EXCEPT"
+    category: "set_operation"
+    description: |
+      EXCEPT (MINUS in Oracle and older Teradata) returns rows in the first SELECT that are
+      not in the second. It implements set difference and is useful for finding records missing
+      from one data set compared to another.
+    one_sentence: "EXCEPT returns rows from the first SELECT that are not present in the second SELECT."
+    syntax: "SELECT col FROM table1 EXCEPT SELECT col FROM table2;"
+    null_behavior: "NULL values are treated as equal — a NULL in the first set matched by a NULL in the second is excluded."
+    performance_tips:
+      - "Rewriting as a LEFT JOIN … WHERE right_col IS NULL may be more efficient."
+    common_errors:
+      - error: "Called MINUS in Oracle syntax"
+        cause: "Oracle and older Teradata use MINUS instead of EXCEPT."
+        solution: "Replace MINUS with EXCEPT when migrating to ANSI SQL dialects."
+    examples:
+      - sql: "SELECT product_id FROM all_products EXCEPT SELECT product_id FROM discontinued_products;"
+        description: "Products that have not been discontinued."
+    related: ["UNION", "UNION ALL", "INTERSECT", "LEFT JOIN"]
+
+  # ==========================================================================
+  # Subqueries & CTEs
+  # ==========================================================================
+
+  - name: "SUBQUERY"
+    category: "subquery"
+    description: |
+      A subquery is a SELECT statement nested inside another SQL statement.
+      Scalar subqueries return a single value, inline views (derived tables) return a result set
+      used like a table in FROM, and correlated subqueries reference columns from the outer query.
+    one_sentence: "A subquery is a nested SELECT used to produce a value, set, or table for an outer query."
+    syntax: |
+      -- Scalar subquery in SELECT
+      SELECT name, (SELECT MAX(salary) FROM employees) AS max_sal FROM employees;
+      -- Inline view (derived table) in FROM
+      SELECT * FROM (SELECT id, SUM(amount) AS total FROM orders GROUP BY id) AS order_totals;
+      -- Correlated subquery in WHERE
+      SELECT * FROM employees e WHERE salary > (SELECT AVG(salary) FROM employees WHERE dept_id = e.dept_id);
+    null_behavior: "A scalar subquery returning NULL propagates NULL into the outer expression."
+    performance_tips:
+      - "Prefer CTEs over inline views for readability and reuse."
+      - "Correlated subqueries execute once per outer row; replace with JOINs where possible."
+      - "EXISTS is usually more efficient than IN when the subquery may return many rows."
+    common_errors:
+      - error: "Scalar subquery returns more than one row"
+        cause: "The subquery produces multiple rows but is used in a context expecting one value."
+        solution: "Add TOP 1, an aggregate function, or a more specific WHERE to guarantee one row."
+    examples:
+      - sql: "SELECT * FROM products WHERE price > (SELECT AVG(price) FROM products);"
+        description: "Products priced above the overall average."
+    related: ["CTE", "EXISTS", "IN", "CORRELATED SUBQUERY"]
+
+  - name: "CTE"
+    category: "subquery"
+    description: |
+      A Common Table Expression (CTE) is a named, temporary result set defined with the WITH clause
+      before the main query. CTEs improve readability, can be referenced multiple times in the same query,
+      and support recursive queries for hierarchical data.
+    one_sentence: "A CTE defines a named temporary result set using the WITH clause, usable within the same query."
+    syntax: |
+      WITH cte_name AS (
+        SELECT col1, col2 FROM table WHERE condition
+      ),
+      cte2 AS (
+        SELECT ... FROM cte_name WHERE ...
+      )
+      SELECT * FROM cte2;
+    null_behavior: "NULL behavior is the same as any other SELECT; NULLs pass through unless filtered."
+    performance_tips:
+      - "Most databases do not materialize CTEs by default; they are treated as macros (inlined)."
+      - "Use a temp table instead of a CTE when the result is referenced many times and is expensive to compute."
+      - "Add MATERIALIZE hint in PostgreSQL to force CTE materialization."
+    common_errors:
+      - error: "Referencing a CTE outside its WITH clause scope"
+        cause: "CTEs are only visible within the single SQL statement that defines them."
+        solution: "Use a temp table or view for data that needs to persist across statements."
+    examples:
+      - sql: "WITH high_value AS (SELECT customer_id, SUM(amount) AS total FROM orders GROUP BY customer_id HAVING SUM(amount) > 10000) SELECT c.name, h.total FROM customers c JOIN high_value h ON c.customer_id = h.customer_id;"
+        description: "Customer names matched with their order totals, pre-filtered for high-value customers."
+    related: ["SUBQUERY", "WITH RECURSIVE", "TEMP TABLE", "VIEW"]
+
+  - name: "WITH RECURSIVE"
+    category: "subquery"
+    description: |
+      A recursive CTE (WITH RECURSIVE) allows a CTE to reference itself, enabling traversal of
+      hierarchical structures like organization trees, bill-of-materials, or graph paths.
+      It consists of an anchor member (base case) UNION ALL'd with a recursive member.
+    one_sentence: "WITH RECURSIVE builds a result set iteratively by referencing the CTE itself, enabling hierarchical or graph queries."
+    syntax: |
+      WITH RECURSIVE cte(id, parent_id, depth) AS (
+        -- Anchor: starting point
+        SELECT id, parent_id, 0 FROM nodes WHERE parent_id IS NULL
+        UNION ALL
+        -- Recursive: join CTE to itself
+        SELECT n.id, n.parent_id, c.depth + 1 FROM nodes n JOIN cte c ON n.parent_id = c.id
+      )
+      SELECT * FROM cte;
+    null_behavior: "NULLs in the anchor member propagate unless filtered; ensure the recursion terminates."
+    performance_tips:
+      - "Always include a depth or iteration counter and add WHERE depth <= max to prevent infinite recursion."
+      - "Index the parent key column for efficient recursive lookups."
+    common_errors:
+      - error: "Infinite recursion"
+        cause: "No termination condition; recursive member always returns rows."
+        solution: "Add a depth counter and limit: WHERE depth < 50."
+    examples:
+      - sql: "WITH RECURSIVE org(id, name, mgr_id, level) AS (SELECT id, name, mgr_id, 1 FROM employees WHERE mgr_id IS NULL UNION ALL SELECT e.id, e.name, e.mgr_id, o.level+1 FROM employees e JOIN org o ON e.mgr_id = o.id) SELECT * FROM org ORDER BY level, id;"
+        description: "Traverse an organizational hierarchy from the top level down."
+    related: ["CTE", "HIERARCHICAL QUERY", "CONNECT BY"]
+
+  - name: "EXISTS"
+    category: "subquery"
+    description: |
+      EXISTS tests whether a subquery returns at least one row. It short-circuits as soon
+      as the first matching row is found, making it efficient for existence checks.
+      NOT EXISTS returns rows from the outer query where no matching subquery row exists.
+    one_sentence: "EXISTS returns TRUE if a subquery produces at least one row, enabling efficient existence checks."
+    syntax: |
+      SELECT * FROM customers c WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id);
+    null_behavior: "NULL in subquery result does not affect EXISTS; it only checks whether any row exists."
+    performance_tips:
+      - "EXISTS short-circuits on the first match; it is usually faster than IN for large subquery results."
+      - "Use SELECT 1 inside EXISTS to avoid projecting unnecessary columns."
+    common_errors:
+      - error: "Using IN instead of EXISTS for correlated checks on large tables"
+        cause: "IN evaluates all subquery rows; EXISTS stops at first match."
+        solution: "Replace IN with EXISTS for correlated subqueries that may return many rows."
+    examples:
+      - sql: "SELECT name FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id);"
+        description: "Customers who have never placed an order."
+    related: ["IN", "SUBQUERY", "LEFT JOIN", "ANTI-JOIN"]
+
+  # ==========================================================================
+  # Aggregate functions
+  # ==========================================================================
+
+  - name: "COUNT"
+    category: "aggregate"
+    description: |
+      COUNT(*) counts all rows including those with NULLs. COUNT(col) counts rows where col is NOT NULL.
+      COUNT(DISTINCT col) counts unique non-null values. It is the most commonly used aggregate function.
+    one_sentence: "COUNT returns the number of rows, with COUNT(col) excluding NULLs and COUNT(DISTINCT col) counting unique values."
+    syntax: |
+      COUNT(*)                    -- all rows
+      COUNT(column_name)          -- non-null rows
+      COUNT(DISTINCT column_name) -- unique non-null values
+    null_behavior: "COUNT(*) counts rows regardless of NULLs; COUNT(col) excludes rows where col is NULL."
+    performance_tips:
+      - "COUNT(*) is typically faster than COUNT(col) because it does not check for NULLs."
+      - "COUNT(DISTINCT) requires sorting or hashing; it is expensive on large, high-cardinality columns."
+    common_errors:
+      - error: "Expecting COUNT(*) and COUNT(col) to be equal"
+        cause: "COUNT(col) excludes NULL rows, while COUNT(*) does not."
+        solution: "Use COUNT(*) for row counts; use COUNT(col) only when NULL filtering is intended."
+    examples:
+      - sql: "SELECT status, COUNT(*) AS cnt, COUNT(DISTINCT customer_id) AS unique_customers FROM orders GROUP BY status;"
+        description: "Order count and unique customer count per status."
+    related: ["SUM", "AVG", "GROUP BY", "HAVING"]
+
+  - name: "SUM"
+    category: "aggregate"
+    description: |
+      SUM computes the total of a numeric expression across rows in a group.
+      NULLs are ignored. SUM of all NULLs returns NULL (not zero).
+      SUM can be used as a window function with OVER() for running totals.
+    one_sentence: "SUM adds up numeric values within a group, ignoring NULL values."
+    syntax: |
+      SUM(expression)                       -- aggregate
+      SUM(expression) OVER (partition_clause) -- window/running total
+    null_behavior: "NULL values are ignored. If all inputs are NULL, SUM returns NULL. Use COALESCE(SUM(col), 0) to return 0 instead."
+    performance_tips:
+      - "SUM OVER with large windows is expensive; consider materializing intermediate sums."
+      - "Use CSUM (Teradata) or SUM OVER (ANSI) for cumulative sums."
+    common_errors:
+      - error: "SUM returns NULL instead of 0"
+        cause: "All input rows have NULL in the summed column."
+        solution: "Wrap with COALESCE: COALESCE(SUM(col), 0)."
+    examples:
+      - sql: "SELECT category, SUM(revenue) AS total_revenue FROM sales GROUP BY category ORDER BY total_revenue DESC;"
+        description: "Total revenue per product category."
+    related: ["AVG", "COUNT", "CSUM", "SUM OVER"]
+
+  - name: "AVG"
+    category: "aggregate"
+    description: |
+      AVG computes the arithmetic mean of a numeric expression across non-NULL rows.
+      It is equivalent to SUM(col) / COUNT(col). NULLs are excluded from both numerator and denominator.
+    one_sentence: "AVG returns the arithmetic mean of a numeric column, ignoring NULL values."
+    syntax: "AVG(expression) [OVER (partition_clause)]"
+    null_behavior: "NULL values are excluded from both the sum and the row count. AVG of all NULLs returns NULL."
+    performance_tips:
+      - "For large datasets, consider pre-aggregating to reduce rows before AVG."
+      - "Integer columns may lose precision; cast to DECIMAL before computing AVG."
+    common_errors:
+      - error: "Integer division truncation"
+        cause: "AVG on an integer column may produce integer result in some dialects."
+        solution: "Cast to DECIMAL/FLOAT: AVG(CAST(col AS DECIMAL(18,4)))."
+    examples:
+      - sql: "SELECT department, AVG(salary) AS avg_salary FROM employees GROUP BY department;"
+        description: "Average salary per department."
+    related: ["SUM", "COUNT", "MIN", "MAX", "MAVG"]
+
+  - name: "MIN / MAX"
+    category: "aggregate"
+    description: |
+      MIN returns the smallest value in a group; MAX returns the largest. They work on numeric,
+      string, and date types. Both ignore NULL values. They can be used as window functions to get
+      the min/max across a partition.
+    one_sentence: "MIN and MAX return the smallest and largest values in a group, ignoring NULLs."
+    syntax: |
+      MIN(expression) [OVER (partition_clause)]
+      MAX(expression) [OVER (partition_clause)]
+    null_behavior: "NULL values are ignored. MIN/MAX of all NULLs returns NULL."
+    performance_tips:
+      - "If an index exists on the column, MIN/MAX can be resolved from the index without scanning all rows."
+    common_errors:
+      - error: "String comparison for numeric-looking strings"
+        cause: "MIN/MAX on VARCHAR column uses string ordering ('9' > '10')."
+        solution: "Cast to numeric: MIN(CAST(col AS INTEGER))."
+    examples:
+      - sql: "SELECT product_id, MIN(price) AS min_price, MAX(price) AS max_price FROM price_history GROUP BY product_id;"
+        description: "Historical price range per product."
+    related: ["COUNT", "SUM", "AVG", "FIRST_VALUE", "LAST_VALUE"]
+
+  # ==========================================================================
+  # Window / analytic functions
+  # ==========================================================================
+
+  - name: "ROW_NUMBER"
+    category: "window"
+    description: |
+      ROW_NUMBER assigns a unique sequential integer to each row within a partition, ordered by the
+      specified column(s). Ties receive different numbers — the exact order among tied rows is
+      non-deterministic unless a fully deterministic tie-breaker is included in ORDER BY.
+    one_sentence: "ROW_NUMBER assigns a unique sequential number to each row within a partition, starting at 1."
+    syntax: "ROW_NUMBER() OVER ([PARTITION BY col] ORDER BY col [ASC | DESC])"
+    null_behavior: "NULLs in ORDER BY sort to a consistent position but are assigned a row number like any other value."
+    performance_tips:
+      - "Use ROW_NUMBER in a subquery or CTE and filter on the outer query for top-N per group."
+      - "Collect statistics on PARTITION BY and ORDER BY columns."
+    common_errors:
+      - error: "Non-deterministic row ordering for tied values"
+        cause: "Multiple rows have the same ORDER BY value; the number assigned is arbitrary."
+        solution: "Add a unique tiebreaker column (e.g., primary key) to the ORDER BY."
+    examples:
+      - sql: "SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn FROM orders QUALIFY rn = 1;"
+        description: "Most recent order per customer (Teradata QUALIFY pattern)."
+    related: ["RANK", "DENSE_RANK", "NTILE", "QUALIFY"]
+
+  - name: "RANK"
+    category: "window"
+    description: |
+      RANK assigns a rank to each row within a partition. Tied rows receive the same rank.
+      After a tie, RANK skips numbers — if two rows share rank 3, the next rank is 5 (not 4).
+    one_sentence: "RANK assigns the same number to tied rows and skips subsequent ranks, leaving gaps."
+    syntax: "RANK() OVER ([PARTITION BY col] ORDER BY col [ASC | DESC])"
+    null_behavior: "NULLs are assigned a rank like any other value based on their sort position."
+    performance_tips:
+      - "Use RANK when competition-style ranking with gaps is required (e.g., sales leaderboards)."
+    common_errors:
+      - error: "Unexpected gaps in rank values"
+        cause: "Tied rows cause RANK to skip numbers."
+        solution: "Use DENSE_RANK if you need consecutive rank values without gaps."
+    examples:
+      - sql: "SELECT name, score, RANK() OVER (ORDER BY score DESC) AS rank FROM leaderboard;"
+        description: "Leaderboard ranks — tied scores share the same rank, next rank skips."
+    related: ["DENSE_RANK", "ROW_NUMBER", "NTILE", "PERCENT_RANK"]
+
+  - name: "DENSE_RANK"
+    category: "window"
+    description: |
+      DENSE_RANK assigns ranks like RANK but does not skip numbers after a tie.
+      Tied rows share the same rank, and the next rank is the immediately following integer.
+    one_sentence: "DENSE_RANK assigns the same rank to tied rows but never skips rank values."
+    syntax: "DENSE_RANK() OVER ([PARTITION BY col] ORDER BY col [ASC | DESC])"
+    null_behavior: "NULLs sort and rank like any other value based on their position."
+    performance_tips:
+      - "DENSE_RANK is slightly more expensive than RANK for dense tie situations due to the extra deduplication."
+    common_errors:
+      - error: "Using RANK when DENSE_RANK was intended"
+        cause: "RANK leaves gaps after ties; DENSE_RANK does not."
+        solution: "Choose based on requirement: RANK for competition-style, DENSE_RANK for quartiles/percentiles."
+    examples:
+      - sql: "SELECT name, salary, DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS sal_rank FROM employees;"
+        description: "Salary rank within each department — no gaps even when salaries are tied."
+    related: ["RANK", "ROW_NUMBER", "NTILE", "PERCENT_RANK"]
+
+  - name: "LAG"
+    category: "window"
+    description: |
+      LAG accesses a column value from a previous row within the same partition, offset by n rows.
+      It is used for period-over-period comparisons (e.g., comparing this month's revenue to last month's).
+    one_sentence: "LAG returns a column value from n rows before the current row within the same partition."
+    syntax: "LAG(expression [, offset [, default]]) OVER ([PARTITION BY col] ORDER BY col)"
+    null_behavior: "If no preceding row exists at the offset, LAG returns the default value (or NULL if default is omitted)."
+    performance_tips:
+      - "LAG is resolved during the window scan; it adds minimal overhead compared to a self-join."
+      - "Specify a default to avoid NULLs on the first row: LAG(sales, 1, 0)."
+    common_errors:
+      - error: "NULL on the first row when default is omitted"
+        cause: "No preceding row exists at offset 1 for the first row in a partition."
+        solution: "Provide a default value: LAG(col, 1, 0) or use COALESCE(LAG(col), 0)."
+    examples:
+      - sql: "SELECT month, revenue, LAG(revenue, 1, 0) OVER (ORDER BY month) AS prev_month_revenue, revenue - LAG(revenue, 1, 0) OVER (ORDER BY month) AS change FROM monthly_sales;"
+        description: "Month-over-month revenue change."
+    related: ["LEAD", "FIRST_VALUE", "LAST_VALUE", "MDIFF"]
+
+  - name: "LEAD"
+    category: "window"
+    description: |
+      LEAD accesses a column value from a future row within the same partition, offset by n rows.
+      It is the forward-looking counterpart to LAG and is used for next-period comparisons or
+      computing time-to-next-event.
+    one_sentence: "LEAD returns a column value from n rows ahead of the current row within the same partition."
+    syntax: "LEAD(expression [, offset [, default]]) OVER ([PARTITION BY col] ORDER BY col)"
+    null_behavior: "If no following row exists at the offset, LEAD returns the default (or NULL if omitted)."
+    performance_tips:
+      - "Like LAG, LEAD is computed in a single pass; it is efficient even on large partitions."
+    common_errors:
+      - error: "NULL on the last row"
+        cause: "No following row exists at the specified offset."
+        solution: "Provide a default: LEAD(col, 1, 0) or wrap with COALESCE."
+    examples:
+      - sql: "SELECT event_id, event_time, LEAD(event_time) OVER (PARTITION BY session_id ORDER BY event_time) AS next_event_time FROM clickstream;"
+        description: "Next event timestamp in each user session."
+    related: ["LAG", "FIRST_VALUE", "LAST_VALUE"]
+
+  - name: "FIRST_VALUE / LAST_VALUE"
+    category: "window"
+    description: |
+      FIRST_VALUE returns the first value in the window frame; LAST_VALUE returns the last.
+      With the default frame (RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), LAST_VALUE
+      returns the current row's value — to get the true partition maximum, use ROWS BETWEEN
+      UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING.
+    one_sentence: "FIRST_VALUE and LAST_VALUE return the first or last value in a window frame."
+    syntax: |
+      FIRST_VALUE(expression) OVER ([PARTITION BY col] ORDER BY col ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      LAST_VALUE(expression) OVER ([PARTITION BY col] ORDER BY col ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+    null_behavior: "NULLs in the expression are returned if they are the first or last in the frame."
+    performance_tips:
+      - "Ensure the frame clause is explicit; the default frame for LAST_VALUE is counterintuitive."
+    common_errors:
+      - error: "LAST_VALUE returns the current row's value instead of the partition's last"
+        cause: "Default frame is RANGE UNBOUNDED PRECEDING TO CURRENT ROW."
+        solution: "Add ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING."
+    examples:
+      - sql: "SELECT id, value, FIRST_VALUE(value) OVER (PARTITION BY group_id ORDER BY ts) AS first_val, LAST_VALUE(value) OVER (PARTITION BY group_id ORDER BY ts ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS last_val FROM series;"
+        description: "First and last values per group over an ordered time series."
+    related: ["LAG", "LEAD", "NTH_VALUE", "MIN", "MAX"]
+
+  - name: "NTILE"
+    category: "window"
+    description: |
+      NTILE(n) divides the rows in a partition into n equal-sized buckets and assigns each row
+      a bucket number from 1 to n. Useful for quartiles, deciles, and percentile-based segmentation.
+    one_sentence: "NTILE divides partition rows into n equal-sized ranked buckets and assigns each row a bucket number."
+    syntax: "NTILE(n) OVER ([PARTITION BY col] ORDER BY col)"
+    null_behavior: "NULLs sort to a position based on ORDER BY direction and are assigned to a bucket like any other value."
+    performance_tips:
+      - "For standard quartiles use NTILE(4); for deciles use NTILE(10)."
+      - "If rows don't divide evenly, earlier buckets get one extra row."
+    common_errors:
+      - error: "Unequal bucket sizes when row count is not divisible by n"
+        cause: "NTILE distributes remainder rows to the first buckets."
+        solution: "This is expected behavior; use PERCENT_RANK for exact percentile positions."
+    examples:
+      - sql: "SELECT customer_id, total_spend, NTILE(4) OVER (ORDER BY total_spend DESC) AS quartile FROM customer_spend;"
+        description: "Assign customers to spend quartiles (1 = highest, 4 = lowest)."
+    related: ["RANK", "DENSE_RANK", "PERCENT_RANK", "QUANTILE"]
+
+  - name: "PARTITION BY"
+    category: "window"
+    description: |
+      PARTITION BY divides the rows into independent groups (partitions) for window function computation.
+      Each partition is processed separately; window functions reset at partition boundaries.
+      Without PARTITION BY, the entire result set is treated as one partition.
+    one_sentence: "PARTITION BY in an OVER clause divides rows into independent groups for window function computation."
+    syntax: "function() OVER (PARTITION BY col1 [, col2 ...] ORDER BY col3)"
+    null_behavior: "NULL values in PARTITION BY columns form their own partition together."
+    performance_tips:
+      - "Collect statistics on PARTITION BY columns to help the optimizer plan spool usage."
+      - "High-cardinality PARTITION BY columns (e.g., user_id with millions of users) create many small partitions and may be slow on distributed systems."
+    common_errors:
+      - error: "Omitting PARTITION BY when per-group windows are needed"
+        cause: "Without PARTITION BY, the window spans the entire result, not individual groups."
+        solution: "Add PARTITION BY the grouping column(s)."
+    examples:
+      - sql: "SELECT dept, salary, AVG(salary) OVER (PARTITION BY dept) AS dept_avg FROM employees;"
+        description: "Each employee's salary alongside their department's average."
+    related: ["OVER", "ORDER BY", "ROWS BETWEEN", "RANGE BETWEEN"]
+
+  - name: "ROWS BETWEEN / RANGE BETWEEN"
+    category: "window"
+    description: |
+      The frame clause (ROWS BETWEEN or RANGE BETWEEN) defines the subset of partition rows
+      included in each window computation. ROWS operates on physical row offsets; RANGE operates
+      on logical value ranges. Common frames: UNBOUNDED PRECEDING AND CURRENT ROW (running total),
+      N PRECEDING AND N FOLLOWING (moving average), UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING (full partition).
+    one_sentence: "ROWS BETWEEN and RANGE BETWEEN define the window frame — which rows are included in each window computation."
+    syntax: |
+      SUM(amount) OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)   -- cumulative
+      AVG(value) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)            -- 7-day moving avg
+      SUM(amount) OVER (PARTITION BY id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) -- full partition
+    null_behavior: "NULLs within the frame are included and passed to the window function (each function handles them per its NULL rules)."
+    performance_tips:
+      - "ROWS frame is generally faster than RANGE frame because ROWS uses physical offsets."
+      - "Unbounded frames require the full partition in memory; consider partitioning large data sets."
+    common_errors:
+      - error: "LAST_VALUE returns wrong value due to default frame"
+        cause: "Default frame RANGE UNBOUNDED PRECEDING TO CURRENT ROW stops at the current row."
+        solution: "Explicitly specify ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING."
+    examples:
+      - sql: "SELECT date, amount, SUM(amount) OVER (ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_total FROM daily_sales;"
+        description: "Running cumulative total of daily sales."
+    related: ["PARTITION BY", "OVER", "SUM", "AVG", "CSUM", "MSUM"]
+
+  - name: "CSUM"
+    category: "ordered_analytical"
+    description: |
+      CSUM (Cumulative SUM) is a Teradata ordered analytical function that computes a running cumulative
+      total within a partition ordered by a specified column. It is equivalent to SUM(col) OVER (ORDER BY col
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) in ANSI SQL.
+    one_sentence: "CSUM computes a running cumulative sum within a partition, ordered by a specified column."
+    syntax: "CSUM(value_expression, sort_column) OVER ([PARTITION BY col])"
+    null_behavior: "NULL values in value_expression contribute 0 to the cumulative sum. NULL sort_column rows are placed according to ORDER BY direction."
+    performance_tips:
+      - "Use the Primary Index (PI) column in PARTITION BY to avoid spool redistribution."
+      - "CSUM is computed in a single pass over sorted data; it is efficient for large ordered datasets."
+    common_errors:
+      - error: "Confusing CSUM with SUM aggregate"
+        cause: "CSUM produces a value per row; SUM collapses rows per group."
+        solution: "Use SUM for aggregation, CSUM for running totals."
+      - error: "Missing ORDER BY inside CSUM"
+        cause: "CSUM requires a sort column to define cumulation order."
+        solution: "Always specify the sort column as the second argument: CSUM(amount, order_date)."
+    examples:
+      - sql: "SELECT customer_id, order_date, amount, CSUM(amount, order_date) OVER (PARTITION BY customer_id) AS running_total FROM orders;"
+        description: "Running cumulative spend per customer ordered by order date."
+    related: ["MSUM", "MAVG", "SUM OVER", "ROWS BETWEEN"]
+
+  - name: "MSUM"
+    category: "ordered_analytical"
+    description: |
+      MSUM (Moving SUM) is a Teradata ordered analytical function that computes a rolling sum over
+      the last n rows within a partition. It is equivalent to SUM(col) OVER (ORDER BY col ROWS BETWEEN
+      (n-1) PRECEDING AND CURRENT ROW) in ANSI SQL.
+    one_sentence: "MSUM computes a rolling sum over the last n rows within a partition."
+    syntax: "MSUM(value_expression, n_rows, sort_column) OVER ([PARTITION BY col])"
+    null_behavior: "NULL values in value_expression are treated as 0 in the moving window computation."
+    performance_tips:
+      - "Small window sizes (n < 100) are efficient; very large windows require more spool memory."
+    common_errors:
+      - error: "Partial window values at partition start"
+        cause: "The first n-1 rows don't have enough preceding rows to fill the window."
+        solution: "This is expected; use COALESCE or handle partial windows in downstream logic."
+    examples:
+      - sql: "SELECT product_id, sale_date, units, MSUM(units, 7, sale_date) OVER (PARTITION BY product_id) AS rolling_7day FROM daily_sales;"
+        description: "7-day rolling sales total per product."
+    related: ["CSUM", "MAVG", "MDIFF", "ROWS BETWEEN"]
+
+  - name: "MAVG"
+    category: "ordered_analytical"
+    description: |
+      MAVG (Moving AVeraGe) is a Teradata ordered analytical function that computes a rolling average
+      over the last n rows within a partition. Equivalent to AVG(col) OVER (ORDER BY col ROWS BETWEEN
+      (n-1) PRECEDING AND CURRENT ROW) in ANSI SQL.
+    one_sentence: "MAVG computes a rolling average over the last n rows within a partition."
+    syntax: "MAVG(value_expression, n_rows, sort_column) OVER ([PARTITION BY col])"
+    null_behavior: "NULLs in value_expression are excluded from both the sum and the denominator, like AVG."
+    performance_tips:
+      - "For large n, MAVG requires more memory; consider pre-aggregating data to reduce row count."
+    common_errors:
+      - error: "Average includes fewer rows than expected near partition start"
+        cause: "MAVG averages over available rows only when fewer than n rows precede the current row."
+        solution: "This is by design; use COALESCE or filter out partial windows downstream."
+    examples:
+      - sql: "SELECT stock_date, close_price, MAVG(close_price, 20, stock_date) OVER (PARTITION BY ticker) AS ma_20day FROM stock_prices;"
+        description: "20-day moving average of closing stock prices per ticker."
+    related: ["MSUM", "CSUM", "MDIFF", "AVG OVER"]
+
+  - name: "MDIFF"
+    category: "ordered_analytical"
+    description: |
+      MDIFF (Moving DIFFerence) is a Teradata ordered analytical function that computes the difference
+      between the current row's value and the value n rows prior — essentially a shorthand for
+      col - LAG(col, n) OVER (ORDER BY sort_col) in ANSI SQL.
+    one_sentence: "MDIFF returns the difference between the current row's value and the value n rows back within a partition."
+    syntax: "MDIFF(value_expression, n_rows, sort_column) OVER ([PARTITION BY col])"
+    null_behavior: "If no row exists n rows back, MDIFF returns NULL (equivalent to LAG returning NULL)."
+    performance_tips:
+      - "MDIFF is equivalent to col - LAG(col, n); choose whichever is clearer for the use case."
+    common_errors:
+      - error: "NULL for the first n rows"
+        cause: "No row exists n positions back from the start of the partition."
+        solution: "Use COALESCE(MDIFF(...), 0) to substitute zero for missing prior values."
+    examples:
+      - sql: "SELECT month, revenue, MDIFF(revenue, 1, month) OVER () AS mom_change FROM monthly_revenue;"
+        description: "Month-over-month revenue change (equivalent to revenue - LAG(revenue,1))."
+    related: ["LAG", "MSUM", "MAVG", "CSUM"]
+
+  - name: "QUALIFY"
+    category: "teradata"
+    description: |
+      QUALIFY is a Teradata extension that filters rows based on window function results in the same
+      query — without requiring a subquery or CTE. It is the window-function equivalent of HAVING for
+      aggregate functions.
+    one_sentence: "QUALIFY filters query rows based on window function results, eliminating the need for a subquery."
+    syntax: "SELECT col, ROW_NUMBER() OVER (...) AS rn FROM table QUALIFY rn = 1;"
+    null_behavior: "QUALIFY treats NULL window results like WHERE treats NULLs — they do not satisfy the condition."
+    performance_tips:
+      - "QUALIFY avoids an extra spool step compared to wrapping in a subquery."
+      - "Push non-QUALIFY filters to WHERE to minimize rows before window computation."
+    common_errors:
+      - error: "QUALIFY not recognized outside Teradata"
+        cause: "QUALIFY is a Teradata-specific extension not in ANSI SQL."
+        solution: "Wrap in a subquery or CTE and filter in the outer WHERE for portability."
+    examples:
+      - sql: "SELECT * FROM orders QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) = 1;"
+        description: "Most recent order per customer without a wrapping subquery."
+    related: ["ROW_NUMBER", "HAVING", "WHERE", "CTE", "SUBQUERY"]
+
+  - name: "QUANTILE"
+    category: "ordered_analytical"
+    description: |
+      QUANTILE is a Teradata ordered analytical function that assigns a quantile number (0 to n) to each
+      row based on its relative position in an ordered partition. QUANTILE(100, ...) provides percentile
+      ranks; QUANTILE(4, ...) provides quartile assignments.
+    one_sentence: "QUANTILE assigns a quantile bucket number (0 to n) to each row based on its ordered rank within a partition."
+    syntax: "QUANTILE(n, sort_expression) OVER ([PARTITION BY col])"
+    null_behavior: "NULL values in the sort expression are assigned to quantile bucket 0 by default."
+    performance_tips:
+      - "QUANTILE(100, ...) is equivalent to PERCENT_RANK() × 100; use the one that is clearer for the audience."
+    common_errors:
+      - error: "Confusing QUANTILE bucket numbering (0-based) with NTILE (1-based)"
+        cause: "QUANTILE returns 0 to n; NTILE returns 1 to n."
+        solution: "Add 1 to QUANTILE result or use NTILE for 1-based quartile assignments."
+    examples:
+      - sql: "SELECT customer_id, total_spend, QUANTILE(100, total_spend) OVER () AS percentile FROM customer_summary;"
+        description: "Assign each customer a 0-100 percentile rank by total spend."
+    related: ["NTILE", "PERCENT_RANK", "DENSE_RANK"]
+
+  # ==========================================================================
+  # String functions
+  # ==========================================================================
+
+  - name: "TRIM"
+    category: "string"
+    description: |
+      TRIM removes leading spaces, trailing spaces, or both from a string.
+      LTRIM removes leading characters; RTRIM removes trailing characters.
+      An optional LEADING/TRAILING/BOTH qualifier and character set can be specified.
+    one_sentence: "TRIM removes leading and/or trailing characters (default: spaces) from a string."
+    syntax: |
+      TRIM([{LEADING | TRAILING | BOTH} [trim_char] FROM] string)
+      LTRIM(string [, trim_chars])
+      RTRIM(string [, trim_chars])
+    null_behavior: "TRIM of NULL returns NULL."
+    performance_tips:
+      - "Avoid TRIM in WHERE clauses on indexed columns — it prevents index use."
+      - "Pre-clean source data at load time to avoid runtime TRIM overhead."
+    common_errors:
+      - error: "TRIM not removing tabs or newlines"
+        cause: "Default TRIM only removes spaces (ASCII 32), not other whitespace."
+        solution: "Use REPLACE or REGEXP_REPLACE to remove tabs, newlines, and other whitespace."
+    examples:
+      - sql: "SELECT TRIM(BOTH ' ' FROM '  hello world  ') AS cleaned;"
+        description: "Remove leading and trailing spaces."
+    related: ["REPLACE", "SUBSTRING", "UPPER", "LOWER"]
+
+  - name: "SUBSTRING"
+    category: "string"
+    description: |
+      SUBSTRING (or SUBSTR) extracts a portion of a string starting at a given position for a
+      specified length. Positions are 1-based in SQL. If length is omitted, it extracts to end of string.
+    one_sentence: "SUBSTRING extracts a portion of a string from a starting position for an optional length."
+    syntax: |
+      SUBSTRING(string FROM start [FOR length])  -- ANSI
+      SUBSTR(string, start [, length])            -- common shorthand
+    null_behavior: "If string or start is NULL, SUBSTRING returns NULL."
+    performance_tips:
+      - "Avoid SUBSTRING in WHERE/JOIN conditions on indexed columns — it prevents index seeks."
+    common_errors:
+      - error: "Off-by-one errors"
+        cause: "SQL positions are 1-based; some developers expect 0-based."
+        solution: "SUBSTRING('hello', 1, 3) returns 'hel' (positions 1, 2, 3)."
+    examples:
+      - sql: "SELECT SUBSTRING(phone_number FROM 1 FOR 3) AS area_code FROM contacts;"
+        description: "Extract the first 3 characters (area code) from a phone number."
+    related: ["TRIM", "POSITION", "REGEXP_SUBSTR", "CHARINDEX"]
+
+  - name: "UPPER / LOWER"
+    category: "string"
+    description: |
+      UPPER converts all characters in a string to uppercase; LOWER converts to lowercase.
+      Used for case-insensitive comparisons, normalization, and display formatting.
+    one_sentence: "UPPER converts a string to uppercase; LOWER converts it to lowercase."
+    syntax: "UPPER(string)  /  LOWER(string)"
+    null_behavior: "UPPER(NULL) and LOWER(NULL) both return NULL."
+    performance_tips:
+      - "Using UPPER(col) = UPPER(?) in WHERE prevents index use; consider storing normalized values."
+      - "For case-insensitive matching at scale, use a case-insensitive collation instead of UPPER."
+    common_errors:
+      - error: "Case-insensitive comparison still not matching"
+        cause: "Leading/trailing spaces differ, or characters outside ASCII have different case rules."
+        solution: "Combine TRIM and UPPER: UPPER(TRIM(col)) = UPPER(TRIM(?))."
+    examples:
+      - sql: "SELECT * FROM users WHERE LOWER(email) = LOWER('User@Example.com');"
+        description: "Case-insensitive email lookup."
+    related: ["TRIM", "REPLACE", "LIKE"]
+
+  - name: "CONCAT"
+    category: "string"
+    description: |
+      CONCAT joins two or more strings into a single string. The || operator is the ANSI SQL
+      concatenation operator. Many databases support CONCAT with more than two arguments.
+    one_sentence: "CONCAT joins two or more string values into a single string."
+    syntax: "CONCAT(str1, str2 [, str3 ...])"
+    null_behavior: "In most dialects, CONCAT(NULL, 'x') returns 'x' (NULLs are treated as empty string). Oracle and PostgreSQL treat NULL as empty in CONCAT; Teradata || returns NULL if either operand is NULL."
+    performance_tips:
+      - "Pre-compute concatenations in ETL rather than at query time when used repeatedly."
+    common_errors:
+      - error: "Unexpected NULL from || concatenation"
+        cause: "ANSI || propagates NULL — any NULL operand yields NULL."
+        solution: "Use COALESCE(col, '') to replace NULLs before concatenating."
+    examples:
+      - sql: "SELECT CONCAT(first_name, ' ', last_name) AS full_name FROM employees;"
+        description: "Combine first and last name into full name."
+    related: ["TRIM", "UPPER", "LOWER", "REPLACE"]
+
+  - name: "REPLACE"
+    category: "string"
+    description: |
+      REPLACE substitutes all occurrences of a search string within a source string with a replacement string.
+      It is case-sensitive in most databases. Use REGEXP_REPLACE for pattern-based replacements.
+    one_sentence: "REPLACE substitutes all occurrences of a substring within a string with a replacement string."
+    syntax: "REPLACE(source_string, search_string, replacement_string)"
+    null_behavior: "If any argument is NULL, REPLACE returns NULL."
+    performance_tips:
+      - "Avoid REPLACE in WHERE predicates; it prevents index use."
+      - "Batch REPLACE operations at load time rather than at query time."
+    common_errors:
+      - error: "Case-sensitive matching fails to replace target"
+        cause: "REPLACE is case-sensitive by default."
+        solution: "Use REPLACE(LOWER(col), LOWER(search), replacement) or a case-insensitive regex."
+    examples:
+      - sql: "SELECT REPLACE(description, 'discontinued', 'legacy') AS updated_desc FROM products;"
+        description: "Replace all occurrences of 'discontinued' with 'legacy' in product descriptions."
+    related: ["TRIM", "TRANSLATE", "REGEXP_REPLACE", "LIKE"]
+
+  - name: "LIKE"
+    category: "string"
+    description: |
+      LIKE performs pattern matching using wildcard characters: % matches any sequence of characters,
+      _ matches exactly one character. ILIKE (PostgreSQL) is the case-insensitive variant.
+      Prefix patterns ('abc%') can use indexes; suffix/infix patterns ('%abc') require full scans.
+    one_sentence: "LIKE matches string values against a pattern using % (any sequence) and _ (single character) wildcards."
+    syntax: "column LIKE 'pattern%'  /  column NOT LIKE '%pattern%'"
+    null_behavior: "NULL LIKE 'any' returns NULL (UNKNOWN); the row is not returned."
+    performance_tips:
+      - "Prefix patterns (LIKE 'prefix%') can use an index; leading wildcards (LIKE '%suffix') require full scans."
+      - "Use REGEXP_LIKE or full-text search for complex pattern matching."
+    common_errors:
+      - error: "Unexpected no-match with case differences"
+        cause: "LIKE is case-sensitive in most databases."
+        solution: "Use LOWER(col) LIKE LOWER(pattern) or a case-insensitive collation."
+    examples:
+      - sql: "SELECT * FROM products WHERE product_name LIKE 'Widget%';"
+        description: "Products whose names start with 'Widget'."
+    related: ["REGEXP_LIKE", "SIMILAR TO", "UPPER", "LOWER", "CONTAINS"]
+
+  # ==========================================================================
+  # Date / Time functions
+  # ==========================================================================
+
+  - name: "CURRENT_DATE / CURRENT_TIMESTAMP"
+    category: "datetime"
+    description: |
+      CURRENT_DATE returns the current date (no time component). CURRENT_TIMESTAMP returns the current
+      date and time including timezone offset. These are standard SQL functions and work across most dialects.
+      NOW() is a common alias in PostgreSQL and MySQL.
+    one_sentence: "CURRENT_DATE returns today's date; CURRENT_TIMESTAMP returns the current date and time."
+    syntax: "CURRENT_DATE  /  CURRENT_TIMESTAMP  /  NOW()"
+    null_behavior: "These functions never return NULL."
+    performance_tips:
+      - "Capture CURRENT_DATE or CURRENT_TIMESTAMP once (in a CTE or variable) per query to ensure consistency."
+      - "Avoid calling CURRENT_TIMESTAMP inside a loop or per-row function for performance."
+    common_errors:
+      - error: "Date arithmetic produces wrong results due to timezone differences"
+        cause: "CURRENT_TIMESTAMP uses the session timezone; results differ across time zones."
+        solution: "Use CURRENT_TIMESTAMP AT TIME ZONE 'UTC' to normalize to a single timezone."
+    examples:
+      - sql: "SELECT order_id FROM orders WHERE order_date >= CURRENT_DATE - INTERVAL '7' DAY;"
+        description: "Orders placed in the last 7 days."
+    related: ["EXTRACT", "DATE_TRUNC", "INTERVAL", "CAST"]
+
+  - name: "EXTRACT"
+    category: "datetime"
+    description: |
+      EXTRACT retrieves a specific component (year, month, day, hour, etc.) from a date/time value.
+      It is the ANSI SQL standard for date-part extraction. DATE_PART is a common alias in PostgreSQL.
+    one_sentence: "EXTRACT pulls a named component (year, month, day, etc.) from a date or timestamp value."
+    syntax: "EXTRACT(field FROM date_expression)"
+    null_behavior: "EXTRACT(YEAR FROM NULL) returns NULL."
+    performance_tips:
+      - "Avoid EXTRACT in WHERE conditions on indexed date columns — it prevents index use."
+      - "Pre-compute date components in ETL or materialized columns for frequent filtering."
+    common_errors:
+      - error: "Using EXTRACT in WHERE breaks index usage"
+        cause: "Function wrappers prevent index seeks on the underlying column."
+        solution: "Use range predicates: date_col BETWEEN '2024-01-01' AND '2024-12-31' instead of EXTRACT(YEAR FROM date_col) = 2024."
+    examples:
+      - sql: "SELECT EXTRACT(YEAR FROM order_date) AS yr, EXTRACT(MONTH FROM order_date) AS mo, COUNT(*) FROM orders GROUP BY yr, mo;"
+        description: "Order counts grouped by year and month."
+    related: ["DATE_TRUNC", "CURRENT_DATE", "INTERVAL", "CAST"]
+
+  - name: "DATE_TRUNC"
+    category: "datetime"
+    description: |
+      DATE_TRUNC truncates a date/timestamp to the start of the specified period (year, month, week, day, hour, etc.).
+      Useful for grouping by time periods without extracting individual components.
+    one_sentence: "DATE_TRUNC truncates a date/timestamp to the beginning of a specified time period."
+    syntax: "DATE_TRUNC('period', date_expression)  -- PostgreSQL / Teradata TD_MONTH / TRUNC(date, 'MM')"
+    null_behavior: "DATE_TRUNC of NULL returns NULL."
+    performance_tips:
+      - "DATE_TRUNC is useful in GROUP BY for time-series aggregations; pair with an index on the date column."
+    common_errors:
+      - error: "Dialect differences in truncation syntax"
+        cause: "Teradata uses TRUNC(date, 'MM'); PostgreSQL uses DATE_TRUNC('month', date)."
+        solution: "Consult your database's documentation for the exact function name and argument order."
+    examples:
+      - sql: "SELECT DATE_TRUNC('month', event_date) AS month_start, COUNT(*) FROM events GROUP BY month_start ORDER BY month_start;"
+        description: "Events per calendar month."
+    related: ["EXTRACT", "CURRENT_DATE", "GROUP BY", "INTERVAL"]
+
+  - name: "CAST"
+    category: "type_conversion"
+    description: |
+      CAST converts a value from one data type to another. It is the ANSI SQL standard for explicit
+      type conversion. TRY_CAST (SQL Server) or TRY_TO_DATE (Snowflake) are safe variants that return
+      NULL instead of error on conversion failure.
+    one_sentence: "CAST explicitly converts a value to a specified data type."
+    syntax: "CAST(expression AS target_data_type)"
+    null_behavior: "CAST(NULL AS INTEGER) returns NULL of type INTEGER."
+    performance_tips:
+      - "Implicit casting in WHERE conditions can prevent index use; make explicit casts clear."
+      - "Casting numeric to VARCHAR for display should be done at the application layer when possible."
+    common_errors:
+      - error: "Conversion error on invalid string-to-number cast"
+        cause: "String contains non-numeric characters."
+        solution: "Use TRY_CAST or validate with REGEXP before casting."
+      - error: "Truncation when casting to a smaller type"
+        cause: "Target type is too small for the source value."
+        solution: "Choose an appropriately sized target type: CAST(col AS DECIMAL(18,4)) instead of DECIMAL(5,2)."
+    examples:
+      - sql: "SELECT CAST(order_date AS VARCHAR(10)) AS date_str, CAST('2024-01-15' AS DATE) AS parsed_date FROM orders;"
+        description: "Convert a date to string and parse a string to date."
+    related: ["COALESCE", "CONVERT", "FORMAT", "TRIM"]
+
+  # ==========================================================================
+  # Conditional expressions
+  # ==========================================================================
+
+  - name: "CASE WHEN"
+    category: "conditional"
+    description: |
+      CASE WHEN is SQL's conditional expression, equivalent to if-then-else. It comes in two forms:
+      simple CASE (compares one expression to values) and searched CASE (evaluates Boolean conditions).
+      CASE expressions can appear anywhere an expression is valid: SELECT, WHERE, ORDER BY, GROUP BY.
+    one_sentence: "CASE WHEN evaluates conditions and returns the corresponding result for the first TRUE branch."
+    syntax: |
+      -- Searched CASE (most common)
+      CASE WHEN condition1 THEN result1
+           WHEN condition2 THEN result2
+           ELSE default_result
+      END
+      -- Simple CASE
+      CASE expression WHEN value1 THEN result1 WHEN value2 THEN result2 ELSE default END
+    null_behavior: |
+      If no WHEN matches and no ELSE is provided, CASE returns NULL.
+      WHEN condition evaluates to UNKNOWN (NULL comparison) does not match.
+    performance_tips:
+      - "Order WHEN conditions from most common to least common for early short-circuit evaluation."
+      - "CASE in GROUP BY can create derived groupings without CTEs."
+    common_errors:
+      - error: "Missing ELSE causes unexpected NULL in result"
+        cause: "When no WHEN condition matches and ELSE is absent, CASE returns NULL."
+        solution: "Always include an ELSE clause or verify that all cases are covered."
+    examples:
+      - sql: "SELECT order_id, CASE WHEN amount > 1000 THEN 'Large' WHEN amount > 100 THEN 'Medium' ELSE 'Small' END AS order_size FROM orders;"
+        description: "Classify orders by size."
+    related: ["COALESCE", "NULLIF", "IIF", "DECODE"]
+
+  - name: "COALESCE"
+    category: "conditional"
+    description: |
+      COALESCE returns the first non-NULL value from its argument list. It is equivalent to a nested
+      CASE WHEN col1 IS NOT NULL THEN col1 WHEN col2 IS NOT NULL THEN col2 ELSE col3 END.
+      Commonly used for null substitution (defaulting NULLs to a value).
+    one_sentence: "COALESCE returns the first non-NULL value from a list of expressions."
+    syntax: "COALESCE(expr1, expr2 [, expr3 ...])"
+    null_behavior: "If all arguments are NULL, COALESCE returns NULL."
+    performance_tips:
+      - "COALESCE short-circuits — it evaluates arguments left to right and stops at the first non-NULL."
+      - "Using COALESCE on indexed columns in WHERE can prevent index use."
+    common_errors:
+      - error: "Wrong type assumption — COALESCE returns data type of first non-null argument"
+        cause: "Mixed types in COALESCE arguments may cause implicit casting."
+        solution: "Explicitly CAST all arguments to the same type: COALESCE(CAST(a AS VARCHAR), b)."
+    examples:
+      - sql: "SELECT customer_id, COALESCE(phone_mobile, phone_home, phone_work, 'No phone') AS best_phone FROM contacts;"
+        description: "Return the first available phone number, defaulting to 'No phone'."
+    related: ["NULLIF", "CASE WHEN", "NVL", "ISNULL"]
+
+  - name: "NULLIF"
+    category: "conditional"
+    description: |
+      NULLIF(expr1, expr2) returns NULL if the two expressions are equal; otherwise returns expr1.
+      It is the inverse of COALESCE and is commonly used to convert sentinel values (e.g., 0, empty string)
+      to NULL for proper aggregate handling.
+    one_sentence: "NULLIF returns NULL if both arguments are equal; otherwise returns the first argument."
+    syntax: "NULLIF(expr1, expr2)"
+    null_behavior: "If expr1 is already NULL, NULLIF returns NULL regardless of expr2."
+    performance_tips:
+      - "Use NULLIF to eliminate division-by-zero errors: col1 / NULLIF(col2, 0)."
+    common_errors:
+      - error: "Division by zero"
+        cause: "Denominator can be zero."
+        solution: "Wrap denominator in NULLIF: revenue / NULLIF(cost, 0) returns NULL instead of error."
+    examples:
+      - sql: "SELECT product_id, revenue / NULLIF(cost, 0) AS margin FROM financials;"
+        description: "Compute margin safely — returns NULL where cost is zero instead of dividing by zero."
+    related: ["COALESCE", "CASE WHEN", "NVL"]
+
+  # ==========================================================================
+  # NULL handling
+  # ==========================================================================
+
+  - name: "IS NULL / IS NOT NULL"
+    category: "null"
+    description: |
+      IS NULL tests whether an expression is NULL. IS NOT NULL tests whether it is not NULL.
+      Because NULL = NULL evaluates to UNKNOWN (not TRUE), = NULL never works for NULL checks.
+    one_sentence: "IS NULL and IS NOT NULL are the only correct ways to test for NULL values in SQL."
+    syntax: "column IS NULL  /  column IS NOT NULL"
+    null_behavior: "The only operators that correctly identify NULL values; = NULL always returns UNKNOWN."
+    performance_tips:
+      - "IS NULL can use indexes in some databases; check your execution plan."
+    common_errors:
+      - error: "Using = NULL instead of IS NULL"
+        cause: "NULL = NULL is UNKNOWN; the predicate never returns TRUE."
+        solution: "Always use IS NULL to check for NULL values."
+    examples:
+      - sql: "SELECT * FROM customers WHERE email IS NULL;"
+        description: "Customers with no email address on file."
+    related: ["COALESCE", "NULLIF", "WHERE", "CASE WHEN"]
+
+  # ==========================================================================
+  # DDL
+  # ==========================================================================
+
+  - name: "CREATE TABLE"
+    category: "DDL"
+    description: |
+      CREATE TABLE defines a new table with its column names, data types, and constraints.
+      It can also create a table from a SELECT result (CREATE TABLE AS SELECT / CTAS).
+      In Teradata, table kind (SET vs MULTISET) and Primary Index (PI) are specified here.
+    one_sentence: "CREATE TABLE defines a new table's structure including columns, data types, and constraints."
+    syntax: |
+      CREATE [SET | MULTISET] TABLE table_name (
+        col1  datatype [NOT NULL] [DEFAULT value],
+        col2  datatype,
+        PRIMARY KEY (col1)
+      ) [PRIMARY INDEX (col1)];
+      -- CTAS shorthand
+      CREATE TABLE new_table AS (SELECT ...) WITH DATA;
+    null_behavior: "Columns without NOT NULL accept NULL by default. Columns declared NOT NULL reject NULL inserts."
+    performance_tips:
+      - "Choose the Primary Index (PI) in Teradata to distribute data evenly and avoid skew."
+      - "Partition large tables by frequently-filtered columns to enable partition elimination."
+    common_errors:
+      - error: "Duplicate rows in SET table"
+        cause: "SET tables silently discard exact duplicate rows; MULTISET tables allow them."
+        solution: "Use MULTISET when duplicates are expected and valid."
+    examples:
+      - sql: "CREATE TABLE orders (order_id INTEGER NOT NULL, customer_id INTEGER, amount DECIMAL(18,2), order_date DATE) PRIMARY INDEX (customer_id);"
+        description: "Create an orders table with customer_id as the distribution key."
+    related: ["ALTER TABLE", "DROP TABLE", "CREATE INDEX", "PRIMARY KEY", "PRIMARY INDEX"]
+
+  - name: "ALTER TABLE"
+    category: "DDL"
+    description: |
+      ALTER TABLE modifies an existing table's structure: adding/dropping columns, modifying data types,
+      adding/dropping constraints, renaming columns or the table itself.
+    one_sentence: "ALTER TABLE modifies an existing table's structure — adding/dropping columns, constraints, or renaming."
+    syntax: |
+      ALTER TABLE table_name ADD column_name datatype [constraint];
+      ALTER TABLE table_name DROP column_name;
+      ALTER TABLE table_name MODIFY column_name new_datatype;
+      ALTER TABLE table_name RENAME TO new_table_name;
+    null_behavior: "Adding a NOT NULL column to a populated table requires a DEFAULT value to populate existing rows."
+    performance_tips:
+      - "Schema changes on large tables can be slow and lock the table; plan for maintenance windows."
+      - "Adding a nullable column is usually faster than adding a NOT NULL column."
+    common_errors:
+      - error: "Adding NOT NULL column to existing table fails"
+        cause: "Existing rows would have NULL for the new column."
+        solution: "Add the column as nullable first, populate it, then ALTER to NOT NULL."
+    examples:
+      - sql: "ALTER TABLE customers ADD COLUMN loyalty_tier VARCHAR(20) DEFAULT 'Bronze';"
+        description: "Add a loyalty tier column with a default value for existing rows."
+    related: ["CREATE TABLE", "DROP TABLE", "CREATE INDEX"]
+
+  - name: "CREATE INDEX"
+    category: "DDL"
+    description: |
+      CREATE INDEX adds an index to one or more columns to speed up queries that filter, join, or sort
+      on those columns. Indexes trade write overhead and storage for faster reads.
+      A covering index includes all columns referenced by a query, avoiding table lookups.
+    one_sentence: "CREATE INDEX creates a data structure on one or more columns to accelerate read queries."
+    syntax: |
+      CREATE [UNIQUE] INDEX index_name ON table_name (col1 [ASC | DESC] [, col2 ...]);
+      -- Covering index (includes all queried columns)
+      CREATE INDEX idx_cover ON orders (customer_id, order_date) INCLUDE (amount, status);
+    null_behavior: "NULL values are indexed but not treated as equal — multiple NULL rows can exist in a UNIQUE index (dialect-dependent)."
+    performance_tips:
+      - "Index columns used in WHERE, JOIN, and ORDER BY clauses."
+      - "Leading column of a composite index must appear in WHERE for the index to be used."
+      - "Too many indexes slow down writes; focus on the most selective and frequently-queried columns."
+    common_errors:
+      - error: "Index not used because of function wrapping"
+        cause: "UPPER(col) or YEAR(date) in WHERE prevents the index on col or date."
+        solution: "Rewrite predicates to be sargable: WHERE col = LOWER('value') instead of WHERE LOWER(col) = 'value'."
+    examples:
+      - sql: "CREATE INDEX idx_orders_customer ON orders (customer_id, order_date DESC);"
+        description: "Speed up lookups by customer sorted by most recent order."
+    related: ["CREATE TABLE", "COLLECT STATISTICS", "EXPLAIN PLAN", "PRIMARY KEY"]
+
+  - name: "CREATE VIEW"
+    category: "DDL"
+    description: |
+      CREATE VIEW defines a virtual table from a stored SELECT query. Views do not store data;
+      they execute the underlying query each time they are accessed. Materialized views store results
+      and can be refreshed on demand or on schedule.
+    one_sentence: "CREATE VIEW saves a SELECT query as a named virtual table, simplifying complex query reuse."
+    syntax: "CREATE [OR REPLACE] VIEW view_name AS SELECT col1, col2 FROM table WHERE condition;"
+    null_behavior: "NULL handling follows the underlying SELECT; the view does not change NULL semantics."
+    performance_tips:
+      - "Views do not cache results (unless materialized); every SELECT against a view re-executes the query."
+      - "Deeply nested views can produce complex execution plans; flatten when performance matters."
+    common_errors:
+      - error: "Expecting views to cache data like materialized views"
+        cause: "Standard views are just stored queries, not stored data."
+        solution: "Use a materialized view or temp table to cache expensive query results."
+    examples:
+      - sql: "CREATE VIEW active_customers AS SELECT customer_id, name, email FROM customers WHERE status = 'ACTIVE';"
+        description: "A filtered view showing only active customers."
+    related: ["CREATE TABLE", "CTE", "MATERIALIZED VIEW", "SELECT"]
+
+  - name: "TRUNCATE TABLE"
+    category: "DDL"
+    description: |
+      TRUNCATE TABLE removes all rows from a table quickly by deallocating data pages rather than
+      deleting rows individually. It is not fully logged (in most databases) and cannot be rolled back
+      in some dialects. It resets identity/auto-increment columns.
+    one_sentence: "TRUNCATE TABLE removes all rows from a table quickly and efficiently, resetting the table to empty."
+    syntax: "TRUNCATE TABLE table_name;"
+    null_behavior: "Not applicable — removes all rows."
+    performance_tips:
+      - "TRUNCATE is much faster than DELETE with no WHERE clause for clearing large tables."
+      - "TRUNCATE releases storage immediately; DELETE may require a subsequent VACUUM (PostgreSQL)."
+    common_errors:
+      - error: "Cannot truncate a table referenced by a foreign key"
+        cause: "Referential integrity prevents truncating parent tables."
+        solution: "Disable the FK constraint, truncate both tables, then re-enable the constraint."
+    examples:
+      - sql: "TRUNCATE TABLE staging_load;"
+        description: "Clear all rows from a staging table before reloading."
+    related: ["DELETE", "DROP TABLE", "CREATE TABLE"]
+
+  # ==========================================================================
+  # Constraints
+  # ==========================================================================
+
+  - name: "PRIMARY KEY"
+    category: "constraint"
+    description: |
+      A PRIMARY KEY uniquely identifies each row in a table. It combines NOT NULL and UNIQUE constraints
+      and typically creates a clustered index. Each table can have at most one primary key.
+    one_sentence: "PRIMARY KEY uniquely identifies each row in a table; it enforces NOT NULL and UNIQUE together."
+    syntax: |
+      -- Inline
+      CREATE TABLE t (id INTEGER PRIMARY KEY, name VARCHAR(100));
+      -- Table-level
+      CREATE TABLE t (id INTEGER, name VARCHAR(100), CONSTRAINT pk_t PRIMARY KEY (id));
+    null_behavior: "PRIMARY KEY columns cannot contain NULL values."
+    performance_tips:
+      - "Use a surrogate integer key for join performance; natural keys can be wide and slow to join."
+    common_errors:
+      - error: "Inserting duplicate primary key value"
+        cause: "The PK column already contains the value being inserted."
+        solution: "Use MERGE (upsert) or check existence before inserting."
+    examples:
+      - sql: "CREATE TABLE employees (employee_id INTEGER NOT NULL, name VARCHAR(100), PRIMARY KEY (employee_id));"
+        description: "Table with an integer primary key."
+    related: ["FOREIGN KEY", "UNIQUE", "CREATE INDEX", "NOT NULL"]
+
+  - name: "FOREIGN KEY"
+    category: "constraint"
+    description: |
+      A FOREIGN KEY enforces referential integrity by ensuring that values in a column (or set of columns)
+      match values in the primary key or unique key of another table. ON DELETE CASCADE and ON UPDATE CASCADE
+      control what happens when the referenced row is modified or deleted.
+    one_sentence: "FOREIGN KEY enforces referential integrity by requiring column values to exist in a referenced parent table."
+    syntax: |
+      CREATE TABLE orders (
+        order_id INTEGER PRIMARY KEY,
+        customer_id INTEGER,
+        CONSTRAINT fk_orders_customer FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
+      );
+    null_behavior: "A NULL value in a FK column is allowed and does not violate the constraint (it means 'no parent')."
+    performance_tips:
+      - "Index FK columns in the child table for efficient JOIN and CASCADE performance."
+    common_errors:
+      - error: "FK violation on insert"
+        cause: "Referenced parent row does not exist."
+        solution: "Insert the parent row first, or defer constraint checking."
+    examples:
+      - sql: "ALTER TABLE orders ADD CONSTRAINT fk_cust FOREIGN KEY (customer_id) REFERENCES customers(customer_id);"
+        description: "Add a foreign key to link orders to customers."
+    related: ["PRIMARY KEY", "UNIQUE", "ON DELETE CASCADE"]
+
+  # ==========================================================================
+  # Transactions
+  # ==========================================================================
+
+  - name: "COMMIT / ROLLBACK"
+    category: "transaction"
+    description: |
+      COMMIT makes all changes in the current transaction permanent. ROLLBACK undoes all changes
+      since the last COMMIT or SAVEPOINT. Transactions are the mechanism for ensuring ACID properties.
+    one_sentence: "COMMIT saves transaction changes permanently; ROLLBACK undoes them back to the previous commit point."
+    syntax: "BEGIN TRANSACTION;  ... DML ...;  COMMIT;  -- or ROLLBACK;"
+    null_behavior: "Not applicable to NULL handling."
+    performance_tips:
+      - "Keep transactions short to minimize lock duration and reduce contention."
+      - "Large transactions hold locks on all modified rows; batch updates and commit periodically."
+    common_errors:
+      - error: "Changes visible to other sessions before COMMIT"
+        cause: "Transaction isolation level allows dirty reads."
+        solution: "Use READ COMMITTED or higher isolation level."
+    examples:
+      - sql: "BEGIN TRANSACTION; UPDATE accounts SET balance = balance - 100 WHERE id = 1; UPDATE accounts SET balance = balance + 100 WHERE id = 2; COMMIT;"
+        description: "Atomic bank transfer — both updates succeed or both roll back."
+    related: ["SAVEPOINT", "ROLLBACK", "ISOLATION LEVELS", "ACID"]
+
+  - name: "SAVEPOINT"
+    category: "transaction"
+    description: |
+      SAVEPOINT creates a named marker within a transaction to which a partial ROLLBACK can be issued.
+      This allows fine-grained recovery without aborting the entire transaction.
+    one_sentence: "SAVEPOINT marks a point within a transaction that a partial ROLLBACK can revert to without undoing earlier work."
+    syntax: "SAVEPOINT sp_name; ... DML ...; ROLLBACK TO SAVEPOINT sp_name; ... COMMIT;"
+    null_behavior: "Not applicable."
+    performance_tips:
+      - "Use savepoints for long transactions where partial failure recovery is needed."
+    common_errors:
+      - error: "ROLLBACK TO SAVEPOINT does not release locks"
+        cause: "Rows locked before the savepoint remain locked until COMMIT or full ROLLBACK."
+        solution: "Design transactions to minimise lock duration; commit as soon as possible."
+    examples:
+      - sql: "SAVEPOINT after_inserts; UPDATE products SET price = price * 0.9; ROLLBACK TO SAVEPOINT after_inserts; COMMIT;"
+        description: "Roll back only the price update while keeping the previous inserts."
+    related: ["COMMIT", "ROLLBACK", "BEGIN TRANSACTION"]
+
+  # ==========================================================================
+  # Performance / analysis
+  # ==========================================================================
+
+  - name: "EXPLAIN PLAN"
+    category: "performance"
+    description: |
+      EXPLAIN (PostgreSQL, MySQL, SQLite) or EXPLAIN PLAN (Oracle, Teradata) shows how the database
+      engine plans to execute a query: join strategies, access paths, estimated costs, and row counts.
+      It is the primary tool for identifying and resolving performance bottlenecks.
+    one_sentence: "EXPLAIN PLAN shows the execution plan for a query including join methods, access paths, and estimated costs."
+    syntax: |
+      EXPLAIN SELECT ...;               -- PostgreSQL / MySQL
+      EXPLAIN PLAN FOR SELECT ...;      -- Oracle
+      EXPLAIN SELECT ...;               -- Teradata
+    null_behavior: "Not applicable."
+    performance_tips:
+      - "Look for full table scans (Seq Scan / Table Scan) on large tables as optimization targets."
+      - "High estimated rows vs actual rows indicates stale statistics; run COLLECT STATISTICS."
+      - "Nested loop joins on large tables indicate missing indexes."
+    common_errors:
+      - error: "EXPLAIN shows different plan than actual execution"
+        cause: "Statistics are stale; estimated row counts are wrong."
+        solution: "Run COLLECT STATISTICS (Teradata) or ANALYZE (PostgreSQL) to refresh statistics."
+    examples:
+      - sql: "EXPLAIN SELECT * FROM orders o JOIN customers c ON o.customer_id = c.customer_id WHERE o.status = 'PENDING';"
+        description: "View the execution plan for a filtered join to identify index usage."
+    related: ["COLLECT STATISTICS", "CREATE INDEX", "QUERY OPTIMIZATION"]
+
+  - name: "COLLECT STATISTICS"
+    category: "teradata"
+    description: |
+      COLLECT STATISTICS (Teradata) gathers column-level histogram data that the optimizer uses to
+      estimate row counts and choose the best execution plan. Without up-to-date statistics,
+      the optimizer makes poor join-order, join-type, and spool allocation decisions.
+    one_sentence: "COLLECT STATISTICS gathers column statistics to help the Teradata optimizer generate efficient execution plans."
+    syntax: |
+      COLLECT STATISTICS COLUMN (col1) ON table_name;
+      COLLECT STATISTICS ON table_name;  -- all columns
+    null_behavior: "NULL values are counted and included in the statistics histogram as a distinct value."
+    performance_tips:
+      - "Collect statistics on all join columns, GROUP BY columns, and high-filter WHERE columns."
+      - "Re-collect after large data loads; stale statistics lead to poor plan choices."
+      - "Use SUMMARY statistics for very large columns where full histogram is too expensive."
+    common_errors:
+      - error: "Query suddenly slow after data load"
+        cause: "Statistics haven't been refreshed and the optimizer underestimates row counts."
+        solution: "Run COLLECT STATISTICS on the affected table's key columns."
+    examples:
+      - sql: "COLLECT STATISTICS COLUMN (customer_id, order_date) ON orders;"
+        description: "Update statistics on the most important filter and join columns."
+    related: ["EXPLAIN PLAN", "CREATE INDEX", "QUERY OPTIMIZATION", "PRIMARY INDEX"]
+
+  - name: "PRIMARY INDEX (Teradata)"
+    category: "teradata"
+    description: |
+      In Teradata, the Primary Index (PI) determines how rows are distributed across AMPs (Access Module Processors).
+      A well-chosen PI ensures even data distribution and enables efficient row-hash joins.
+      A poor PI choice causes skew — some AMPs hold far more rows than others, creating bottlenecks.
+    one_sentence: "The Teradata Primary Index determines how rows are distributed across AMPs and enables row-hash joins."
+    syntax: |
+      CREATE TABLE t (col1 INTEGER, col2 VARCHAR(100)) PRIMARY INDEX (col1);
+      CREATE TABLE t (col1 INTEGER, col2 VARCHAR(100)) NO PRIMARY INDEX;  -- random distribution
+    null_behavior: "NULL PI values hash to the same AMP, potentially causing NULL skew."
+    performance_tips:
+      - "Choose a PI column with high cardinality and frequent use in join conditions."
+      - "Avoid nullable PI columns; NULL values all hash to one AMP causing skew."
+      - "Use a Unique Primary Index (UPI) when the column uniquely identifies each row."
+    common_errors:
+      - error: "Data skew — one AMP much larger than others"
+        cause: "PI column has low cardinality or many NULL values."
+        solution: "Use a composite PI: PRIMARY INDEX (col1, col2) to increase hash diversity."
+    examples:
+      - sql: "CREATE TABLE orders (order_id INTEGER NOT NULL, customer_id INTEGER NOT NULL, ...) PRIMARY INDEX (customer_id);"
+        description: "Distribute orders by customer_id so all orders for a customer hash to the same AMP."
+    related: ["COLLECT STATISTICS", "EXPLAIN PLAN", "PARTITION BY", "CREATE TABLE"]
+
+  # ==========================================================================
+  # NULL handling extensions
+  # ==========================================================================
+
+  - name: "COALESCE / NVL"
+    category: "null"
+    description: |
+      NVL(expr, replacement) is the Oracle and Teradata equivalent of COALESCE with exactly two arguments.
+      COALESCE is the ANSI SQL standard and accepts any number of arguments.
+      Both return the first non-NULL value.
+    one_sentence: "NVL returns a replacement value when the first argument is NULL; COALESCE extends this to any number of arguments."
+    syntax: |
+      NVL(expr, replacement)
+      COALESCE(expr1, expr2 [, expr3 ...])
+    null_behavior: "If all arguments are NULL, both return NULL."
+    performance_tips:
+      - "COALESCE is preferred over NVL for portability across SQL dialects."
+    common_errors:
+      - error: "Mixing NVL and COALESCE in the same codebase"
+        cause: "Different developers using different dialects."
+        solution: "Standardize on COALESCE for ANSI compatibility."
+    examples:
+      - sql: "SELECT customer_id, COALESCE(email, phone, 'No contact') AS contact FROM customers;"
+        description: "Return the first available contact method, defaulting to a literal."
+    related: ["NULLIF", "CASE WHEN", "IS NULL"]
+
+  # ==========================================================================
+  # Special / misc
+  # ==========================================================================
+
+  - name: "NORMALIZE (Teradata)"
+    category: "teradata"
+    description: |
+      NORMALIZE (or NORMALIZE ON MEETS OR OVERLAPS) in Teradata merges adjacent or overlapping
+      period rows into a single contiguous row. It simplifies queries on temporal data stored as
+      (start_date, end_date) pairs.
+    one_sentence: "NORMALIZE merges adjacent or overlapping date-period rows into a single continuous row per entity."
+    syntax: "SELECT customer_id, NORMALIZE ON MEETS OR OVERLAPS (valid_start, valid_end) FROM history;"
+    null_behavior: "NULL start or end dates in period rows may cause unexpected results; validate data before normalizing."
+    performance_tips:
+      - "NORMALIZE requires sorting by the period column; index the start date for performance."
+    common_errors:
+      - error: "NORMALIZE creates unexpected single-row output for non-contiguous periods"
+        cause: "Gaps between period rows are not merged; only meetings and overlaps are combined."
+        solution: "Check for intended vs unintended gaps in the temporal data before normalization."
+    examples:
+      - sql: "SELECT customer_id, NORMALIZE ON MEETS OR OVERLAPS (membership_start, membership_end) FROM membership_history;"
+        description: "Merge consecutive membership periods for each customer."
+    related: ["PERIOD", "SEQUENCED", "TEMPORAL TABLE", "BEGIN", "END"]
+
+  - name: "SAMPLE"
+    category: "teradata"
+    description: |
+      SAMPLE returns a random subset of rows from a table. It is useful for quick exploration,
+      testing, and building ML training/validation sets without a full table scan.
+    one_sentence: "SAMPLE returns a random subset of rows from a table, useful for data exploration and sampling strategies."
+    syntax: |
+      SELECT * FROM table_name SAMPLE 1000;        -- absolute row count
+      SELECT * FROM table_name SAMPLE 10 PERCENT;  -- percentage
+    null_behavior: "NULL values are included in the sample like any other value."
+    performance_tips:
+      - "SAMPLE does not guarantee row count exactly equal to requested rows (row-based sampling uses probabilistic selection)."
+      - "Combine SAMPLE with PARTITION BY col for stratified sampling."
+    common_errors:
+      - error: "Non-reproducible sample results between runs"
+        cause: "SAMPLE uses a random seed that changes per execution."
+        solution: "Store the sample in a temp table for reusable, consistent results."
+    examples:
+      - sql: "SELECT * FROM customer_transactions SAMPLE 5000;"
+        description: "Get approximately 5,000 random transaction rows for exploratory analysis."
+    related: ["SELECT", "TOP", "RANDOM", "ORDER BY"]

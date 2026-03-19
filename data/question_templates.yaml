@@ -1,0 +1,269 @@
+# question_templates.yaml
+#
+# All question variants used when generating training Q&A pairs.
+# Edit this file to add, remove, or rephrase questions — no Python code changes needed.
+#
+# Placeholder: {fn} is replaced with the topic/function/section name from the source document.
+#
+# Sections:
+#   technical  — SQL functions, APIs, software documentation, technical manuals
+#   general    — Textbooks, articles, prose manuals, any non-technical document
+#   financial  — Bank statements, financial reports, invoices, accounting documents
+
+# ---------------------------------------------------------------------------
+# technical — SQL / function / software documentation
+# ---------------------------------------------------------------------------
+technical:
+
+  description:
+    - "What is {fn}?"
+    - "What does {fn} do?"
+    - "Explain {fn} to me."
+    - "What problem does {fn} solve?"
+    - "How would you describe {fn} to a new analyst?"
+    - "Why would someone use {fn}?"
+    - "What is the purpose of {fn}?"
+
+  one_sentence:
+    - "Define {fn} in one sentence."
+    - "Give me a brief one-line description of {fn}."
+    - "Summarize {fn} in a single sentence."
+    - "What is {fn} in plain English?"
+
+  category:
+    - "What category of SQL function is {fn}?"
+    - "What type of SQL function is {fn}?"
+    - "Is {fn} an analytic function, aggregate function, or something else?"
+    - "How is {fn} classified in SQL?"
+
+  use_case:
+    - "What are the use cases for {fn}?"
+    - "What problems can {fn} solve?"
+    - "In what scenarios is {fn} most useful?"
+    - "When should I use {fn}?"
+    - "What type of analysis does {fn} support?"
+    - "What kinds of questions can {fn} answer?"
+    - "Give me some examples of when to use {fn}."
+    - "What business problems is {fn} designed for?"
+    - "What are real-world applications of {fn}?"
+
+  parameter:
+    - "What are the parameters for {fn}?"
+    - "What inputs does {fn} require?"
+    - "What configuration does {fn} need?"
+    - "List the parameters accepted by {fn}."
+    - "What do I need to specify to call {fn}?"
+
+  syntax:
+    - "What is the syntax for {fn}?"
+    - "What are the required vs optional clauses in {fn}?"
+    - "Which keyword is mandatory in {fn} syntax?"
+    - "What is the minimum valid {fn} expression?"
+    - "How do you write a {fn} expression in SQL?"
+    - "Show me the {fn} SQL syntax."
+    - "What does a basic {fn} query look like?"
+    - "What clauses does {fn} use?"
+
+  argument:
+    - "What are the arguments to {fn}?"
+    - "What parameters does {fn} accept?"
+    - "Which arguments to {fn} are required?"
+    - "What is the default behavior when an optional argument is omitted from {fn}?"
+    - "What data type must be passed to {fn}?"
+    - "Can {fn} accept NULL values in its arguments?"
+    - "What happens if you pass invalid input to {fn}?"
+    - "How many arguments does {fn} require at minimum?"
+
+  notes:
+    - "What are the usage notes for {fn}?"
+    - "What are the prerequisites for {fn}?"
+    - "Are there any gotchas or restrictions when using {fn}?"
+    - "What are the performance implications of {fn}?"
+    - "Does {fn} support NULL values?"
+    - "What are the ordering requirements for {fn}?"
+    - "Can {fn} be nested inside another function?"
+    - "What data types does {fn} work with?"
+    - "What should I watch out for when using {fn}?"
+    - "What are the limitations of {fn}?"
+
+  example:
+    - "Show me a complete example of {fn} with input and output."
+    - "What is the purpose of this {fn} example?"
+    - "How would you modify this {fn} example to change the output?"
+    - "What are the key SQL clauses in this {fn} example?"
+    - "Explain the SQL logic in this {fn} example."
+    - "What would happen if you changed the ORDER BY in this {fn} example?"
+    - "Write a SQL query using {fn}."
+    - "Give me a real-world example of {fn}."
+    - "Walk me through this {fn} example step by step."
+    - "What is the expected output of this {fn} example?"
+
+  null_behavior:
+    - "How does {fn} handle NULL values?"
+    - "What happens when NULL is passed to {fn}?"
+    - "Does {fn} return NULL if any input is NULL?"
+    - "What is the NULL handling behavior of {fn}?"
+    - "Can {fn} produce NULL in its output? When?"
+    - "How do NULLs affect the result of {fn}?"
+    - "What should I watch out for with NULLs and {fn}?"
+    - "Does {fn} propagate NULLs or ignore them?"
+    - "What is the difference between {fn} returning NULL vs returning 0?"
+    - "How do I handle NULL values when using {fn}?"
+    - "Will {fn} throw an error on NULL input?"
+    - "Does {fn} include or exclude rows where the input is NULL?"
+    - "How do I make {fn} treat NULL as zero?"
+    - "What does {fn} return when all inputs are NULL?"
+    - "How does {fn} interact with COALESCE or NVL?"
+
+  performance:
+    - "How do I optimize {fn} for large datasets?"
+    - "What are the performance tips for {fn}?"
+    - "What makes {fn} slow?"
+    - "How does data volume affect {fn} performance?"
+    - "What indexes or statistics help {fn} run faster?"
+    - "How can I reduce I/O when using {fn}?"
+    - "What are the worst-case performance scenarios for {fn}?"
+    - "How does {fn} behave on a table with millions of rows?"
+    - "What execution plan does {fn} typically generate?"
+    - "When should I avoid {fn} for performance reasons?"
+    - "What is the time complexity of {fn}?"
+    - "How does {fn} scale with increasing row count?"
+    - "How can I use EXPLAIN PLAN to diagnose a slow {fn} query?"
+    - "What query hints improve {fn} performance?"
+    - "Does {fn} benefit from partitioning or sorting?"
+    - "How do I measure the cost of {fn} in a query?"
+    - "What is the memory footprint of {fn} for large windows?"
+    - "Is {fn} more efficient than its common alternatives?"
+
+  error_troubleshoot:
+    - "What are common errors when using {fn}?"
+    - "Why does my {fn} query fail?"
+    - "How do I troubleshoot {fn} issues?"
+    - "What error does {fn} produce when the input is invalid?"
+    - "Why am I getting no results from {fn}?"
+    - "What causes {fn} to return unexpected results?"
+    - "How do I debug a failing {fn} query?"
+    - "What are the most common mistakes with {fn}?"
+    - "What should I check first when {fn} gives wrong results?"
+    - "What syntax errors should I avoid with {fn}?"
+    - "What data issues cause {fn} to fail silently?"
+    - "How do I fix an ambiguous column error in a {fn} query?"
+    - "What does a {fn} error message mean?"
+    - "Why does {fn} return NULL when I expect a value?"
+    - "What are the edge cases that break {fn}?"
+    - "How do I verify that my {fn} logic is correct?"
+    - "What test cases should I write to validate {fn} behavior?"
+
+  comparison:
+    - "How does {fn} differ from {related}?"
+    - "What is the difference between {fn} and {related}?"
+    - "When should I use {fn} instead of {related}?"
+    - "Is {fn} better than {related} for my use case?"
+    - "Can {fn} replace {related} in all situations?"
+    - "What does {fn} do that {related} cannot?"
+    - "What does {related} do that {fn} cannot?"
+    - "Which is faster: {fn} or {related}?"
+    - "What are the trade-offs between {fn} and {related}?"
+    - "In what scenarios is {fn} preferable to {related}?"
+    - "How do the syntax requirements of {fn} and {related} compare?"
+    - "How do {fn} and {related} handle NULL values differently?"
+
+# ---------------------------------------------------------------------------
+# general — Textbooks, prose manuals, articles, non-technical documents
+# ---------------------------------------------------------------------------
+general:
+
+  overview:
+    - "What is {fn}?"
+    - "What does {fn} cover?"
+    - "Summarize {fn}."
+    - "Give me an overview of {fn}."
+    - "What are the main topics in {fn}?"
+    - "What is the purpose of {fn}?"
+    - "How would you explain {fn} to someone unfamiliar with it?"
+    - "What is the scope of {fn}?"
+    - "What does this section say about {fn}?"
+
+  key_concepts:
+    - "What are the key concepts in {fn}?"
+    - "What are the most important ideas in {fn}?"
+    - "What terms are defined in {fn}?"
+    - "What is the central idea of {fn}?"
+    - "What principles does {fn} establish?"
+    - "What definitions are provided for {fn}?"
+    - "What is the foundational concept behind {fn}?"
+
+  detail:
+    - "Explain {fn} in detail."
+    - "How does {fn} work?"
+    - "Walk me through {fn} step by step."
+    - "What are the components of {fn}?"
+    - "What factors affect {fn}?"
+    - "What conditions apply to {fn}?"
+    - "What are the parts of {fn}?"
+    - "Describe the process of {fn}."
+
+  comparison:
+    - "How does {fn} differ from other approaches?"
+    - "What makes {fn} unique?"
+    - "What are the advantages of {fn}?"
+    - "What are the disadvantages of {fn}?"
+    - "When would you choose {fn} over alternatives?"
+    - "What are the trade-offs involved in {fn}?"
+
+  application:
+    - "How is {fn} used in practice?"
+    - "Give an example of {fn}."
+    - "What is a real-world application of {fn}?"
+    - "In what situations does {fn} apply?"
+    - "What can I do with {fn}?"
+    - "How would someone apply {fn}?"
+
+  causes_effects:
+    - "What causes {fn}?"
+    - "What are the consequences of {fn}?"
+    - "What leads to {fn}?"
+    - "What results from {fn}?"
+    - "What are the effects of {fn}?"
+
+  requirements:
+    - "What are the requirements for {fn}?"
+    - "What is needed for {fn}?"
+    - "What must be true for {fn} to apply?"
+    - "What are the conditions for {fn}?"
+
+# ---------------------------------------------------------------------------
+# financial — Bank statements, financial reports, invoices
+# ---------------------------------------------------------------------------
+financial:
+
+  transaction:
+    - "What transactions appear in {fn}?"
+    - "What is the total amount of transactions in {fn}?"
+    - "What are the debit entries in {fn}?"
+    - "What are the credit entries in {fn}?"
+    - "What is the largest transaction in {fn}?"
+    - "What recurring transactions appear in {fn}?"
+    - "Which transactions reduced the balance in {fn}?"
+    - "Which transactions increased the balance in {fn}?"
+    - "What were the most frequent transaction types in {fn}?"
+
+  account_summary:
+    - "What is the opening balance in {fn}?"
+    - "What is the closing balance in {fn}?"
+    - "What is the net change in {fn}?"
+    - "What is the total of all deposits in {fn}?"
+    - "What is the total of all withdrawals in {fn}?"
+    - "What period does {fn} cover?"
+    - "What account does {fn} belong to?"
+    - "What is the account number shown in {fn}?"
+
+  analysis:
+    - "What spending categories appear in {fn}?"
+    - "Which merchant received the most payments in {fn}?"
+    - "What is the average transaction amount in {fn}?"
+    - "Are there any unusual or large transactions in {fn}?"
+    - "What fees were charged in {fn}?"
+    - "What interest was applied in {fn}?"
+    - "How does spending in {fn} compare to the previous period?"
+    - "What percentage of transactions in {fn} are recurring?"

@@ -1,0 +1,1365 @@
+# financial_vocabulary.yaml
+#
+# Structured financial domain knowledge base for combinatorial Q&A generation.
+# Each entry is expanded against question_templates.yaml (financial + general sections)
+# to produce hundreds to thousands of Q&A pairs per topic.
+#
+# Fields per entry:
+#   name           — canonical term (used as {fn} placeholder)
+#   category       — topic grouping
+#   description    — multi-sentence explanation (used as answer for overview/detail questions)
+#   one_sentence   — single-line summary (used as answer for one_sentence questions)
+#   examples       — list of {scenario, description} pairs
+#   related        — list of related topic names (drives comparison Q&A)
+#   null_behavior  — how missing/unknown values are handled
+#   common_errors  — list of {error, cause, solution}
+#   analysis_notes — analyst tips and important caveats
+#
+# To add a new topic: copy any existing entry block, edit fields, and re-run the pipeline.
+
+metadata:
+  domain: financial
+  version: "1.0"
+  description: "Financial documents — bank statements, reports, invoices, accounting records"
+
+# ---------------------------------------------------------------------------
+# Transaction Types
+# ---------------------------------------------------------------------------
+
+transactions:
+
+  - name: ACH Transfer
+    category: transaction_type
+    description: >
+      An ACH (Automated Clearing House) transfer is an electronic funds transfer processed through the
+      ACH network, a batch-processing system that handles billions of transactions daily in the United
+      States. ACH transfers include direct deposits, payroll disbursements, bill payments, and peer-to-peer
+      transfers. Transactions are batched and settled in windows throughout the business day, typically
+      same-day or next-day. ACH credits add funds to an account; ACH debits pull funds from an account.
+    one_sentence: >
+      An ACH transfer is an electronic funds movement through the US Automated Clearing House network,
+      used for direct deposits and bill payments with same-day or next-day settlement.
+    examples:
+      - scenario: Payroll direct deposit
+        description: >
+          An employer submits payroll as ACH credits. Employees see "ACH CR PAYROLL" entries on their
+          statements with the employer name and net pay amount credited to their accounts.
+      - scenario: Utility bill autopay
+        description: >
+          A customer authorizes a utility company to pull payment monthly. The statement shows
+          "ACH DR UTILITY CO" with the bill amount debited on the due date.
+      - scenario: P2P transfer via mobile app
+        description: >
+          A Venmo or Zelle transfer settles via ACH. The statement shows "ACH CR VENMO" or
+          "ACH CR ZELLE" with the sender's name and amount.
+    related:
+      - Wire Transfer
+      - Direct Deposit
+      - Bill Payment
+      - EFT
+    null_behavior: >
+      ACH transactions always carry an amount, originator ID, and transaction code. If the originator
+      name is missing in bank data, the raw ACH trace number may appear instead. Missing settlement
+      dates indicate a pending or returned transaction.
+    common_errors:
+      - error: Returned ACH (R01)
+        cause: Insufficient funds in the originating account
+        solution: Verify account balance before initiating debit; retry after funds are available
+      - error: Invalid account number (R03/R04)
+        cause: Account number does not exist or does not match account type
+        solution: Confirm routing and account numbers with the account holder
+      - error: Authorization revoked (R07)
+        cause: Account holder revoked the debit authorization
+        solution: Obtain fresh authorization before re-initiating the transaction
+      - error: Duplicate transaction
+        cause: Same batch submitted twice
+        solution: Use unique trace IDs and check batch status before resubmitting
+    analysis_notes: >
+      ACH fees are typically $0.20–$1.50 per transaction for businesses, much lower than wire transfers.
+      Same-day ACH is available for an additional fee. Watch for R-codes (return codes) in statements
+      as they indicate failed transactions and may signal fraud or account issues.
+
+  - name: Wire Transfer
+    category: transaction_type
+    description: >
+      A wire transfer is a real-time electronic funds transfer sent directly between financial institutions
+      through networks such as Fedwire (domestic US), SWIFT (international), or CHIPS. Unlike ACH,
+      wire transfers settle individually and immediately — funds are typically available within hours.
+      Domestic wires typically cost $15–$30 for outgoing and $10–$15 for incoming. International wires
+      carry additional SWIFT fees and may involve correspondent bank charges. Wire transfers are
+      irrevocable once sent.
+    one_sentence: >
+      A wire transfer is a real-time, irrevocable electronic funds movement between banks, settling
+      individually within hours via Fedwire or SWIFT.
+    examples:
+      - scenario: Real estate closing payment
+        description: >
+          A buyer wires a down payment to an escrow account. The statement shows "OUTGOING WIRE
+          TRANSFER" with the receiving bank, beneficiary name, and amount, plus a wire fee.
+      - scenario: International supplier payment
+        description: >
+          A business pays an overseas vendor. The statement shows "INTL WIRE TRANSFER" with the
+          SWIFT BIC, correspondent bank fees deducted, and the net amount received by the beneficiary.
+    related:
+      - ACH Transfer
+      - SWIFT Transfer
+      - Fedwire
+      - Correspondent Banking
+    null_behavior: >
+      Wire transfers always have sender, receiver, amount, and timestamp. Missing beneficiary information
+      indicates a failed or pending wire. FX conversion rate may be absent for domestic wires.
+    common_errors:
+      - error: Incorrect beneficiary account number
+        cause: Typographical error in account or routing number
+        solution: Double-check all wire details before submission; verify with the receiving party
+      - error: SWIFT code mismatch
+        cause: SWIFT BIC does not match the beneficiary bank
+        solution: Use the exact SWIFT code from the beneficiary bank's official records
+      - error: Wire returned
+        cause: Beneficiary account closed, incorrect details, or compliance hold
+        solution: Contact receiving bank for return reason code and correct information
+    analysis_notes: >
+      Wire transfers are the highest-value, highest-risk transaction type. Monitor for unusual wire
+      activity, especially large outgoing wires to new recipients, as these are a common vector for
+      business email compromise (BEC) fraud. Same-day finality means errors cannot be reversed easily.
+
+  - name: Direct Deposit
+    category: transaction_type
+    description: >
+      A direct deposit is an ACH credit transaction where funds are electronically deposited into a
+      recipient's bank account by an employer, government agency, or benefits provider. Common direct
+      deposit sources include payroll, Social Security benefits, tax refunds, and pension distributions.
+      Direct deposits typically appear on statements the morning of the pay date. The statement
+      description includes the originator's company name and the transaction amount.
+    one_sentence: >
+      A direct deposit is an ACH credit where an employer or government agency electronically sends
+      funds — such as payroll or benefits — directly into a bank account.
+    examples:
+      - scenario: Bi-weekly payroll
+        description: >
+          Employee is paid every two weeks. Statement shows "DIR DEP ACME CORP" on Fridays for the
+          net pay amount after tax withholdings.
+      - scenario: Social Security benefit
+        description: >
+          Retiree receives monthly SSA benefit. Statement shows "SSA TREAS 310 XXSOC SEC" with the
+          benefit amount on the 3rd of each month.
+    related:
+      - ACH Transfer
+      - Payroll
+      - Benefits Payment
+    null_behavior: >
+      Direct deposits always include an amount and originator name. If amount shows zero, the entry
+      may be a prenote (test transaction sent before first live payroll to validate account).
+    common_errors:
+      - error: Prenote not processed
+        cause: Payroll provider sent a prenote but bank did not receive the live deposit
+        solution: Contact payroll provider to verify account setup and resubmit
+      - error: Deposit to wrong account
+        cause: Employee entered incorrect bank account or routing number
+        solution: Notify payroll department immediately; file an ACH return claim
+    analysis_notes: >
+      Direct deposit frequency and amount are strong indicators of income stability for credit
+      analysis. Gaps or amount reductions may indicate job change, furlough, or benefit changes.
+      Prenote transactions (zero-dollar ACH) appear before first live deposit.
+
+  - name: ATM Withdrawal
+    category: transaction_type
+    description: >
+      An ATM withdrawal is a cash disbursement made by the account holder at an automated teller machine.
+      Withdrawals from the account holder's own bank network are typically free; out-of-network ATM
+      withdrawals incur a fee from both the ATM operator and the account holder's bank, typically $2.50–$5.00
+      combined. The transaction appears on the statement with the ATM location, date, and amount. Daily
+      withdrawal limits (typically $300–$1,000) apply for security reasons.
+    one_sentence: >
+      An ATM withdrawal is a cash disbursement from a bank account via an automated teller machine,
+      with potential fees for out-of-network machines.
+    examples:
+      - scenario: In-network ATM withdrawal
+        description: >
+          Account holder withdraws $200 at their bank's ATM. Statement shows "ATM WITHDRAWAL BRANCH
+          MAIN ST" with -$200. No fee charged.
+      - scenario: Out-of-network ATM
+        description: >
+          Account holder withdraws $100 at a third-party ATM. Statement shows "-$100.00 ATM
+          WITHDRAWAL" plus a "-$3.00 ATM FEE" on the same date.
+    related:
+      - Cash Advance
+      - Debit Card Purchase
+      - ATM Fee
+    null_behavior: >
+      ATM withdrawals always carry amount and location. Missing location indicates a cardless ATM
+      transaction or a data aggregation issue.
+    common_errors:
+      - error: Daily limit exceeded
+        cause: Multiple withdrawals or a single large withdrawal over the daily limit
+        solution: Request a temporary limit increase from the bank or use multiple days
+      - error: Duplicate charge
+        cause: ATM machine malfunction causing double-posting
+        solution: File a dispute with the bank; ATM balancing will confirm the overage
+    analysis_notes: >
+      Frequent ATM withdrawals for large cash amounts may indicate cash-intensive spending habits
+      or financial stress. ATM fees add up significantly over a year — $5/transaction × 52 weeks
+      = $260 in annual ATM fees at weekly withdrawal frequency.
+
+  - name: POS Purchase
+    category: transaction_type
+    description: >
+      A POS (Point of Sale) purchase is a debit or credit card transaction made at a merchant's payment
+      terminal, whether in-store or online. The transaction shows the merchant name, date, and amount.
+      POS debit transactions may show as "POS DEBIT" or "DEBIT CARD PURCHASE." Pending authorizations
+      may appear before the transaction fully clears (typically 1–3 business days for debit). Online
+      POS transactions may show as "ONLINE PURCHASE" or "ECOMM."
+    one_sentence: >
+      A POS purchase is a card payment made at a merchant terminal or online, debiting the account
+      directly for debit cards or creating a credit balance for credit cards.
+    examples:
+      - scenario: Grocery store purchase
+        description: >
+          Account holder buys groceries for $87.43. Statement shows "POS DEBIT WHOLE FOODS MKT
+          2024-01-15 -$87.43."
+      - scenario: Online subscription
+        description: >
+          Monthly streaming service charge. Statement shows "ECOMM NETFLIX.COM -$15.99" on the
+          billing date.
+    related:
+      - Debit Card
+      - Credit Card Purchase
+      - Merchant Payment
+      - ATM Withdrawal
+    null_behavior: >
+      POS transactions always carry merchant name and amount. Category codes (MCC) may be absent for
+      some merchants, making automated categorization difficult.
+    common_errors:
+      - error: Pending authorization not cleared
+        cause: Merchant authorized more than final purchase (e.g., gas stations, hotels)
+        solution: Wait for final settlement; dispute only if incorrect amount posts after 5 days
+      - error: Duplicate charge
+        cause: Merchant terminal submitted the transaction twice
+        solution: Contact merchant first; file card dispute if merchant cannot resolve
+    analysis_notes: >
+      Merchant Category Codes (MCC) on POS transactions enable spending categorization. Gas stations
+      (MCC 5541/5542) often pre-authorize $1 then settle the actual amount, creating temporary holds.
+      Subscription merchants typically charge on the same day each month.
+
+  - name: Check Payment
+    category: transaction_type
+    description: >
+      A check payment is a paper instrument drawn on an account directing the bank to pay a specified
+      amount to a named payee. Checks are processed through the Federal Reserve's check-clearing system
+      or via electronic check conversion (ECC). The statement shows the check number, amount, and
+      clearing date. Cancelled checks (images) are typically available for 7 years. Stop payments
+      can be placed on checks that haven't cleared yet.
+    one_sentence: >
+      A check payment is a paper or electronic instrument instructing the bank to pay a specific amount
+      to a named payee from the account holder's account.
+    examples:
+      - scenario: Rent payment by check
+        description: >
+          Tenant writes a check for $1,500 rent. Statement shows "CHECK #1042 -$1,500.00" when the
+          landlord deposits it, typically within 2–5 days.
+      - scenario: Electronic check conversion
+        description: >
+          A paper check is converted to an ACH transaction at the merchant. Statement shows
+          "ACH DR CHECK CONVERSION" rather than a check number.
+    related:
+      - ACH Transfer
+      - Stop Payment
+      - NSF Fee
+      - Check Image
+    null_behavior: >
+      Cleared checks always show amount and clearing date. Missing check number indicates an
+      electronic conversion. A check may show as pending (float) before clearing.
+    common_errors:
+      - error: Returned check (NSF)
+        cause: Insufficient funds when check is presented for payment
+        solution: Ensure sufficient balance before issuing checks; set up overdraft protection
+      - error: Stale check presented
+        cause: Check older than 6 months presented for payment
+        solution: Banks may refuse stale checks; reissue a new check with current date
+    analysis_notes: >
+      Check usage has declined significantly, but large checks remain common for rent, tuition, and
+      real estate. Check fraud is a growing risk — monitor for checks to unfamiliar payees or amounts
+      inconsistent with the account holder's normal behavior.
+
+  - name: Bill Payment
+    category: transaction_type
+    description: >
+      A bill payment is a transaction initiated by the account holder to pay a recurring or one-time
+      bill, typically through online banking or a bank's bill pay service. Payments may be sent as ACH
+      transfers or as bank-issued checks. Online bill pay entries appear with the payee name and amount.
+      Scheduled bill payments appear as pending before their send date.
+    one_sentence: >
+      A bill payment is an account holder-initiated transfer through online banking to pay a vendor
+      or service provider, sent as ACH or a bank-issued check.
+    examples:
+      - scenario: Mortgage payment via bill pay
+        description: >
+          Account holder schedules a monthly mortgage payment. Statement shows "BILL PAYMENT
+          FIRST NATIONAL BANK -$2,150.00" on the scheduled date.
+      - scenario: Credit card payment
+        description: >
+          Account holder pays credit card balance. Statement shows "BILL PAYMENT CHASE CARD
+          -$543.00."
+    related:
+      - ACH Transfer
+      - Check Payment
+      - Recurring Payment
+    null_behavior: >
+      Bill payments always carry payee name and amount. Payment confirmation numbers may not appear
+      on statements but are tracked in bill pay history.
+    common_errors:
+      - error: Payment sent to wrong payee
+        cause: Incorrect account number or payee selected
+        solution: Contact bank immediately; bank may recall if payment not yet sent
+      - error: Duplicate payment
+        cause: Payment scheduled twice manually
+        solution: Review pending payments before scheduling; set up autopay to avoid manual errors
+    analysis_notes: >
+      Bill pay history is useful for confirming regular obligations like mortgage, utilities, and
+      insurance. Gaps in recurring bill payments may indicate financial stress or disputed bills.
+
+  - name: Zelle Transfer
+    category: transaction_type
+    description: >
+      Zelle is a real-time peer-to-peer payment network operated by Early Warning Services, owned by
+      major US banks. Transfers are initiated by mobile banking apps and settle in minutes directly
+      between bank accounts. Zelle transfers appear on statements as "ZELLE PAYMENT FROM [NAME]" for
+      incoming or "ZELLE PAYMENT TO [NAME]" for outgoing. There are no fees for standard Zelle transfers.
+      Zelle is integrated into most major US bank apps.
+    one_sentence: >
+      Zelle is a real-time P2P payment network settling transfers in minutes between US bank accounts
+      with no fees, accessed through mobile banking apps.
+    examples:
+      - scenario: Splitting a restaurant bill
+        description: >
+          Friend sends their share of dinner. Statement shows "ZELLE PAYMENT FROM JOHN SMITH +$32.50"
+          within minutes of sending.
+      - scenario: Paying a contractor
+        description: >
+          Homeowner pays a handyman. Statement shows "ZELLE PAYMENT TO MIKE JONES HANDYMAN -$250.00."
+    related:
+      - Venmo
+      - ACH Transfer
+      - P2P Payment
+      - PayPal
+    null_behavior: >
+      Zelle transfers always carry sender/recipient name and amount. Unlike ACH, there is no return
+      mechanism — funds sent to the wrong person are not recoverable through the bank.
+    common_errors:
+      - error: Sent to wrong recipient
+        cause: Selected wrong contact or entered incorrect phone/email
+        solution: Contact recipient immediately; Zelle does not reverse completed transfers
+      - error: Transfer limit exceeded
+        cause: Bank-specific daily or weekly limits for Zelle (typically $500–$2,500/day)
+        solution: Break into multiple transactions over multiple days or use wire transfer
+    analysis_notes: >
+      Zelle has become a major vector for authorized push payment (APP) fraud. Scammers posing as
+      banks or utilities trick account holders into sending Zelle payments. Monitor for large Zelle
+      outgoing transfers to first-time recipients.
+
+  - name: Venmo Payment
+    category: transaction_type
+    description: >
+      Venmo is a PayPal-owned P2P payment app popular for personal payments between individuals.
+      Transfers to/from a linked bank account appear on bank statements as ACH transactions with
+      "VENMO" in the description. Venmo has a social feed feature where transactions are visible to
+      friends by default. Instant transfers to a debit card incur a 1.75% fee; standard bank transfers
+      are free but take 1–3 business days.
+    one_sentence: >
+      Venmo is a P2P payment app settling via ACH to bank accounts, commonly used for personal
+      payments between individuals with a social activity feed.
+    examples:
+      - scenario: Splitting rent with roommates
+        description: >
+          Roommate sends their share of rent. Bank statement shows "ACH CR VENMO +$750.00" after
+          Venmo ACH settlement, typically next business day.
+      - scenario: Instant transfer to bank
+        description: >
+          User transfers Venmo balance to bank with instant option. Statement shows "ACH CR VENMO
+          -$1.75 FEE" and "+$98.25 NET" or similar.
+    related:
+      - Zelle
+      - PayPal
+      - ACH Transfer
+      - P2P Payment
+    null_behavior: >
+      Venmo bank transfers always carry amount and direction. Social memo notes do not appear on
+      bank statements — only the ACH descriptor.
+    common_errors:
+      - error: Payment to wrong Venmo user
+        cause: Username search returned wrong person with similar name
+        solution: Confirm Venmo username and profile photo before sending; contact Venmo support
+      - error: Delayed bank transfer
+        cause: Venmo ACH standard transfer takes 1–3 business days
+        solution: Use instant transfer option for urgent access (fee applies)
+    analysis_notes: >
+      Frequent large Venmo transfers to individuals (not businesses) may indicate informal income
+      or expense sharing. For credit analysis, Venmo income is informal and typically not counted
+      as verified income without additional documentation.
+
+  - name: Debit Card Transaction
+    category: transaction_type
+    description: >
+      A debit card transaction directly debits funds from the associated checking account at the time
+      of purchase. Transactions can be processed as signature debit (routed through Visa/Mastercard
+      networks) or PIN debit (routed through debit networks like Interlink or Maestro). Signature
+      debit may have a 1–2 day posting delay while PIN debit typically posts immediately. Debit card
+      numbers, expiration dates, and CVVs are different from the account number but linked to the account.
+    one_sentence: >
+      A debit card transaction debits the linked checking account directly at point of sale, processed
+      as signature debit (Visa/MC) or PIN debit (interbank networks).
+    examples:
+      - scenario: Grocery store PIN debit
+        description: >
+          Customer pays with debit card and enters PIN. Statement shows "DEBIT CARD PURCHASE
+          SAFEWAY -$123.45" posting same day.
+      - scenario: Online purchase (signature debit)
+        description: >
+          Customer uses debit card online without PIN. Statement shows "VISA DEBIT AMAZON.COM
+          -$59.99" with 1-day processing delay.
+    related:
+      - POS Purchase
+      - ATM Withdrawal
+      - Credit Card Purchase
+      - Check Payment
+    null_behavior: >
+      Debit transactions always carry merchant name and amount. Authorization holds (temporary debits)
+      appear before final settlement and resolve within 3–5 days.
+    common_errors:
+      - error: Authorization hold exceeding purchase amount
+        cause: Gas stations, hotels, and car rentals place holds larger than final charge
+        solution: Monitor holds; they release automatically within 3–5 days of final settlement
+      - error: Disputed transaction
+        cause: Unauthorized use of card number
+        solution: Report to bank immediately; debit card fraud protections require prompt reporting
+    analysis_notes: >
+      Debit card transactions provide granular spending data — merchant name, amount, and date.
+      Many banks categorize transactions using Merchant Category Codes (MCC) for spending analysis.
+      Debit fraud liability is higher than credit card fraud — report unauthorized transactions within
+      2 business days for maximum protection ($50 liability limit vs. $500 after 60 days).
+
+  - name: Credit Card Payment
+    category: transaction_type
+    description: >
+      A credit card payment is a transfer from a bank account to pay a credit card balance, either
+      as a minimum payment, full balance, or a specific amount. Payments appear on the bank statement
+      as outgoing transfers to the credit card issuer. The credit card statement separately tracks
+      purchases, fees, and interest. Common payment methods include online bill pay, autopay, and
+      bank transfer. Late payments incur fees and interest charges.
+    one_sentence: >
+      A credit card payment transfers funds from a bank account to a credit card issuer to reduce
+      the outstanding balance, avoiding or reducing interest charges.
+    examples:
+      - scenario: Full balance payment
+        description: >
+          Account holder pays credit card in full. Bank statement shows "BILL PAYMENT CHASE SAPPHIRE
+          -$1,243.00" on the due date. No interest charged this month.
+      - scenario: Minimum payment autopay
+        description: >
+          Autopay set to minimum payment. Bank statement shows "AUTOPAY CITI CARD -$25.00" on
+          statement date. Remaining balance accrues interest.
+    related:
+      - Bill Payment
+      - Credit Card Balance
+      - Autopay
+      - Interest Charge
+    null_behavior: >
+      Credit card payments always carry payee name and amount. If amount varies monthly, autopay
+      is set to statement balance or minimum due rather than a fixed amount.
+    common_errors:
+      - error: Payment made after due date
+        cause: Manual payment delayed or scheduled incorrectly
+        solution: Set up autopay for at least minimum payment to avoid late fees
+      - error: Payment bounced (NSF)
+        cause: Insufficient funds in bank account on autopay date
+        solution: Ensure account balance covers autopay amount; link a backup funding source
+    analysis_notes: >
+      Regular full credit card payments indicate responsible credit management and lower credit risk.
+      Minimum payments only with high balances suggest potential debt stress. Multiple credit card
+      payments per month to different issuers indicate a complex credit portfolio.
+
+# ---------------------------------------------------------------------------
+# Fee Types
+# ---------------------------------------------------------------------------
+
+fees:
+
+  - name: Monthly Maintenance Fee
+    category: fee_type
+    description: >
+      A monthly maintenance fee is a recurring charge for maintaining a bank account, typically ranging
+      from $5 to $25 per month depending on the account type and institution. Most banks waive the fee
+      if the account meets certain criteria such as minimum daily balance, minimum average monthly balance,
+      direct deposit of a specified amount, or holding additional qualifying products. Fee waivers are
+      applied automatically when criteria are met.
+    one_sentence: >
+      A monthly maintenance fee is a recurring bank account charge, typically $5–$25/month, waived
+      when account requirements like minimum balance or direct deposit are met.
+    examples:
+      - scenario: Fee charged due to low balance
+        description: >
+          Account fell below $1,500 minimum balance. Statement shows "MONTHLY SERVICE FEE -$12.00"
+          on the last business day of the month.
+      - scenario: Fee waived via direct deposit
+        description: >
+          Account received $500+ in direct deposits. Fee waiver applied automatically — no charge
+          appears on statement.
+    related:
+      - Minimum Balance
+      - Fee Waiver
+      - Account Maintenance
+    null_behavior: >
+      Monthly fees appear only when the waiver criteria are not met. Their absence on the statement
+      indicates the waiver was triggered.
+    common_errors:
+      - error: Unexpected fee after account change
+        cause: Account type changed (e.g., student to standard) without updating requirements
+        solution: Review account terms after any account type or product change
+    analysis_notes: >
+      Monthly fees over a year total $60–$300 for accounts that don't meet waiver criteria.
+      Consistent fee charges may indicate the account holder is unaware of waiver options or
+      is maintaining a below-minimum balance due to financial constraints.
+
+  - name: Overdraft Fee
+    category: fee_type
+    description: >
+      An overdraft fee is charged when a transaction causes an account balance to go negative and the
+      bank covers the transaction. Typical fees range from $25 to $37 per occurrence. Banks may limit
+      the number of overdraft fees per day (typically 3–6). Overdraft protection can link to a savings
+      account or line of credit to cover shortfalls automatically, often at lower cost. Opt-in is
+      required for ATM and debit card overdraft coverage.
+    one_sentence: >
+      An overdraft fee ($25–$37) is charged when a bank covers a transaction that would otherwise
+      overdraw an account, requiring opt-in for debit/ATM transactions.
+    examples:
+      - scenario: Check overdraft
+        description: >
+          A $500 check clears when the balance is $450. Bank pays the check and charges "-$35.00
+          OVERDRAFT FEE" on the same day.
+      - scenario: Multiple overdrafts in one day
+        description: >
+          Three transactions overdraw the account. Statement shows three separate "-$35.00 OVERDRAFT
+          FEE" entries up to the bank's daily maximum of 3 fees.
+    related:
+      - NSF Fee
+      - Overdraft Protection
+      - Returned Item Fee
+    null_behavior: >
+      Overdraft fees are linked to specific transactions. If the bank declines rather than covers the
+      transaction, an NSF (non-sufficient funds) fee is charged instead.
+    common_errors:
+      - error: Multiple fees from one overdraft event
+        cause: Sequential transactions when balance is negative each cause additional fees
+        solution: Deposit funds immediately after first overdraft; set up low-balance alerts
+      - error: Opt-in misunderstanding
+        cause: Customer opted in to debit overdraft coverage without realizing the fee
+        solution: Review opt-in status in account settings; consider opting out to have transactions declined
+    analysis_notes: >
+      Frequent overdraft fees are a strong indicator of financial stress and cash flow management
+      issues. Consumers paying $35+ per overdraft for small shortfalls are often in a cycle of
+      financial fragility. Regulators have pushed banks to reduce or eliminate overdraft fees.
+
+  - name: NSF Fee
+    category: fee_type
+    description: >
+      An NSF (Non-Sufficient Funds) fee is charged when the account lacks sufficient funds to cover
+      a transaction and the bank returns (bounces) the transaction unpaid rather than covering it.
+      Typical fees are $25–$36 per item. A returned check also typically causes the payee to charge
+      a returned check fee ($25–$50). NSF fees differ from overdraft fees in that the transaction is
+      declined rather than paid by the bank. NSF events are reported to ChexSystems.
+    one_sentence: >
+      An NSF fee is charged when the bank returns (bounces) a transaction due to insufficient funds
+      rather than covering it, distinct from an overdraft where the bank pays the shortfall.
+    examples:
+      - scenario: Bounced check
+        description: >
+          A check for $300 is returned because the balance is $200. Statement shows
+          "-$36.00 RETURNED ITEM FEE" and the original check debit reversal "+$300.00."
+      - scenario: Returned ACH
+        description: >
+          Scheduled ACH bill payment returned for NSF. Statement shows "-$25.00 RETURNED ITEM FEE"
+          and the ACH reversal. The payee may also charge a late fee.
+    related:
+      - Overdraft Fee
+      - Returned Item
+      - ChexSystems
+      - Check Payment
+    null_behavior: >
+      NSF fees are always paired with a reversal of the original transaction. A standalone NSF fee
+      without a corresponding reversal indicates a data error.
+    common_errors:
+      - error: NSF on automatic payment
+        cause: Account balance dropped before scheduled autopay date
+        solution: Set up balance alerts; maintain a buffer or link overdraft protection
+    analysis_notes: >
+      NSF fees reported to ChexSystems can make it difficult to open new bank accounts for up to
+      7 years. Multiple NSF events in a short period are a significant indicator of financial distress.
+
+  - name: ATM Fee
+    category: fee_type
+    description: >
+      ATM fees include two components: the surcharge fee charged by the ATM operator (typically $2.50–$5.00)
+      and the out-of-network fee charged by the account holder's bank (typically $2.50–$3.50). Together,
+      using an out-of-network ATM may cost $5–$8.50 per transaction. Some premium checking accounts
+      reimburse ATM fees up to a monthly limit. ATM fee amounts are disclosed at the terminal before
+      completing the transaction.
+    one_sentence: >
+      ATM fees consist of the operator surcharge ($2.50–$5.00) and the account holder's bank
+      out-of-network fee ($2.50–$3.50), totaling $5–$8.50 per out-of-network withdrawal.
+    examples:
+      - scenario: Out-of-network ATM withdrawal
+        description: >
+          Account holder uses a third-party ATM to withdraw $100. Statement shows two separate
+          line items: "-$100.00 ATM WITHDRAWAL" and "-$3.50 ATM FEE."
+      - scenario: International ATM
+        description: >
+          Account holder uses an ATM abroad. Statement shows "-€100.00 / -$118.50 ATM WITHDRAWAL"
+          plus "-$5.00 INTL ATM FEE" and "-$1.78 FOREIGN TRANSACTION FEE."
+    related:
+      - ATM Withdrawal
+      - Foreign Transaction Fee
+      - Out-of-Network
+    null_behavior: >
+      ATM fees always appear as separate line items from the withdrawal amount. If only one charge
+      appears, the bank may have waived their fee or the ATM operator waived the surcharge.
+    common_errors:
+      - error: Double fee for same ATM use
+        cause: Bank and operator fee both posted separately
+        solution: Expected behavior — both charges are valid and separate fee components
+    analysis_notes: >
+      A customer making weekly ATM withdrawals at $5/use pays $260/year in ATM fees. Premium accounts
+      that reimburse ATM fees can save significant amounts for frequent cash users.
+
+  - name: Foreign Transaction Fee
+    category: fee_type
+    description: >
+      A foreign transaction fee is a charge applied to purchases made in a foreign currency or processed
+      through a foreign bank, typically 1%–3% of the transaction amount. The fee covers currency conversion
+      costs and cross-border processing. Many travel-oriented credit and debit cards waive this fee.
+      The fee appears as a separate line item or bundled into the transaction amount depending on the bank.
+    one_sentence: >
+      A foreign transaction fee (1%–3%) is charged on purchases made in foreign currency or through
+      foreign banks, covering currency conversion and cross-border processing costs.
+    examples:
+      - scenario: Online purchase from foreign merchant
+        description: >
+          Account holder buys from a UK retailer in GBP. Statement shows the USD equivalent
+          plus "-$3.28 FOREIGN TRANSACTION FEE" (3% of $109.33).
+    related:
+      - Currency Conversion
+      - ATM Fee
+      - International Wire Fee
+    null_behavior: >
+      Foreign transaction fees are charged when the transaction currency or processing bank is
+      outside the domestic network. Cards with waived foreign fees show no such charge.
+    common_errors:
+      - error: Fee charged on domestic purchase
+        cause: Merchant processed through a foreign payment processor
+        solution: Dispute the foreign transaction fee; provide merchant's domestic location proof
+    analysis_notes: >
+      Frequent foreign transaction fees indicate international travel or online purchases from
+      foreign merchants. Travelers paying 3% on every foreign purchase would save significantly
+      by switching to a no-foreign-fee card.
+
+  - name: Late Payment Fee
+    category: fee_type
+    description: >
+      A late payment fee is charged when a minimum payment on a credit card, loan, or line of credit
+      is not received by the due date. For credit cards, fees are typically $29–$40 for the first
+      occurrence and up to $40 for subsequent violations within six months. The CFPB's 2024 rule
+      capped credit card late fees at $8 for most issuers. Late payments also trigger penalty APRs
+      (up to 29.99%) and are reported to credit bureaus after 30 days past due.
+    one_sentence: >
+      A late payment fee ($8–$40 depending on issuer and CFPB rules) is charged when a minimum
+      payment on a credit account is not received by the due date.
+    examples:
+      - scenario: Credit card late payment
+        description: >
+          Payment due March 15 received March 18. Statement shows "-$29.00 LATE PAYMENT FEE"
+          on the next billing cycle.
+      - scenario: Penalty APR triggered
+        description: >
+          Two late payments in six months trigger penalty APR. Card switches from 20.99% to
+          29.99% APR for all new purchases.
+    related:
+      - Interest Charge
+      - Minimum Payment
+      - Credit Card Payment
+      - Penalty APR
+    null_behavior: >
+      Late fees are always associated with a billing cycle. Accounts on autopay for at least
+      the minimum payment never incur late fees.
+    common_errors:
+      - error: Payment received day late
+        cause: Payment initiated on due date but bank processed after cutoff time
+        solution: Initiate payments at least 1–2 days before due date
+    analysis_notes: >
+      Late payment fees and penalty APRs together can significantly increase debt cost. A single
+      late payment triggering a penalty APR on a $5,000 balance at 30% vs 20% costs $500 more
+      annually in interest.
+
+# ---------------------------------------------------------------------------
+# Balance Concepts
+# ---------------------------------------------------------------------------
+
+balances:
+
+  - name: Opening Balance
+    category: balance_concept
+    description: >
+      The opening balance is the account balance at the start of a statement period, equal to the
+      closing balance of the previous statement period. It represents the starting point from which
+      all transactions during the period are calculated to arrive at the closing balance. The opening
+      balance is shown at the top of a bank statement.
+    one_sentence: >
+      The opening balance is the account balance at the beginning of the statement period, equal to
+      the prior period's closing balance.
+    examples:
+      - scenario: Monthly statement opening
+        description: >
+          January statement shows "Opening Balance: $3,421.67" — this is the same as the closing
+          balance on the December statement.
+    related:
+      - Closing Balance
+      - Available Balance
+      - Statement Period
+    null_behavior: >
+      Opening balance should never be null. A missing opening balance indicates a new account
+      (first statement) or a data extraction error.
+    common_errors:
+      - error: Opening balance mismatch
+        cause: Prior period closing balance differs from current period opening balance
+        solution: Investigate for transaction errors, fee postings, or interest that posted between periods
+    analysis_notes: >
+      The opening balance is the anchor for reconciliation. If the opening balance doesn't match
+      the prior period's closing balance, there may be adjustments, corrections, or errors that
+      need investigation.
+
+  - name: Closing Balance
+    category: balance_concept
+    description: >
+      The closing balance (also called ending balance or statement balance) is the account balance
+      at the end of the statement period. It is calculated as: Opening Balance + Total Credits -
+      Total Debits = Closing Balance. This figure is carried forward as the next period's opening
+      balance and is used for reconciliation and financial reporting.
+    one_sentence: >
+      The closing balance is the account balance at the end of the statement period, calculated as
+      opening balance plus all credits minus all debits during the period.
+    examples:
+      - scenario: Monthly reconciliation
+        description: >
+          Opening: $3,421.67. Credits: $5,200.00 (payroll). Debits: $4,876.32 (expenses, fees).
+          Closing: $3,421.67 + $5,200.00 - $4,876.32 = $3,745.35.
+    related:
+      - Opening Balance
+      - Available Balance
+      - Net Change
+    null_behavior: >
+      The closing balance should always be computable. If transactions are missing from the
+      statement, the computed balance will not match the stated closing balance.
+    common_errors:
+      - error: Calculated closing balance doesn't match stated closing balance
+        cause: Missing transactions, posting errors, or pending items included/excluded
+        solution: Reconcile each transaction; check for items pending at period end
+    analysis_notes: >
+      The closing balance reflects the account's financial health at the statement date. Declining
+      closing balances over multiple periods indicate net outflows exceeding inflows — a potential
+      cash flow concern.
+
+  - name: Available Balance
+    category: balance_concept
+    description: >
+      The available balance is the amount of funds the account holder can immediately access for
+      spending or withdrawal. It differs from the ledger balance (posted balance) by excluding pending
+      holds, pending authorizations, and check deposits that haven't cleared. The available balance
+      may be higher or lower than the ledger balance depending on holds and pending credits. Debit card
+      authorizations reduce the available balance immediately even before the transaction posts.
+    one_sentence: >
+      The available balance is the spendable funds in an account after pending holds, authorizations,
+      and uncleared deposits are accounted for, differing from the posted ledger balance.
+    examples:
+      - scenario: Hotel pre-authorization hold
+        description: >
+          Ledger balance: $2,000. Hotel places $500 authorization hold. Available balance: $1,500
+          even though the hold hasn't posted as a final charge.
+      - scenario: Large check deposit on hold
+        description: >
+          Ledger balance: $500. Check for $2,000 deposited but subject to a 2-day hold. Available
+          balance remains $500 until the hold is released.
+    related:
+      - Ledger Balance
+      - Hold
+      - Pending Transaction
+      - Deposit Hold
+    null_behavior: >
+      Available balance can temporarily be zero or negative if holds exceed the ledger balance.
+      This is not the same as an overdraft — holds will release when transactions settle.
+    common_errors:
+      - error: Overdraft triggered despite positive available balance
+        cause: A check presented that was not reflected in available balance display
+        solution: Available balance may not show all outstanding checks — use a check register
+    analysis_notes: >
+      Available balance is the most relevant balance for day-to-day spending decisions. Relying
+      on the ledger balance can lead to overdrafts if there are large pending authorizations
+      (especially from gas stations or hotels).
+
+  - name: Minimum Balance
+    category: balance_concept
+    description: >
+      A minimum balance is the lowest account balance required either to avoid monthly maintenance
+      fees (minimum daily balance or minimum average monthly balance) or to earn a higher interest
+      rate. Common minimum balance requirements range from $500 to $10,000 depending on account type.
+      The minimum daily balance must be maintained every single day of the month; the average monthly
+      balance is computed as the sum of daily balances divided by the number of days in the period.
+    one_sentence: >
+      A minimum balance is the account balance threshold required to waive monthly fees or qualify
+      for higher interest rates, measured as either minimum daily balance or average monthly balance.
+    examples:
+      - scenario: Minimum daily balance requirement
+        description: >
+          Account requires $1,500 minimum daily balance. Balance dropped to $1,400 on March 10.
+          Monthly fee of $12 is charged even though balance exceeded $1,500 all other days.
+      - scenario: Average monthly balance
+        description: >
+          Account requires $5,000 average monthly balance. Sum of daily balances = $155,000 over
+          31 days. Average = $5,000. Fee waived.
+    related:
+      - Monthly Maintenance Fee
+      - Account Tier
+      - Ledger Balance
+    null_behavior: >
+      Minimum balance calculations use the actual posted balance each day, not the available balance.
+      Pending transactions don't affect the minimum balance determination.
+    common_errors:
+      - error: Fee charged after large deposit
+        cause: Deposit made after balance dipped below minimum for even one day
+        solution: Monitor balance daily; set up alerts at 110% of minimum balance threshold
+    analysis_notes: >
+      Accounts with minimum balance requirements are most beneficial for customers who maintain
+      consistently high balances. For low-balance customers, a no-fee checking account may be
+      more cost-effective even if it offers fewer features.
+
+  - name: Net Change
+    category: balance_concept
+    description: >
+      The net change is the difference between the closing balance and the opening balance for a
+      statement period: Net Change = Closing Balance - Opening Balance. A positive net change means
+      the account grew during the period (more credits than debits); a negative net change means the
+      account shrank. Net change is also computable as Total Credits - Total Debits for the period.
+    one_sentence: >
+      Net change is the difference between closing and opening balance for a statement period,
+      indicating whether the account grew (positive) or shrank (negative).
+    examples:
+      - scenario: Positive net change
+        description: >
+          Opening: $2,000. Closing: $3,500. Net change: +$1,500. More income than expenses this month.
+      - scenario: Negative net change
+        description: >
+          Opening: $3,500. Closing: $2,100. Net change: -$1,400. Large expense or irregular spending
+          this period.
+    related:
+      - Opening Balance
+      - Closing Balance
+      - Total Credits
+      - Total Debits
+    null_behavior: >
+      Net change is always computable if opening and closing balances are present. A zero net change
+      means total credits exactly equaled total debits.
+    common_errors:
+      - error: Net change doesn't equal sum of transactions
+        cause: Pending or cut-off transactions included in one balance but not the other
+        solution: Ensure all transactions in the period are included; check for items crossing period boundaries
+    analysis_notes: >
+      Tracking net change month over month reveals savings trends or financial deterioration.
+      Consistently negative net change without a clear cause (e.g., vacation spending) warrants
+      a cash flow analysis.
+
+# ---------------------------------------------------------------------------
+# Spending Categories
+# ---------------------------------------------------------------------------
+
+categories:
+
+  - name: Housing Expenses
+    category: spending_category
+    description: >
+      Housing expenses are the largest cost category for most households, including rent, mortgage
+      principal and interest, property taxes, homeowners or renters insurance, HOA fees, utilities
+      (electricity, gas, water, sewer), and home maintenance. The recommended housing cost-to-income
+      ratio (the "28% rule") suggests spending no more than 28% of gross monthly income on housing.
+    one_sentence: >
+      Housing expenses encompass rent or mortgage payments, property taxes, insurance, HOA fees,
+      utilities, and maintenance — typically the largest household budget category.
+    examples:
+      - scenario: Renter monthly housing costs
+        description: >
+          Monthly rent: $1,800. Renters insurance: $25. Electric/gas: $120. Internet: $75.
+          Total housing: $2,020/month on a $5,500 net income = 36.7% housing ratio.
+    related:
+      - Rent Payment
+      - Mortgage Payment
+      - Utilities
+      - Property Tax
+    null_behavior: >
+      Housing expenses may span multiple payees (landlord, utility companies, insurance). No single
+      transaction represents the full housing cost — aggregation by category is required.
+    common_errors:
+      - error: Housing ratio appears too low
+        cause: Utilities or insurance paid via credit card not visible on checking statement
+        solution: Include all payment methods when computing housing ratio
+    analysis_notes: >
+      Mortgage payments include both principal reduction (asset building) and interest (expense).
+      For mortgage affordability analysis, use PITI (Principal + Interest + Taxes + Insurance)
+      as the complete housing cost measure.
+
+  - name: Food and Dining
+    category: spending_category
+    description: >
+      Food and dining expenses include grocery store purchases, restaurants, fast food, coffee shops,
+      food delivery services (DoorDash, Uber Eats, Grubhub), meal kit subscriptions, and workplace
+      cafeteria charges. The USDA tracks average food spending by income level — moderate-cost plans
+      suggest $400–$600/month for a single adult. Restaurant spending has grown significantly with
+      app-based delivery.
+    one_sentence: >
+      Food and dining expenses cover groceries, restaurants, delivery apps, and meal kits —
+      typically the second-largest discretionary spending category.
+    examples:
+      - scenario: Mixed grocery and dining month
+        description: >
+          Monthly: Whole Foods $340, DoorDash $180, Starbucks $95, local restaurants $220.
+          Total food spending: $835 = 18% of $4,600 net income.
+    related:
+      - Grocery Spending
+      - Restaurant Spending
+      - Delivery Services
+    null_behavior: >
+      Food spending is distributed across many merchants. Merchant Category Codes (MCC 5411 for
+      grocery stores, MCC 5812 for restaurants) are needed for accurate categorization.
+    common_errors:
+      - error: Grocery store labeled as restaurant
+        cause: Some grocery stores with delis have MCC 5812 instead of 5411
+        solution: Review merchant names alongside MCC codes for accurate categorization
+    analysis_notes: >
+      Delivery app spending often adds 20–30% premium over in-store prices. Frequent high delivery
+      spending is a key indicator in cash flow analysis for discretionary reduction potential.
+
+  - name: Transportation
+    category: spending_category
+    description: >
+      Transportation expenses include car payments, auto insurance, fuel (gas station purchases), car
+      maintenance and repair, ride-sharing (Uber, Lyft), parking, tolls, and public transportation
+      (subway, bus, train passes). Transportation is typically the second-largest fixed expense after
+      housing. The AAA estimates average new car ownership costs at $10,000+/year when including
+      depreciation, fuel, insurance, and maintenance.
+    one_sentence: >
+      Transportation expenses span car payments, insurance, fuel, maintenance, and ride-sharing —
+      typically the second-largest household expense after housing.
+    examples:
+      - scenario: Car owner monthly transportation
+        description: >
+          Car loan: $385. Insurance: $145. Gas: $180. Parking: $75. Uber (occasional): $50.
+          Total: $835/month.
+    related:
+      - Auto Loan Payment
+      - Gas Station
+      - Auto Insurance
+      - Ride Sharing
+    null_behavior: >
+      Gas station purchases may be categorized under transportation or tagged with MCC 5541/5542.
+      Not all gas station purchases are for fuel — convenience store items may be included.
+    common_errors:
+      - error: Gas station charged more than expected
+        cause: Pre-authorization hold (typically $75–$150) pending final fuel amount
+        solution: Hold releases within 1–3 days when final amount posts
+    analysis_notes: >
+      Transportation spending is a key variable in affordability analysis. High car payments relative
+      to income combined with high fuel costs suggest transportation financial stress.
+
+  - name: Healthcare Expenses
+    category: spending_category
+    description: >
+      Healthcare expenses include health insurance premiums (if paid directly rather than via payroll),
+      doctor visits and co-pays, prescription medications, dental and vision care, medical equipment,
+      and health savings account (HSA) contributions. Healthcare costs are highly variable and often
+      unpredictable. FSA and HSA accounts allow pre-tax spending on qualifying medical expenses.
+    one_sentence: >
+      Healthcare expenses include insurance premiums, co-pays, prescriptions, and dental/vision care —
+      highly variable and often paid across multiple providers and accounts.
+    examples:
+      - scenario: Monthly healthcare spending
+        description: >
+          Health insurance premium: $350. Pharmacy: $45. Two co-pays: $60. Dental cleaning: $0
+          (covered by insurance). Total: $455/month.
+    related:
+      - Health Insurance
+      - HSA Contribution
+      - Pharmacy
+      - Medical Co-pay
+    null_behavior: >
+      Healthcare spending may appear in multiple forms: payroll deductions (not visible on bank
+      statement), direct insurance payments, HSA debit card charges, and direct provider payments.
+    common_errors:
+      - error: Insurance premium charged twice
+        cause: Payroll deduction plus direct billing error
+        solution: Verify enrollment status; contact HR and insurer to resolve duplicate billing
+    analysis_notes: >
+      Healthcare expenses are partially tax-deductible above 7.5% of AGI. HSA contributions are
+      triple tax-advantaged (pre-tax contribution, tax-free growth, tax-free qualified withdrawals).
+
+  - name: Subscription Services
+    category: spending_category
+    description: >
+      Subscription services are recurring monthly or annual charges for digital services including
+      streaming media (Netflix, Hulu, Spotify, Disney+), software subscriptions (Microsoft 365, Adobe),
+      fitness apps, news subscriptions, cloud storage, and similar services. Subscription creep —
+      accumulating many small subscriptions — can significantly impact monthly cash flow. Annual
+      subscriptions are cost-effective but require larger one-time payments.
+    one_sentence: >
+      Subscription services are recurring charges for streaming, software, and digital services —
+      individually small but collectively significant through "subscription creep."
+    examples:
+      - scenario: Streaming subscription stack
+        description: >
+          Netflix $15.99, Spotify $9.99, Disney+ $10.99, HBO Max $15.99, Hulu $17.99, Apple TV+ $6.99.
+          Total: $77.94/month = $935/year in streaming alone.
+    related:
+      - Recurring Payment
+      - Annual Subscription
+      - Digital Services
+    null_behavior: >
+      Subscription charges are typically fixed-amount recurring transactions from the same merchant
+      on the same day each month, making them easy to identify and aggregate.
+    common_errors:
+      - error: Subscription charge after cancellation attempt
+        cause: Cancellation not processed before next billing date
+        solution: Confirm cancellation confirmation email; dispute if charged after confirmed cancellation
+    analysis_notes: >
+      Average American household spends $273/month on subscriptions (CNET 2024). Regular subscription
+      audits can reveal forgotten services. Annual vs monthly subscription cost comparison can save
+      15–40% for services used consistently.
+
+# ---------------------------------------------------------------------------
+# Statement Metadata
+# ---------------------------------------------------------------------------
+
+statement_info:
+
+  - name: Statement Period
+    category: statement_metadata
+    description: >
+      The statement period is the date range covered by a bank statement, typically one calendar month
+      (e.g., January 1–31) or a 28–31 day rolling cycle. All transactions, fees, and balance changes
+      that occurred within this period are included. The statement closing date determines which pending
+      transactions are included vs. deferred to the next period.
+    one_sentence: >
+      The statement period is the date range (typically one month) for which all transactions and
+      balance changes are reported on a bank statement.
+    examples:
+      - scenario: Calendar month statement
+        description: >
+          Statement period: 01/01/2024 – 01/31/2024. Includes all transactions posted between
+          those dates. A transaction authorized on 01/31 but posting 02/01 appears on the February statement.
+    related:
+      - Closing Date
+      - Opening Balance
+      - Closing Balance
+    null_behavior: >
+      Statement periods should have definitive start and end dates. Statements with missing date
+      ranges indicate incomplete data extraction.
+    common_errors:
+      - error: Transaction count doesn't match expectations
+        cause: Weekend or holiday pushed a transaction to post in next period
+        solution: Check authorization vs. posting dates for boundary transactions
+    analysis_notes: >
+      For multi-period analysis, ensure statement periods are contiguous with no gaps. Missing
+      periods in a statement series indicate either a closed account or missing documents.
+
+  - name: Account Number
+    category: statement_metadata
+    description: >
+      The account number is the unique identifier assigned by the bank to a specific account. On
+      statements, account numbers are typically masked for security, showing only the last 4 digits
+      (e.g., ****1234 or XXXX-1234). The full account number is required for ACH transactions and
+      wire transfers. Account numbers differ from routing numbers, which identify the bank itself.
+    one_sentence: >
+      The account number is the unique identifier for a specific bank account, typically masked on
+      statements to show only the last 4 digits for security.
+    examples:
+      - scenario: Masked account number on statement
+        description: >
+          Statement header shows "Account: ****5678." The full 10-digit account number is available
+          through secure online banking for ACH setup.
+    related:
+      - Routing Number
+      - Account Holder
+      - Account Type
+    null_behavior: >
+      Account number is always present on a statement. Complete absence indicates a data extraction
+      failure or a summary/aggregate statement covering multiple accounts.
+    common_errors:
+      - error: ACH returned due to incorrect account number
+        cause: Account number entered incorrectly by payer
+        solution: Provide correct full account number and routing number to originating party
+    analysis_notes: >
+      Never transmit full account numbers via unencrypted channels. For analysis purposes, the
+      masked last-4 digits are sufficient to identify and differentiate multiple accounts.
+
+  - name: Routing Number
+    category: statement_metadata
+    description: >
+      A routing number (ABA routing transit number) is a 9-digit code that identifies the financial
+      institution processing the transaction. It is used for ACH transfers, wire transfers, and check
+      processing. The routing number is printed on the bottom-left of checks. Different routing numbers
+      may apply for checks, ACH, and wire transfers at the same bank.
+    one_sentence: >
+      A routing number is the 9-digit ABA code identifying a financial institution, used for ACH
+      transfers, wire transfers, and check processing.
+    examples:
+      - scenario: Setting up direct deposit
+        description: >
+          Employee provides employer with routing number (021000021 for JPMorgan Chase) and account
+          number for payroll direct deposit setup.
+    related:
+      - Account Number
+      - ACH Transfer
+      - Wire Transfer
+    null_behavior: >
+      Routing numbers are not typically printed on statements but are available in account settings.
+      A missing routing number on a statement is normal — look in account details or on checks.
+    common_errors:
+      - error: Using wrong routing number for wire vs. ACH
+        cause: Banks have different routing numbers for ACH and wires
+        solution: Always confirm the specific routing number type needed with the bank
+    analysis_notes: >
+      The routing number identifies the bank's Federal Reserve district and the specific institution.
+      The first four digits identify the Federal Reserve processing center; digits 5–8 identify
+      the bank; the 9th digit is a checksum.
+
+  - name: Account Holder
+    category: statement_metadata
+    description: >
+      The account holder is the person or entity in whose name the account is registered and who
+      has legal ownership of the funds. A joint account may have two or more account holders with
+      equal rights to the funds. Business accounts are held in the business entity name with authorized
+      signers. The account holder's name and address appear on all statements.
+    one_sentence: >
+      The account holder is the named individual or entity who owns the account and has legal
+      authority over its funds, appearing on all statements with their registered address.
+    examples:
+      - scenario: Joint account
+        description: >
+          Statement shows "Account Holders: Jane Smith / John Smith" — both have equal ownership
+          and access rights, with either able to close or make changes.
+    related:
+      - Joint Account
+      - Authorized User
+      - Account Number
+    null_behavior: >
+      Account holder name is always present on a statement. For privacy reasons, additional
+      personal details (SSN, DOB) are never shown on statements.
+    common_errors:
+      - error: Name mismatch on statement vs. submitted documents
+        cause: Legal name change, nickname, or name format difference
+        solution: Ensure bank records use the same legal name format as identification documents
+    analysis_notes: >
+      For financial verification, statement holder name must match the name on verification documents.
+      Discrepancies can flag identity issues or indicate accounts belonging to different individuals.
+
+# ---------------------------------------------------------------------------
+# Analysis Patterns
+# ---------------------------------------------------------------------------
+
+analysis:
+
+  - name: Cash Flow Analysis
+    category: analysis_pattern
+    description: >
+      Cash flow analysis examines the timing and amount of money flowing into (credits) and out of
+      (debits) an account over time. Positive cash flow means more money coming in than going out;
+      negative cash flow means outflows exceed inflows. Cash flow analysis includes identifying income
+      sources, categorizing expenses, spotting seasonal patterns, evaluating liquidity, and assessing
+      financial health. For bank statement analysis, cash flow is computed monthly and trended over
+      3–12 months.
+    one_sentence: >
+      Cash flow analysis measures money in vs. money out over time to assess financial health,
+      liquidity, and spending patterns from bank statement transaction data.
+    examples:
+      - scenario: Monthly cash flow summary
+        description: >
+          Credits: $5,400 (payroll $5,000 + freelance $400). Debits: $4,876 (housing $2,100,
+          food $800, transport $600, other $1,376). Net cash flow: +$524. Adequate but thin.
+      - scenario: Negative cash flow detection
+        description: >
+          Three consecutive months show negative net change: -$1,200, -$800, -$1,500. Account
+          balance declining. Credit card advances starting to appear. Financial stress indicator.
+    related:
+      - Net Change
+      - Income Verification
+      - Expense Categorization
+      - Budget Analysis
+    null_behavior: >
+      Cash flow analysis requires a complete transaction set. Missing transactions or incomplete
+      statement periods produce misleading cash flow figures.
+    common_errors:
+      - error: Transfer transactions inflating cash flow
+        cause: Inter-account transfers counted as both income and expense
+        solution: Identify and exclude inter-account transfers from cash flow calculations
+    analysis_notes: >
+      Cash flow analysis is the foundation of financial underwriting. Lenders use 3–6 months of
+      bank statements to compute average monthly income and expenses. Anomalies (sudden large deposits,
+      gaps in income) require explanation. NSF fees, overdrafts, and negative balances are red flags.
+
+  - name: Income Verification
+    category: analysis_pattern
+    description: >
+      Income verification from bank statements confirms the source, frequency, and stability of
+      income deposits. Key income types include direct deposits from employers (most reliable),
+      ACH credits from business accounts (self-employment), recurring transfers, government benefits,
+      investment distributions, and rental income. Income is computed as the average monthly credit
+      deposits from income sources over the analysis period (typically 3–12 months).
+    one_sentence: >
+      Income verification uses bank statement credit transactions to confirm the source, frequency,
+      regularity, and amount of income deposits, critical for loan and rental applications.
+    examples:
+      - scenario: Salaried employee income verification
+        description: >
+          24 direct deposit entries over 12 months all from "ACME CORP PAYROLL." Amounts
+          consistent at $3,750 bi-weekly. Annual gross income: $97,500. Verified.
+      - scenario: Self-employed income verification
+        description: >
+          Variable ACH credits from multiple business clients over 12 months. Average: $6,200/month.
+          High variance months (±40%). Income is real but irregular — risk rating higher than salaried.
+    related:
+      - Direct Deposit
+      - Cash Flow Analysis
+      - Employment Verification
+      - Self-Employment Income
+    null_behavior: >
+      Months with no income deposits may indicate layoff, leave of absence, or cash/check income
+      not visible in the bank account. Request explanation for income gaps.
+    common_errors:
+      - error: Double-counting income from transfers between own accounts
+        cause: Transfer from savings to checking appears as income credit
+        solution: Filter out same-owner inter-account transfers before computing income
+    analysis_notes: >
+      Loan underwriting guidelines typically require 2 years of income history for self-employed.
+      Payroll direct deposit is the gold standard — direct employer deposits are harder to fabricate
+      than paper pay stubs. Large irregular deposits warrant source verification (inheritance, tax
+      refund, asset sale).
+
+  - name: Recurring Payment Detection
+    category: analysis_pattern
+    description: >
+      Recurring payment detection identifies fixed obligations that appear monthly (or at regular
+      intervals) in the transaction history. These include loan payments, insurance premiums,
+      subscription services, utilities, and membership fees. Recurring payments represent fixed
+      liabilities in cash flow analysis and are used to compute the debt-to-income (DTI) ratio.
+      Detection algorithms look for same-payee, similar-amount transactions at regular intervals.
+    one_sentence: >
+      Recurring payment detection identifies fixed monthly obligations like loan payments, insurance,
+      and subscriptions from transaction history to compute total fixed liabilities.
+    examples:
+      - scenario: Mortgage payment detection
+        description: >
+          Same amount ($1,847.00) paid to "FIRST BANK MORTGAGE" on the 1st of each month for 12
+          consecutive months. Flagged as recurring mortgage — highest-priority fixed obligation.
+      - scenario: Subscription stack detection
+        description: >
+          12 monthly transactions to Netflix ($15.99), Spotify ($9.99), and Hulu ($17.99) identified
+          as recurring. Total subscription: $43.97/month.
+    related:
+      - Bill Payment
+      - Subscription Services
+      - DTI Ratio
+      - Fixed Expenses
+    null_behavior: >
+      A recurring payment that suddenly stops may indicate cancellation, payoff (positive), or missed
+      payment (negative). Missing a month in a recurring series requires investigation.
+    common_errors:
+      - error: Annual subscription detected as one-time expense
+        cause: Annual charge appears only once in a 3-month analysis window
+        solution: Extend analysis window to 12+ months for annual subscriptions
+    analysis_notes: >
+      Debt-to-income (DTI) ratio = Total monthly debt obligations / Gross monthly income.
+      Lenders typically require DTI below 36–43%. Identifying all recurring obligations is
+      essential for accurate DTI computation.
+
+  - name: Spending Pattern Analysis
+    category: analysis_pattern
+    description: >
+      Spending pattern analysis categorizes and trends transaction data to understand how, when, and
+      where money is being spent. Key metrics include: spending by category (housing, food, transport,
+      etc.), spending by merchant, day-of-week and time-of-month patterns, recurring vs. discretionary
+      split, and month-over-month spending trends. Spending patterns reveal financial habits and are
+      used in budgeting, credit risk assessment, and financial planning.
+    one_sentence: >
+      Spending pattern analysis categorizes transaction data to reveal where money is spent,
+      identifying habits, trends, and opportunities for financial optimization.
+    examples:
+      - scenario: Monthly category breakdown
+        description: >
+          Housing 38%, Food 17%, Transport 14%, Entertainment 12%, Health 8%, Other 11%.
+          Housing ratio exceeds the 28% guideline — primary area for optimization.
+      - scenario: Weekend spending spike
+        description: >
+          Friday-Sunday transactions account for 45% of monthly discretionary spending despite
+          being 43% of the days. Slight weekend concentration in dining and entertainment.
+    related:
+      - Merchant Category Code
+      - Cash Flow Analysis
+      - Budget Analysis
+      - Discretionary Spending
+    null_behavior: >
+      Transactions without MCC codes (e.g., cash withdrawals, some ACH transfers) cannot be
+      automatically categorized and require manual or heuristic classification.
+    common_errors:
+      - error: Miscategorized transactions
+        cause: Merchant operates across categories (e.g., Walmart sells groceries and electronics)
+        solution: Use both MCC and merchant name signals for multi-category merchants
+    analysis_notes: >
+      The 50/30/20 budget rule suggests 50% needs (housing, food, transport), 30% wants (dining,
+      entertainment, subscriptions), and 20% savings/debt repayment. Spending pattern analysis
+      quickly reveals which buckets are over- or under-funded.
+
+  - name: Fraud Detection
+    category: analysis_pattern
+    description: >
+      Fraud detection on bank statements identifies unusual or potentially unauthorized transactions
+      including: transactions in unexpected geographic locations, amounts significantly above the
+      account holder's normal range, transactions at unusual times (3–5 AM), multiple small transactions
+      followed by a large one (probing behavior), duplicate charges, charges to unfamiliar merchants,
+      and sudden changes in spending patterns. Common fraud types include card skimming, phishing,
+      account takeover, and authorized push payment (APP) fraud.
+    one_sentence: >
+      Fraud detection identifies anomalous transactions — unusual locations, amounts, timing, or
+      merchant types — that may indicate unauthorized account use or scam activity.
+    examples:
+      - scenario: Card skimming detected
+        description: >
+          Normal account shows small test charge of $1.00 to an unfamiliar online merchant, followed
+          by larger charges of $500 and $750 to electronics stores in another city — all within
+          24 hours. Pattern consistent with card number theft.
+      - scenario: APP fraud (Zelle scam)
+        description: >
+          Account holder receives a call from a "bank fraud department" and sends $3,500 via Zelle
+          to a "safe account." Transaction is authorized but fraudulent — difficult to recover.
+    related:
+      - Unauthorized Transaction
+      - Dispute Process
+      - Card Security
+      - Identity Theft
+    null_behavior: >
+      Not all unusual transactions are fraud — large one-time expenses (vacation, home repair) or
+      first-time purchases in a new city are normal. Context and account holder confirmation are
+      required before flagging as fraud.
+    common_errors:
+      - error: Legitimate transaction flagged as fraud
+        cause: Unusual merchant name, foreign location, or first-time purchase pattern
+        solution: Contact account holder to confirm before blocking; avoid false positive friction
+      - error: Fraud not caught by rules
+        cause: Fraudster uses same-city merchants and amounts within normal range
+        solution: Combine rule-based and ML anomaly detection; monitor account behavior baselines
+    analysis_notes: >
+      Bank Secrecy Act (BSA) requires financial institutions to file Suspicious Activity Reports
+      (SARs) for transactions that may indicate money laundering, fraud, or other financial crimes.
+      Thresholds vary but generally apply to $5,000+ suspicious transactions.

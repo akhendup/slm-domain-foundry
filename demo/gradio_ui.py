@@ -2134,10 +2134,11 @@ def _normalize_content(content: Any) -> str:
     return str(content)
 
 
-_CHAT_SYSTEM_PROMPT = (
-    "You are a concise SQL and Teradata documentation assistant. "
+_CHAT_SYSTEM_PROMPT = os.environ.get(
+    "SLM_SYSTEM_PROMPT",
+    "You are a concise, helpful assistant. "
     "Answer questions directly and briefly based on the documentation you were trained on. "
-    "Do not repeat the question. Do not include unrelated examples."
+    "Do not repeat the question. Do not include unrelated examples.",
 )
 _CHAT_MAX_HISTORY_TURNS = 3  # keep last N user/assistant turn pairs
 
@@ -3123,7 +3124,8 @@ def main():
     # Library dir alongside training data dir
     _LIBRARY_DIR = _TRAINING_DATA_DIR.parent / "knowledge_library"
 
-    model_dir = args.model_dir or Path(os.environ.get("MODEL_DIR", "")) or None
+    _env_model_dir = os.environ.get("MODEL_DIR", "").strip()
+    model_dir = args.model_dir or (Path(_env_model_dir) if _env_model_dir else None)
     if model_dir and str(model_dir) not in ("", "."):
         _OUTPUT_MODEL_DIR = model_dir
         _SAVED_MODELS_DIR = model_dir.parent / "saved_models"

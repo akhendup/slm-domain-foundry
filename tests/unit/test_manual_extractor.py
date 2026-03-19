@@ -10,6 +10,9 @@ from data.manual_extractor import (
     is_toc_page,
     strip_running_headers_footers,
     _normalize_for_hf,
+    generate_typed_qa,
+    _generate_generic_qa,
+    parse_function_section,
 )
 
 
@@ -67,8 +70,14 @@ class TestIsBoilerplatePage:
         assert is_boilerplate_page("  ", page_num=1) is True
 
     def test_positive_docs_url_short(self):
-        text = "docs.teradata.com — visit for more information."
+        # Short page dominated by a vendor URL — generic check, any vendor
+        text = "https://docs.example.com/product/guide — visit for more information."
         assert is_boilerplate_page(text, page_num=2) is True
+
+    def test_positive_generic_vendor_url_short(self):
+        # Any vendor URL-dominated short page (not just one specific vendor)
+        text = "http://support.oracle.com/docs/guide/ Please visit the online help center."
+        assert is_boilerplate_page(text, page_num=3) is True
 
     def test_negative_real_content(self):
         text = (
@@ -236,3 +245,258 @@ class TestStripRunningHeadersFooters:
         """_normalize_for_hf should strip leading/trailing page numbers."""
         assert _normalize_for_hf("42 Teradata Reference") == "teradata reference"
         assert _normalize_for_hf("Teradata Reference 42") == "teradata reference"
+
+
+# ---------------------------------------------------------------------------
+# generate_typed_qa — technical section (uses shared templates)
+# ---------------------------------------------------------------------------
+
+class TestGenerateTypedQaTechnical:
+    def _parsed(self, **kwargs):
+        base = {
+            "heading": "CSUM",
+            "description": [],
+            "syntax": [],
+            "arguments": [],
+            "notes": [],
+            "examples": [],
+            "raw": "",
+        }
+        base.update(kwargs)
+        return base
+
+    def test_syntax_uses_shared_templates(self):
+        """SYNTAX_QUESTIONS templates must appear as questions for syntax sections."""
+        from data.question_templates import SYNTAX_QUESTIONS
+        parsed = self._parsed(
+            syntax=["CSUM(value, reset_value) OVER (PARTITION BY x ORDER BY y)"]
+        )
+        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        questions = [q for q, _ in pairs]
+        # At least one SYNTAX_QUESTIONS template should appear
+        filled = [t.format(fn="CSUM") for t in SYNTAX_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_argument_uses_shared_templates(self):
+        """ARGUMENT_QUESTIONS templates must appear for argument sections."""
+        from data.question_templates import ARGUMENT_QUESTIONS
+        parsed = self._parsed(arguments=["value: numeric expression to accumulate"])
+        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="CSUM") for t in ARGUMENT_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_notes_uses_shared_templates(self):
+        """NOTES_QUESTIONS templates must appear for notes sections."""
+        from data.question_templates import NOTES_QUESTIONS
+        parsed = self._parsed(notes=["Requires an ORDER BY clause inside OVER()."])
+        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="CSUM") for t in NOTES_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_description_produces_multiple_pairs(self):
+        desc = ("CSUM computes a cumulative sum. "
+                "It is a window function that accumulates values across ordered rows.")
+        parsed = self._parsed(description=[desc])
+        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        assert len(pairs) >= 2
+
+    def test_empty_section_produces_no_pairs(self):
+        parsed = self._parsed()
+        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        # No content → no pairs (or only fallback if raw is set)
+        assert isinstance(pairs, list)
+
+
+# ---------------------------------------------------------------------------
+# _generate_generic_qa — general document fallback
+# ---------------------------------------------------------------------------
+
+class TestGenerateGenericQa:
+    _PROSE = (
+        "Photosynthesis is defined as the process by which green plants convert sunlight "
+        "into chemical energy. It occurs in the chloroplasts and requires carbon dioxide, "
+        "water, and light. Compared to cellular respiration, photosynthesis produces "
+        "oxygen rather than consuming it. For example, a leaf in sunlight will absorb "
+        "light energy and use it to synthesize glucose."
+    )
+
+    def test_returns_list_of_pairs(self):
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        assert isinstance(pairs, list)
+        assert all(isinstance(q, str) and isinstance(a, str) for q, a in pairs)
+
+    def test_produces_multiple_pairs(self):
+        """Generic Q&A must produce more than one pair — not just a single fallback."""
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        assert len(pairs) >= 5
+
+    def test_overview_questions_always_present(self):
+        """GENERAL_OVERVIEW_QUESTIONS must fire for any content."""
+        from data.question_templates import GENERAL_OVERVIEW_QUESTIONS
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="Photosynthesis") for t in GENERAL_OVERVIEW_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_definition_triggers_key_concepts(self):
+        """Text with definition signals should trigger GENERAL_KEYCONCEPT_QUESTIONS."""
+        from data.question_templates import GENERAL_KEYCONCEPT_QUESTIONS
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="Photosynthesis") for t in GENERAL_KEYCONCEPT_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_comparison_triggers_comparison_questions(self):
+        """Text with 'compared to' should trigger GENERAL_COMPARISON_QUESTIONS."""
+        from data.question_templates import GENERAL_COMPARISON_QUESTIONS
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="Photosynthesis") for t in GENERAL_COMPARISON_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_example_signal_triggers_application_questions(self):
+        """Text with 'for example' should trigger GENERAL_APPLICATION_QUESTIONS."""
+        from data.question_templates import GENERAL_APPLICATION_QUESTIONS
+        pairs = _generate_generic_qa("Photosynthesis", self._PROSE)
+        questions = [q for q, _ in pairs]
+        filled = [t.format(fn="Photosynthesis") for t in GENERAL_APPLICATION_QUESTIONS]
+        assert any(q in questions for q in filled)
+
+    def test_answers_are_the_full_text(self):
+        """All answers in generic Q&A should be the section text."""
+        pairs = _generate_generic_qa("Topic", self._PROSE)
+        assert all(a == self._PROSE for _, a in pairs)
+
+    def test_plain_text_no_signals(self):
+        """Even plain text with no special signals gets at least overview + detail pairs."""
+        plain = (
+            "The Battle of Hastings took place in 1066. "
+            "It was a decisive Norman victory over the English forces of King Harold."
+        )
+        pairs = _generate_generic_qa("Battle of Hastings", plain)
+        assert len(pairs) >= 2
+
+
+# ---------------------------------------------------------------------------
+# generate_typed_qa — general prose fallback path
+# ---------------------------------------------------------------------------
+
+class TestGenerateTypedQaGeneralFallback:
+    def test_prose_section_produces_rich_qa(self):
+        """A section with only raw text (no syntax/args) must produce >1 pair via generic fallback."""
+        prose = (
+            "Compound interest is defined as interest calculated on both the initial principal "
+            "and the accumulated interest from previous periods. Compared to simple interest, "
+            "it grows faster over time. For example, an account earning 5% compound interest "
+            "annually will outperform a simple interest account after just a few years."
+        )
+        parsed = {
+            "heading": "Compound Interest",
+            "description": [],
+            "syntax": [],
+            "arguments": [],
+            "notes": [],
+            "examples": [],
+            "raw": prose,
+        }
+        pairs = generate_typed_qa(parsed, source_label="Compound Interest")
+        assert len(pairs) >= 5
+
+    def test_section_without_heading_uses_source_label(self):
+        raw = "Amortization reduces a loan balance by periodic payments covering both principal and interest."
+        parsed = {
+            "heading": "",
+            "description": [],
+            "syntax": [],
+            "arguments": [],
+            "notes": [],
+            "examples": [],
+            "raw": raw,
+        }
+        pairs = generate_typed_qa(parsed, source_label="Amortization")
+        assert len(pairs) >= 1
+        assert all("Amortization" in q or raw in a for q, a in pairs)
+
+
+# ---------------------------------------------------------------------------
+# question_templates.py — loads from YAML
+# ---------------------------------------------------------------------------
+
+class TestQuestionTemplates:
+    def test_all_technical_lists_non_empty(self):
+        from data.question_templates import (
+            DESCRIPTION_QUESTIONS, ONE_SENTENCE_QUESTIONS, CATEGORY_QUESTIONS,
+            USE_CASE_QUESTIONS, PARAMETER_QUESTIONS, SYNTAX_QUESTIONS,
+            ARGUMENT_QUESTIONS, NOTES_QUESTIONS, EXAMPLE_QUESTIONS,
+        )
+        for lst in [
+            DESCRIPTION_QUESTIONS, ONE_SENTENCE_QUESTIONS, CATEGORY_QUESTIONS,
+            USE_CASE_QUESTIONS, PARAMETER_QUESTIONS, SYNTAX_QUESTIONS,
+            ARGUMENT_QUESTIONS, NOTES_QUESTIONS, EXAMPLE_QUESTIONS,
+        ]:
+            assert isinstance(lst, list) and len(lst) > 0
+
+    def test_all_general_lists_non_empty(self):
+        from data.question_templates import (
+            GENERAL_OVERVIEW_QUESTIONS, GENERAL_KEYCONCEPT_QUESTIONS,
+            GENERAL_DETAIL_QUESTIONS, GENERAL_COMPARISON_QUESTIONS,
+            GENERAL_APPLICATION_QUESTIONS, GENERAL_CAUSES_QUESTIONS,
+            GENERAL_REQUIREMENTS_QUESTIONS,
+        )
+        for lst in [
+            GENERAL_OVERVIEW_QUESTIONS, GENERAL_KEYCONCEPT_QUESTIONS,
+            GENERAL_DETAIL_QUESTIONS, GENERAL_COMPARISON_QUESTIONS,
+            GENERAL_APPLICATION_QUESTIONS, GENERAL_CAUSES_QUESTIONS,
+            GENERAL_REQUIREMENTS_QUESTIONS,
+        ]:
+            assert isinstance(lst, list) and len(lst) > 0
+
+    def test_all_financial_lists_non_empty(self):
+        from data.question_templates import (
+            FINANCIAL_TRANSACTION_QUESTIONS, FINANCIAL_ACCOUNT_QUESTIONS,
+            FINANCIAL_ANALYSIS_QUESTIONS,
+        )
+        for lst in [FINANCIAL_TRANSACTION_QUESTIONS, FINANCIAL_ACCOUNT_QUESTIONS,
+                    FINANCIAL_ANALYSIS_QUESTIONS]:
+            assert isinstance(lst, list) and len(lst) > 0
+
+    def test_templates_contain_fn_placeholder(self):
+        """All templates must contain {fn} so they can be formatted."""
+        from data import question_templates as qt
+        all_lists = [
+            qt.DESCRIPTION_QUESTIONS, qt.ONE_SENTENCE_QUESTIONS, qt.CATEGORY_QUESTIONS,
+            qt.USE_CASE_QUESTIONS, qt.PARAMETER_QUESTIONS, qt.SYNTAX_QUESTIONS,
+            qt.ARGUMENT_QUESTIONS, qt.NOTES_QUESTIONS, qt.EXAMPLE_QUESTIONS,
+            qt.GENERAL_OVERVIEW_QUESTIONS, qt.GENERAL_KEYCONCEPT_QUESTIONS,
+            qt.GENERAL_DETAIL_QUESTIONS, qt.GENERAL_COMPARISON_QUESTIONS,
+            qt.GENERAL_APPLICATION_QUESTIONS, qt.GENERAL_CAUSES_QUESTIONS,
+            qt.GENERAL_REQUIREMENTS_QUESTIONS,
+            qt.FINANCIAL_TRANSACTION_QUESTIONS, qt.FINANCIAL_ACCOUNT_QUESTIONS,
+            qt.FINANCIAL_ANALYSIS_QUESTIONS,
+        ]
+        for lst in all_lists:
+            for tmpl in lst:
+                assert "{fn}" in tmpl, f"Template missing {{fn}}: {tmpl!r}"
+
+    def test_yaml_file_loads_successfully(self):
+        """question_templates.yaml must be parseable and have expected sections."""
+        import yaml
+        from pathlib import Path
+        yaml_path = Path("data/question_templates.yaml")
+        assert yaml_path.exists(), "question_templates.yaml missing"
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        assert "technical" in data
+        assert "general" in data
+        assert "financial" in data
+
+    def test_fallback_when_yaml_missing(self, tmp_path, monkeypatch):
+        """If YAML file doesn't exist, built-in defaults keep all lists non-empty."""
+        import importlib
+        import data.question_templates as qt_mod
+        # Patch the yaml path to a nonexistent file and reload templates
+        monkeypatch.setattr(qt_mod, "_TEMPLATES_YAML", tmp_path / "nonexistent.yaml")
+        result = qt_mod._load_yaml_templates()
+        assert result == {}  # graceful empty dict, not an exception

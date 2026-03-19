@@ -6,10 +6,13 @@ Run from project root: python -m data.prepare_training_data [options]
 
 import argparse
 import json
+import logging
 import re
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+
+_log = logging.getLogger(__name__)
 
 from data.pdf_extractor import PDFExtractor
 from data.manual_extractor import (
@@ -26,6 +29,7 @@ from data.manual_extractor import (
 from data.csv_loader import load_csv
 from data.chunking import chunk_text, chunk_text_sql_aware
 from data.yaml_pattern_loader import load_patterns_as_qa
+from data.template_expander import expand_vocab_dir
 
 
 def text_to_qa_heuristic(chunks: List[str], source: str = "doc") -> List[Tuple[str, str]]:
@@ -160,6 +164,16 @@ def main():
         help="Disable multi-turn conversation generation in manual mode",
     )
     parser.add_argument(
+        "--vocab-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory containing *_vocabulary.yaml files (e.g. sql_vocabulary.yaml, "
+            "financial_vocabulary.yaml). Each file is combinatorially expanded against "
+            "all question templates to produce large Q&A datasets."
+        ),
+    )
+    parser.add_argument(
         "--memory-dir",
         type=Path,
         default=None,
@@ -172,6 +186,7 @@ def main():
 
     random.seed(args.seed)
     qa_pairs: List[Tuple[str, str]] = []
+    vocab_multiturn: List[Dict] = []
 
     # From PDFs (standard or manual mode)
     if args.pdf_dir and args.pdf_dir.exists():
@@ -312,6 +327,23 @@ def main():
             flush=True,
         )
 
+    # From vocabulary YAML files (combinatorial expansion)
+    vocab_multiturn: List[Dict] = []
+    if args.vocab_dir and args.vocab_dir.exists():
+        print(f"Expanding vocabulary from: {args.vocab_dir}", flush=True)
+        vocab_pairs_raw = expand_vocab_dir(args.vocab_dir, multiturn=False)
+        vocab_pairs: List[Tuple[str, str]] = [
+            (p["question"], p["answer"]) for p in vocab_pairs_raw
+        ]
+        vocab_pairs = deduplicate_qa_pairs(vocab_pairs)
+        qa_pairs.extend(vocab_pairs)
+        vocab_multiturn = expand_vocab_dir(args.vocab_dir, multiturn=True)
+        print(
+            f"Vocabulary expansion: {len(vocab_pairs)} Q&A pairs, "
+            f"{len(vocab_multiturn)} multi-turn conversations",
+            flush=True,
+        )
+
     # From approved conversation memory
     memory_multiturn: List[Dict] = []
     if args.memory_dir and args.memory_dir.exists():
@@ -337,8 +369,8 @@ def main():
                                 ]
                             })
                             approved_count += 1
-                except Exception:
-                    pass
+                except Exception as exc:
+                    _log.warning("Skipping malformed memory record: %s", exc)
             print(f"Conversation memory: {approved_count} approved interactions loaded.", flush=True)
 
     # Manual mode wrote per-manual output; nothing to aggregate globally
@@ -374,8 +406,8 @@ def main():
         save_jsonl(train_sg, args.output_dir / "train_sharegpt.jsonl")
         save_jsonl(val_sg, args.output_dir / "val_sharegpt.jsonl")
         print(f"ShareGPT: train {len(train_sg)}, val {len(val_sg)}", flush=True)
-        # Multi-turn conversations: YAML patterns + approved conversation memory
-        all_multiturn = yaml_multiturn + memory_multiturn
+        # Multi-turn conversations: vocabulary expansion + YAML patterns + approved conversation memory
+        all_multiturn = vocab_multiturn + yaml_multiturn + memory_multiturn
         if all_multiturn and not args.no_multiturn:
             random.shuffle(all_multiturn)
             train_mt, val_mt = _split_train_val(all_multiturn, args.val_ratio)

@@ -20,6 +20,7 @@ Usage (in gradio_ui.py _chat):
         system_msg = BASE_SYSTEM_PROMPT + "\n\n" + context
 """
 
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,6 +30,8 @@ try:
     _YAML_OK = True
 except ImportError:
     _YAML_OK = False
+
+_log = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -71,19 +74,18 @@ def _load_all_patterns(library_dir: Path) -> List[Dict[str, Any]]:
             if isinstance(data, dict) and data.get("name"):
                 data["_source_file"] = str(p)
                 patterns.append(data)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Failed to load knowledge library file %s: %s", p, exc)
     return patterns
 
 
 def _pattern_searchable_text(pattern: Dict[str, Any]) -> str:
     """Return a single lowercase string of all searchable text for a pattern."""
-    parts = [
-        pattern.get("name", ""),
-        pattern.get("title", ""),
-        pattern.get("description", ""),
-        pattern.get("category", ""),
-        pattern.get("teradata_function", ""),
+    # Collect all top-level string values (covers any domain-specific fields generically)
+    _structured_keys = frozenset({"use_cases", "parameters", "templates", "common_errors", "_source_file"})
+    parts: List[str] = [
+        str(v) for k, v in pattern.items()
+        if k not in _structured_keys and isinstance(v, str) and v
     ]
     use_cases = pattern.get("use_cases", [])
     if isinstance(use_cases, list):

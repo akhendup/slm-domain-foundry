@@ -18,7 +18,10 @@ all fields to be present at once.
 
 import hashlib
 import json
+import logging
 import re
+
+_log = logging.getLogger(__name__)
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -286,8 +289,8 @@ def _load_index(library_dir: Path) -> Dict[str, Any]:
     if index_path.exists():
         try:
             return json.loads(index_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Failed to load knowledge library index %s: %s", index_path, exc)
     return {"entries": {}}
 
 
@@ -353,8 +356,8 @@ def load_library_entries(library_dir: Path) -> List[Dict[str, Any]]:
             if isinstance(data, dict) and data.get("name"):
                 data["_source_file"] = str(yaml_path)
                 entries.append(data)
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Failed to load knowledge library entry %s: %s", yaml_path, exc)
     return entries
 
 
@@ -406,7 +409,8 @@ def load_pattern_for_edit(slug: str, library_dir: Path) -> Optional[Dict[str, st
     try:
         with open(yaml_path, "r", encoding="utf-8") as f:
             pattern = yaml.safe_load(f)
-    except Exception:
+    except Exception as exc:
+        _log.warning("Failed to load pattern %s: %s", yaml_path, exc)
         return None
 
     form: Dict[str, str] = {
