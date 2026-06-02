@@ -53,13 +53,23 @@ def _dtype_for_device(device: torch.device) -> torch.dtype:
 
 
 def _resolve_model_dir(model_dir: Path) -> Path:
-    """Return the directory that contains config.json (maybe one level down, e.g. output_model/checkpoint-500)."""
+    """Return the best directory to load from (prefers merged model, falls back to adapter checkpoint)."""
     model_dir = Path(model_dir)
     if (model_dir / "config.json").exists():
         return model_dir
-    for sub in model_dir.iterdir():
+    # Look one level down for a merged model first
+    for sub in sorted(model_dir.iterdir()):
         if sub.is_dir() and (sub / "config.json").exists():
             return sub
+    # Fall back to a PEFT adapter checkpoint (direct or one level down)
+    if (model_dir / "adapter_config.json").exists():
+        return model_dir
+    checkpoints = sorted(
+        (d for d in model_dir.glob("checkpoint-*") if d.is_dir() and (d / "adapter_config.json").exists()),
+        key=lambda d: d.stat().st_mtime,
+    )
+    if checkpoints:
+        return checkpoints[-1]  # most recent
     return model_dir  # caller will handle missing config
 
 
@@ -123,11 +133,51 @@ def _load_with_patched_config(model_dir: Path, device: torch.device) -> Tuple[An
     return model, tokenizer
 
 
+def _load_peft_adapter(model_dir: Path, device: torch.device) -> Tuple[Any, Any]:
+    """
+    Load a PEFT/LoRA adapter checkpoint.
+
+    Reads adapter_config.json to find the base model name, downloads the base
+    model from HuggingFace (or cache), applies the LoRA adapter, merges the
+    weights, and returns (model, tokenizer) ready for inference.
+    """
+    try:
+        from peft import PeftModel
+    except ImportError:
+        raise ImportError("peft is required to load LoRA adapters: pip install peft")
+
+    with open(model_dir / "adapter_config.json") as f:
+        adapter_cfg = json.load(f)
+    base_name = adapter_cfg.get("base_model_name_or_path", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+
+    print(f"Loading base model '{base_name}' for PEFT adapter…", flush=True)
+    tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    base_model = AutoModelForCausalLM.from_pretrained(
+        base_name,
+        torch_dtype=_dtype_for_device(device),
+        device_map="auto" if device.type == "cuda" else None,
+        trust_remote_code=True,
+    )
+    print("Applying LoRA adapter and merging weights…", flush=True)
+    peft_model = PeftModel.from_pretrained(base_model, str(model_dir))
+    model = peft_model.merge_and_unload()
+    if device.type in ("cpu", "mps"):
+        model = model.to(device)
+    return model, tokenizer
+
+
 def load_model(model_dir: Path) -> Tuple[Any, Any]:
     """
     Load model and tokenizer from model_dir.
     Uses Unsloth if CUDA is available, else transformers (CPU or MPS).
-    Handles saved dirs where config.json lacks model_type (e.g. Unsloth/PEFT).
+    Handles:
+      - Fully merged models (config.json present)
+      - PEFT/LoRA adapter-only checkpoints (adapter_config.json present)
+      - Unsloth saves where config.json lacks model_type
     If config.json is not in model_dir, looks one level down (e.g. output_model/checkpoint-500).
     Returns (model, tokenizer).
     """
@@ -137,6 +187,10 @@ def load_model(model_dir: Path) -> Tuple[Any, Any]:
     model_dir = _resolve_model_dir(model_dir)
 
     device = _get_device()
+
+    # If the directory has only a PEFT adapter (no full model weights), use the adapter path
+    if not (model_dir / "config.json").exists() and (model_dir / "adapter_config.json").exists():
+        return _load_peft_adapter(model_dir, device)
 
     if _UNSLOTH_AVAILABLE and device.type == "cuda":
         try:

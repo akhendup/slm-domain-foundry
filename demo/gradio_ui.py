@@ -235,7 +235,16 @@ def _unsloth_available() -> bool:
 
 
 def _model_ready() -> bool:
-    return (_OUTPUT_MODEL_DIR / "config.json").exists()
+    """Return True if a loadable model exists — either a merged model or a PEFT adapter checkpoint."""
+    if (_OUTPUT_MODEL_DIR / "config.json").exists():
+        return True
+    if (_OUTPUT_MODEL_DIR / "adapter_config.json").exists():
+        return True
+    # Look one level down for checkpoints with merged weights or PEFT adapters
+    for sub in _OUTPUT_MODEL_DIR.glob("checkpoint-*"):
+        if sub.is_dir() and ((sub / "config.json").exists() or (sub / "adapter_config.json").exists()):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -2341,6 +2350,106 @@ def _swarm_query(
 
 
 # ---------------------------------------------------------------------------
+# Local LLM (Ollama / llama.cpp / LM Studio) inference helper
+# ---------------------------------------------------------------------------
+
+def _ollama_chat(
+    message: str,
+    history: List,
+    host: str,
+    model_name: str,
+) -> str:
+    """
+    Send a message to any OpenAI-compatible local inference server and return the reply.
+
+    Compatible with:
+      - Ollama        (http://localhost:11434)
+      - llama.cpp     (http://localhost:8080)
+      - LM Studio     (http://localhost:1234)
+      - vLLM          (http://localhost:8000)
+    """
+    import requests as _requests
+
+    host = (host or "http://localhost:11434").rstrip("/")
+    model_name = (model_name or "llama3").strip()
+    msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
+    if not msg_text.strip():
+        return "Please enter a question."
+
+    system_prompt = (
+        "You are a concise, helpful assistant specializing in database analytics, "
+        "SQL, and Teradata analytic functions. Answer questions directly and briefly."
+    )
+    messages = [{"role": "system", "content": system_prompt}]
+    for entry in history:
+        if isinstance(entry, dict):
+            messages.append({"role": entry["role"], "content": _normalize_content(entry.get("content"))})
+        else:
+            u, a = entry[0], entry[1]
+            messages.append({"role": "user", "content": _normalize_content(u)})
+            if a:
+                messages.append({"role": "assistant", "content": _normalize_content(a)})
+    messages.append({"role": "user", "content": msg_text})
+
+    url = f"{host}/v1/chat/completions"
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": 0.2,
+        "max_tokens": 512,
+        "stream": False,
+    }
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer local"}
+    try:
+        resp = _requests.post(url, json=payload, headers=headers, timeout=60)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except _requests.exceptions.ConnectionError:
+        return (
+            f"Cannot connect to local LLM at `{host}`. "
+            "Make sure Ollama/llama.cpp/LM Studio is running and the URL is correct."
+        )
+    except Exception as exc:
+        return f"Error: {exc}"
+
+
+def _ollama_test_connection(host: str, model_name: str) -> str:
+    """Ping the local LLM server and return a status message."""
+    import requests as _requests
+
+    host = (host or "http://localhost:11434").rstrip("/")
+    try:
+        # Try /api/tags (Ollama) or /v1/models (OpenAI-compatible) to check connectivity
+        try:
+            r = _requests.get(f"{host}/api/tags", timeout=5)
+            if r.ok:
+                tags = r.json().get("models", [])
+                names = [m.get("name", "") for m in tags]
+                model_name = (model_name or "").strip()
+                found = any(model_name in n for n in names) if model_name else bool(names)
+                if names:
+                    available = ", ".join(names[:5])
+                    suffix = " ..." if len(names) > 5 else ""
+                    if found:
+                        return f"Connected to Ollama at {host}. Model '{model_name}' is available. (All: {available}{suffix})"
+                    else:
+                        return f"Connected to Ollama at {host}, but model '{model_name}' not found. Available: {available}{suffix}"
+        except Exception:
+            pass
+        # Fallback: try /v1/models
+        r2 = _requests.get(f"{host}/v1/models", timeout=5)
+        if r2.ok:
+            data = r2.json().get("data", [])
+            names = [m.get("id", "") for m in data]
+            return f"Connected to {host}. Models: {', '.join(names[:5]) or '(none listed)'}"
+        return f"Server responded with status {r2.status_code} at {host}."
+    except _requests.exceptions.ConnectionError:
+        return f"Cannot connect to {host}. Is the server running?"
+    except Exception as exc:
+        return f"Error: {exc}"
+
+
+# ---------------------------------------------------------------------------
 # App builder
 # ---------------------------------------------------------------------------
 
@@ -2754,8 +2863,59 @@ def build_app() -> gr.Blocks:
                     outputs=[load_status, load_btn],
                 )
 
-            # ── Tab 6 · Knowledge Library ───────────────────────────────────
-            with gr.Tab("6 · Knowledge Library"):
+            # ── Tab 6 · Local LLM (Ollama / llama.cpp / LM Studio) ────────
+            with gr.Tab("6 · Local LLM"):
+                gr.Markdown(
+                    "**Chat with any local LLM** — no fine-tuning or model download required.\n\n"
+                    "Point this tab at a running [Ollama](https://ollama.ai), "
+                    "[llama.cpp](https://github.com/ggerganov/llama.cpp), or "
+                    "[LM Studio](https://lmstudio.ai) server and start chatting immediately.\n\n"
+                    "**Quick start:** `ollama serve` then `ollama pull llama3` — takes ~5 min on first run."
+                )
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        ollama_host = gr.Textbox(
+                            label="Server URL",
+                            value="http://localhost:11434",
+                            placeholder="http://localhost:11434  (Ollama default)",
+                        )
+                    with gr.Column(scale=2):
+                        ollama_model = gr.Textbox(
+                            label="Model name",
+                            value="llama3",
+                            placeholder="llama3, mistral, phi3, etc.",
+                        )
+                    with gr.Column(scale=1, min_width=160):
+                        ollama_test_btn = gr.Button("Test Connection", variant="secondary")
+                ollama_conn_status = gr.Textbox(
+                    label="Connection Status",
+                    interactive=False,
+                    value="Enter the server URL and model name, then click 'Test Connection'.",
+                )
+                ollama_test_btn.click(
+                    fn=_ollama_test_connection,
+                    inputs=[ollama_host, ollama_model],
+                    outputs=[ollama_conn_status],
+                )
+                _ollama_chat_kwargs: dict = dict(
+                    fn=_ollama_chat,
+                    additional_inputs=[ollama_host, ollama_model],
+                    # When additional_inputs are present Gradio requires examples as list-of-lists
+                    examples=[
+                        ["What is CSUM in Teradata SQL?", "http://localhost:11434", "llama3"],
+                        ["Show me an example of the RANK analytic function.", "http://localhost:11434", "llama3"],
+                        ["What is the nPath function used for?", "http://localhost:11434", "llama3"],
+                        ["Explain the QUANTILE function with an example.", "http://localhost:11434", "llama3"],
+                        ["What is the difference between RANK and DENSE_RANK?", "http://localhost:11434", "llama3"],
+                    ],
+                )
+                try:
+                    gr.ChatInterface(type="messages", **_ollama_chat_kwargs)
+                except TypeError:
+                    gr.ChatInterface(**_ollama_chat_kwargs)
+
+            # ── Tab 7 · Knowledge Library ───────────────────────────────────
+            with gr.Tab("7 · Knowledge Library"):
                 gr.Markdown(
                     "**Teach the model what you know** — no YAML or coding required.\n\n"
                     "Fill in the form below in plain English. The system generates training Q&A pairs "
@@ -2888,8 +3048,8 @@ def build_app() -> gr.Blocks:
                     outputs=[kb_status, kb_library_html],
                 )
 
-            # ── Tab 7 · Memory ───────────────────────────────────────────────
-            with gr.Tab("7 · Memory"):
+            # ── Tab 8 · Memory ───────────────────────────────────────────────
+            with gr.Tab("8 · Memory"):
                 gr.Markdown(
                     "**Conversation Memory** — every chat interaction is logged here automatically.\n\n"
                     "Review answers, **Approve** the good ones and **Reject** the bad ones. "
@@ -2966,8 +3126,8 @@ def build_app() -> gr.Blocks:
                     outputs=[mem_export_status, mem_export_file],
                 )
 
-            # ── Tab 8 · Swarm ──────────────────────────────────────────────
-            with gr.Tab("8 · Swarm"):
+            # ── Tab 9 · Swarm ──────────────────────────────────────────────
+            with gr.Tab("9 · Swarm"):
                 gr.Markdown(
                     "**Multi-model swarm** — load several fine-tuned (or pretrained) SLMs "
                     "simultaneously and query them in parallel or individually.\n\n"

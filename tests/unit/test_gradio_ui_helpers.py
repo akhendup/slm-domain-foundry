@@ -221,10 +221,11 @@ class TestMakePipelineHtml:
         for step in ("Upload", "Extract", "Train", "Chat"):
             assert step in result
 
-    def test_pending_status_shown(self):
-        from demo.gradio_ui import _make_pipeline_html, _pipeline_status
-        # Default status is pending
-        result = _make_pipeline_html()
+    def test_pending_status_shown(self, monkeypatch):
+        from demo import gradio_ui
+        # Force a pending state to verify the HTML renders pending steps
+        monkeypatch.setitem(gradio_ui._pipeline_status, "train", "pending")
+        result = gradio_ui._make_pipeline_html()
         assert "Pending" in result or "pending" in result
 
 
