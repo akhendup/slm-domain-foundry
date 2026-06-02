@@ -268,22 +268,32 @@ def generate_response(
 
     device = next(model.parameters()).device if hasattr(model, "parameters") else _get_device()
 
-    # Tokenize using the chat template — may return a tensor or BatchEncoding
-    _tpl_out = tokenizer.apply_chat_template(
-        safe_messages,
-        tokenize=True,
-        add_generation_prompt=True,
-        return_tensors="pt",
-    )
-    if hasattr(_tpl_out, "input_ids"):
-        input_ids = _tpl_out.input_ids.to(device)
+    # Prefer chat template; fall back to a simple role-labeled prompt (e.g. GPT-2 base).
+    if getattr(tokenizer, "chat_template", None):
+        _tpl_out = tokenizer.apply_chat_template(
+            safe_messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_tensors="pt",
+        )
+        if hasattr(_tpl_out, "input_ids"):
+            input_ids = _tpl_out.input_ids.to(device)
+        else:
+            input_ids = _tpl_out.to(device)
     else:
-        input_ids = _tpl_out.to(device)
+        parts = []
+        for msg in safe_messages:
+            role = msg.get("role", "user")
+            parts.append(f"{role}: {msg.get('content', '')}")
+        parts.append("assistant:")
+        prompt = "\n".join(parts)
+        encoded = tokenizer(prompt, return_tensors="pt")
+        input_ids = encoded["input_ids"].to(device)
     input_length = input_ids.shape[1]
-    attention_mask = torch.ones_like(input_ids, device=device)
     pad_id = tokenizer.pad_token_id
+    attention_mask = torch.ones_like(input_ids, dtype=torch.long, device=device)
     if pad_id is not None:
-        attention_mask = (input_ids != pad_id).long()
+        attention_mask = (input_ids != pad_id).to(dtype=torch.long)
 
     with torch.no_grad():
         out = model.generate(

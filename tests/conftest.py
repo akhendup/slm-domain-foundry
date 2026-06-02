@@ -153,6 +153,18 @@ def sample_yaml_pattern():
     """)
 
 
+@pytest.fixture(scope="session")
+def ollama_available() -> bool:
+    """True when Ollama responds at http://localhost:11434."""
+    try:
+        import requests
+
+        r = requests.get("http://localhost:11434/api/tags", timeout=2)
+        return r.ok
+    except Exception:
+        return False
+
+
 @pytest.fixture
 def sample_pattern_dict():
     return {

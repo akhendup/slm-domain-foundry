@@ -13,18 +13,8 @@ import json
 import os
 from pathlib import Path
 
-try:
-    from unsloth import FastLanguageModel
-    from unsloth import is_bfloat16_supported
-    from unsloth.chat_templates import get_chat_template
-    import torch
-    from datasets import load_dataset
-    from trl import SFTTrainer
-    from transformers import TrainerCallback, TrainingArguments
-except ImportError as e:
-    print(f"ERROR: {e}")
-    print("Install: pip install unsloth torch datasets transformers trl")
-    raise SystemExit(1)
+from train.sharegpt_format import make_sharegpt_formatting_func
+from transformers import TrainerCallback, TrainingArguments
 
 # Detect TrainingArguments API
 _sig = inspect.signature(TrainingArguments.__init__)
@@ -58,32 +48,22 @@ class _PrintProgressCallback(TrainerCallback):
 
 def _make_formatting_func(tok):
     """Return a ShareGPT formatting function bound to *tok* (avoids globals)."""
-    def formatting_func_sharegpt(examples):
-        """Format ShareGPT conversations for the trainer."""
-        conversations = examples.get("conversations", [])
-        if not conversations:
-            return []
-        if isinstance(conversations[0], dict) and "role" in conversations[0]:
-            conversations = [conversations]
-        texts = []
-        for convo in conversations:
-            if not convo:
-                continue
-            messages = []
-            for msg in convo:
-                if isinstance(msg, dict) and "role" in msg and "content" in msg:
-                    role = "user" if msg["role"] == "user" else "assistant"
-                    messages.append({"role": role, "content": msg["content"]})
-            if messages:
-                text = tok.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=False
-                )
-                texts.append(text)
-        return texts
-    return formatting_func_sharegpt
+    return make_sharegpt_formatting_func(tok)
 
 
 def main():
+    try:
+        from unsloth import FastLanguageModel
+        from unsloth import is_bfloat16_supported
+        from unsloth.chat_templates import get_chat_template
+        import torch
+        from datasets import load_dataset
+        from trl import SFTTrainer
+        from transformers import TrainerCallback, TrainingArguments
+    except ImportError as e:
+        print(f"ERROR: {e}")
+        print("Install: pip install unsloth torch datasets transformers trl")
+        raise SystemExit(1)
     import argparse
     p = argparse.ArgumentParser(description="Fine-tune SLM with Unsloth")
     p.add_argument("--train-file", type=Path, default=Path("training_data/train_sharegpt.jsonl"))

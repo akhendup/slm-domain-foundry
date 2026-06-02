@@ -88,24 +88,27 @@ def _get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def _format_sharegpt_example(example, tokenizer):
-    """Convert a single ShareGPT example to a dict with a 'text' string.
-
-    Works whether the conversations field is a list of dicts (HuggingFace batched
-    dataset rows are individual dicts here when using dataset.map()).
-    Returns {"text": "<formatted string>"} or {"text": ""} on failure.
-    """
-    convo = example.get("conversations", [])
-    messages = []
-    for msg in convo:
-        if isinstance(msg, dict) and "role" in msg and "content" in msg:
-            role = "user" if msg["role"] == "user" else "assistant"
-            messages.append({"role": role, "content": msg["content"]})
-    if not messages:
-        return {"text": ""}
-    text = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=False
+def _lora_target_modules(model) -> list[str]:
+    """Pick LoRA target module names for the loaded architecture."""
+    names = {n for n, _ in model.named_modules()}
+    llama_like = {"q_proj", "k_proj", "v_proj", "o_proj"}
+    if llama_like.issubset(names):
+        return sorted(llama_like)
+    if any(n.endswith("c_attn") for n in names):
+        return ["c_attn"]
+    if any(n.endswith("q_proj") for n in names):
+        return ["q_proj", "k_proj", "v_proj", "o_proj"]
+    raise ValueError(
+        "Could not infer LoRA target modules for this model. "
+        "Use a Llama/Mistral-style or GPT-2-style base checkpoint."
     )
+
+
+def _format_sharegpt_example(example, tokenizer):
+    """Convert a single ShareGPT example to a dict with a 'text' string."""
+    from train.sharegpt_format import format_sharegpt_messages
+
+    text = format_sharegpt_messages(example.get("conversations", []), tokenizer)
     return {"text": text}
 
 
@@ -184,7 +187,7 @@ def main():
         r=args.lora_r,
         lora_alpha=args.lora_r * 2,
         lora_dropout=0.05,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
+        target_modules=_lora_target_modules(model),
         bias="none",
     )
     model = get_peft_model(model, lora_config)
