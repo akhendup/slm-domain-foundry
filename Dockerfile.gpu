@@ -42,7 +42,8 @@ COPY README.md .
 COPY run_gradio_ui.py .
 COPY data/       data/
 COPY train/      train/
-COPY demo/       demo/
+COPY app/       app/
+COPY demo/      demo/
 COPY scripts/    scripts/
 COPY sample_data/ sample_data/
 

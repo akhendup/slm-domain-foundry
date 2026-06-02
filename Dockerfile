@@ -7,7 +7,7 @@ FROM python:3.12-slim
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-# Ensure /app is on Python path so "python -m demo.gradio_ui" and "python -m data.*" work
+# Ensure /app is on Python path so "python -m app.gradio_ui" and "python -m data.*" work
 ENV PYTHONPATH=/app
 
 WORKDIR /app
@@ -28,7 +28,8 @@ COPY README.md .
 COPY run_gradio_ui.py .
 COPY data/       data/
 COPY train/      train/
-COPY demo/       demo/
+COPY app/       app/
+COPY demo/      demo/
 COPY scripts/    scripts/
 COPY sample_data/ sample_data/
 

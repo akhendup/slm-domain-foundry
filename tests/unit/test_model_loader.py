@@ -1,11 +1,11 @@
-"""Unit tests for demo/model_loader.py — device/dtype/config helpers only (no model weights)."""
+"""Unit tests for app/model_loader.py — device/dtype/config helpers only (no model weights)."""
 import json
 import shutil
 
 import pytest
 import torch
 
-from demo.model_loader import (
+from app.model_loader import (
     _dtype_for_device,
     _get_device,
     _infer_model_type,
@@ -129,7 +129,7 @@ class TestInferModelType:
         assert _infer_model_type(tmp_path) == "llama"
 
     def test_load_model_raises_on_missing_dir(self, tmp_path):
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         missing = tmp_path / "does_not_exist"
         with pytest.raises(FileNotFoundError):
             load_model(missing)
@@ -200,11 +200,11 @@ class TestLoadPeftAdapter:
         import torch
         cpu_device = torch.device("cpu")
 
-        with patch("demo.model_loader.AutoTokenizer.from_pretrained", return_value=mock_tokenizer), \
-             patch("demo.model_loader.AutoModelForCausalLM.from_pretrained", return_value=mock_base_model), \
-             patch("demo.model_loader._load_peft_adapter") as mock_load_peft:
+        with patch("app.model_loader.AutoTokenizer.from_pretrained", return_value=mock_tokenizer), \
+             patch("app.model_loader.AutoModelForCausalLM.from_pretrained", return_value=mock_base_model), \
+             patch("app.model_loader._load_peft_adapter") as mock_load_peft:
             mock_load_peft.return_value = (mock_merged, mock_tokenizer)
-            from demo.model_loader import _load_peft_adapter
+            from app.model_loader import _load_peft_adapter
             # Verify the function exists and is callable
             assert callable(_load_peft_adapter)
 
@@ -215,25 +215,25 @@ class TestLoadPeftAdapter:
 
 class TestModelReadyHelper:
     def test_false_when_empty(self, tmp_path, monkeypatch):
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path / "empty")
         (tmp_path / "empty").mkdir()
         assert gradio_ui._model_ready() is False
 
     def test_true_when_config_json_present(self, tmp_path, monkeypatch):
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path)
         (tmp_path / "config.json").write_text("{}")
         assert gradio_ui._model_ready() is True
 
     def test_true_when_adapter_config_present(self, tmp_path, monkeypatch):
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path)
         (tmp_path / "adapter_config.json").write_text("{}")
         assert gradio_ui._model_ready() is True
 
     def test_true_when_adapter_in_checkpoint_subdir(self, tmp_path, monkeypatch):
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path)
         ckpt = tmp_path / "checkpoint-700"
         ckpt.mkdir()

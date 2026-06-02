@@ -197,14 +197,14 @@ class TestTransformersBackend:
 
     def test_complete_calls_generate_response(self):
         b = TransformersBackend(model=MagicMock(), tokenizer=MagicMock())
-        with patch("demo.model_loader.generate_response", return_value=_GOOD_JSON) as mock_gen:
+        with patch("app.model_loader.generate_response", return_value=_GOOD_JSON) as mock_gen:
             result = b.complete([{"role": "user", "content": "Q?"}])
         mock_gen.assert_called_once()
         assert result == _GOOD_JSON
 
     def test_complete_passes_temperature(self):
         b = TransformersBackend(model=MagicMock(), tokenizer=MagicMock(), temperature=0.05)
-        with patch("demo.model_loader.generate_response", return_value=_GOOD_JSON) as mock_gen:
+        with patch("app.model_loader.generate_response", return_value=_GOOD_JSON) as mock_gen:
             b.complete([])
         _, kwargs = mock_gen.call_args
         assert kwargs.get("temperature") == 0.05

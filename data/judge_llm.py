@@ -37,7 +37,7 @@ Usage
 
     # Loaded transformers model
     from data.judge_llm import TransformersBackend, HybridJudge
-    from demo.model_loader import load_model
+    from app.model_loader import load_model
 
     model, tokenizer = load_model(Path("output_model"))
     backend = TransformersBackend(model=model, tokenizer=tokenizer)
@@ -274,7 +274,7 @@ class TransformersBackend(JudgeBackend):
     Uses a HuggingFace model + tokenizer already loaded in memory.
 
     Pass the (model, tokenizer) tuple returned by
-    ``demo.model_loader.load_model()``.
+    ``app.model_loader.load_model()``.
 
     Parameters
     ----------
@@ -301,7 +301,7 @@ class TransformersBackend(JudgeBackend):
         return "transformers:local"
 
     def complete(self, messages: List[Dict[str, str]], timeout: float = 30.0) -> str:
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         return generate_response(
             self._model,
             self._tokenizer,

@@ -2,5 +2,5 @@ version: "3.8"
 services:
   app:
     volumes:
-      - ./demo:/app/demo
+      - ./app:/app/app
       - ./train:/app/train

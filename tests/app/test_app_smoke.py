@@ -1,5 +1,5 @@
 """
-Demo smoke tests: verify the Gradio app constructs without error and key helpers work.
+App smoke tests: verify the Gradio app constructs without error and key helpers work.
 Does NOT launch the server or load model weights.
 """
 import subprocess
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
-pytestmark = pytest.mark.demo
+pytestmark = pytest.mark.app
 
 
 # ---------------------------------------------------------------------------
@@ -20,20 +20,20 @@ pytestmark = pytest.mark.demo
 class TestGradioAppBuilds:
     def test_build_app_returns_blocks(self):
         """build_app() must return a Gradio Blocks instance without raising."""
-        from demo.gradio_ui import build_app
+        from app.gradio_ui import build_app
         import gradio as gr
         app = build_app()
         assert isinstance(app, gr.Blocks)
 
     def test_build_app_idempotent(self):
         """Calling build_app() twice should not raise."""
-        from demo.gradio_ui import build_app
+        from app.gradio_ui import build_app
         build_app()
         build_app()
 
     def test_app_has_expected_tab_count(self):
         """The UI should have multiple tabs (Upload, Extract, Train, Models, Chat…)."""
-        from demo.gradio_ui import build_app
+        from app.gradio_ui import build_app
         import gradio as gr
         app = build_app()
         # Count Tab components in the blocks queue
@@ -47,27 +47,27 @@ class TestGradioAppBuilds:
 
 class TestDeviceHelpers:
     def test_get_device_label_on_this_machine(self):
-        from demo.gradio_ui import _get_device_label
+        from app.gradio_ui import _get_device_label
         label = _get_device_label()
         assert isinstance(label, str)
         assert len(label) > 3
 
     def test_unsloth_available_is_bool(self):
-        from demo.gradio_ui import _unsloth_available
+        from app.gradio_ui import _unsloth_available
         result = _unsloth_available()
         assert isinstance(result, bool)
 
     def test_model_ready_false_when_no_model(self, tmp_path, monkeypatch):
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path / "nonexistent")
-        from demo.gradio_ui import _model_ready
+        from app.gradio_ui import _model_ready
         assert _model_ready() is False
 
     def test_model_ready_true_when_config_present(self, tmp_path, monkeypatch):
         (tmp_path / "config.json").write_text("{}", encoding="utf-8")
-        from demo import gradio_ui
+        from app import gradio_ui
         monkeypatch.setattr(gradio_ui, "_OUTPUT_MODEL_DIR", tmp_path)
-        from demo.gradio_ui import _model_ready
+        from app.gradio_ui import _model_ready
         assert _model_ready() is True
 
 
@@ -77,11 +77,11 @@ class TestDeviceHelpers:
 
 class TestDockerDetectionIntegration:
     def test_in_docker_is_bool(self):
-        from demo.gradio_ui import _IN_DOCKER
+        from app.gradio_ui import _IN_DOCKER
         assert isinstance(_IN_DOCKER, bool)
 
     def test_path_dirs_consistent_with_docker_flag(self):
-        from demo import gradio_ui
+        from app import gradio_ui
         if gradio_ui._IN_DOCKER:
             assert str(gradio_ui._DATA_DIR).startswith("/app")
         else:
@@ -98,7 +98,7 @@ class TestGenerateResponseNormalization:
 
     def test_list_content_normalized_to_str(self):
         """Gradio 5.x can pass content as list-of-parts; generate_response must handle it."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
 
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
@@ -134,7 +134,7 @@ class TestGenerateResponseNormalization:
 
     def test_none_content_normalized(self):
         """None content should be converted to empty string, not raise."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
 
         mock_model = MagicMock()
         mock_tokenizer = MagicMock()
@@ -164,10 +164,10 @@ class TestGenerateResponseNormalization:
 class TestModuleImport:
     def test_gradio_ui_importable(self):
         """The gradio_ui module must be importable without side effects."""
-        import demo.gradio_ui  # noqa: F401
+        import app.gradio_ui  # noqa: F401
 
     def test_model_loader_importable(self):
-        import demo.model_loader  # noqa: F401
+        import app.model_loader  # noqa: F401
 
     def test_knowledge_capture_importable(self):
         import data.knowledge_capture  # noqa: F401
@@ -187,11 +187,21 @@ class TestModuleImport:
 
 class TestEntryPoint:
     def test_module_help(self):
-        """python -m demo.gradio_ui --help should exit 0."""
+        """python -m app.gradio_ui --help should exit 0."""
         result = subprocess.run(
-            [sys.executable, "-m", "demo.gradio_ui", "--help"],
+            [sys.executable, "-m", "app.gradio_ui", "--help"],
             capture_output=True, text=True,
             cwd=Path(__file__).parent.parent.parent,
         )
         assert result.returncode == 0
         assert "host" in result.stdout.lower() or "port" in result.stdout.lower()
+
+    def test_demo_shim_help(self):
+        """Deprecated demo package shim should still run --help."""
+        result = subprocess.run(
+            [sys.executable, "-m", "demo.gradio_ui", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent.parent,
+        )
+        assert result.returncode == 0

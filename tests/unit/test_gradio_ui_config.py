@@ -1,4 +1,4 @@
-"""Unit tests for demo/gradio_ui.py — Docker detection and path configuration."""
+"""Unit tests for app/gradio_ui.py — Docker detection and path configuration."""
 import os
 from pathlib import Path
 from unittest.mock import patch, mock_open
@@ -10,7 +10,7 @@ pytestmark = pytest.mark.unit
 
 
 # We import the function directly to test it in isolation
-from demo.gradio_ui import _is_docker, _get_device_label, _unsloth_available
+from app.gradio_ui import _is_docker, _get_device_label, _unsloth_available
 
 
 class TestIsDocker:
@@ -42,12 +42,12 @@ class TestIsDocker:
 
     def test_dockerenv_file_triggers(self, monkeypatch):
         monkeypatch.delenv("DOCKER_CONTAINER", raising=False)
-        with patch("demo.gradio_ui.Path") as MockPath:
+        with patch("app.gradio_ui.Path") as MockPath:
             # Make /.dockerenv appear to exist
             mock_instance = MockPath.return_value
             mock_instance.exists.return_value = True
             # Patch just the /.dockerenv check
-            import demo.gradio_ui as ui_mod
+            import app.gradio_ui as ui_mod
             original_is_docker = ui_mod._is_docker
 
             def patched():
@@ -62,14 +62,14 @@ class TestIsDocker:
 class TestPathConfiguration:
     def test_project_root_is_parent_of_demo(self):
         """_PROJECT_ROOT should be the directory above demo/."""
-        from demo.gradio_ui import _PROJECT_ROOT
+        from app.gradio_ui import _PROJECT_ROOT
         assert (_PROJECT_ROOT / "demo").is_dir()
 
     def test_native_paths_under_project_root(self, monkeypatch):
         """When not in Docker, all dirs should be under _PROJECT_ROOT."""
         monkeypatch.delenv("DOCKER_CONTAINER", raising=False)
         # Re-import to get fresh state — or just check current module state
-        from demo import gradio_ui
+        from app import gradio_ui
         if not gradio_ui._IN_DOCKER:
             assert str(gradio_ui._DATA_DIR).startswith(str(gradio_ui._PROJECT_ROOT))
             assert str(gradio_ui._TRAINING_DATA_DIR).startswith(str(gradio_ui._PROJECT_ROOT))
@@ -85,17 +85,17 @@ class TestPathConfiguration:
         # the detection function correctly signals Docker mode.
 
     def test_all_path_attrs_are_path_objects(self):
-        from demo import gradio_ui
+        from app import gradio_ui
         for attr in ("_DATA_DIR", "_TRAINING_DATA_DIR", "_OUTPUT_MODEL_DIR",
                      "_SAVED_MODELS_DIR", "_LIBRARY_DIR"):
             assert isinstance(getattr(gradio_ui, attr), Path), f"{attr} is not a Path"
 
     def test_data_dir_named_data(self):
-        from demo.gradio_ui import _DATA_DIR
+        from app.gradio_ui import _DATA_DIR
         assert _DATA_DIR.name == "data"
 
     def test_training_data_dir_named(self):
-        from demo.gradio_ui import _TRAINING_DATA_DIR
+        from app.gradio_ui import _TRAINING_DATA_DIR
         assert _TRAINING_DATA_DIR.name == "training_data"
 
 

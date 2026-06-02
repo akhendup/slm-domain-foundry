@@ -29,7 +29,7 @@ docker run --rm -v "$(pwd)/my_data:/data" ai_slm_training \
 docker run -it --rm -v "$(pwd)/my_data:/data" ai_slm_training bash
 # Inside: python -m data.prepare_training_data --csv /data/qa.csv --output-dir /data/training_data
 #         python -m train.finetune_unsloth --train-file /data/training_data/train_sharegpt.jsonl ...
-#         python -m demo.chat --model-dir /data/output_model --interactive
+#         python -m app.chat --model-dir /data/output_model --interactive
 ```
 
 On **Windows (PowerShell)** use `${PWD}` or full path for the volume, e.g. `-v "C:\path\to\my_data:/data"`.
@@ -122,7 +122,7 @@ See `train/README_FROM_SCRATCH.md`. Use `scripts/export_for_from_scratch.py` to 
 
 ```bash
 # Local
-python -m demo.gradio_ui --model-dir output_model
+python -m app.gradio_ui --model-dir output_model
 # Then open http://127.0.0.1:7860 in your browser.
 
 # Docker (mount your trained model, map port 7860)
@@ -134,8 +134,8 @@ docker run -p 7860:7860 -v "$(pwd)/output_model:/app/model:ro" ai_slm_training \
 **CLI** – Terminal-only:
 
 ```bash
-python -m demo.chat --model-dir output_model              # sample questions
-python -m demo.chat --model-dir output_model --interactive  # type questions in terminal
+python -m app.chat --model-dir output_model              # sample questions
+python -m app.chat --model-dir output_model --interactive  # type questions in terminal
 ```
 
 The demo shows how the model responds after training: your data → training → answers in the UI or CLI.
@@ -157,9 +157,12 @@ ai_slm_training/
 ├── train/
 │   ├── finetune_unsloth.py   # Fine-tune TinyLlama (or other) with Unsloth
 │   └── README_FROM_SCRATCH.md
-├── demo/
-│   ├── chat.py               # CLI Q&A with trained model
-│   └── gradio_ui.py          # Web UI for Q&A (Gradio)
+├── app/
+│   ├── chat.py               # CLI Q&A with trained model (Ollama optional)
+│   ├── gradio_ui.py          # Web UI: upload → train → chat → swarm
+│   ├── model_loader.py       # Load merged or PEFT checkpoints for inference
+│   └── swarm.py              # Multi-model parallel inference
+├── demo/                     # Deprecated shims → app (backward compatibility)
 ├── scripts/
 │   └── export_for_from_scratch.py  # ShareGPT JSONL → single .txt
 ├── Dockerfile
@@ -175,4 +178,4 @@ ai_slm_training/
 
 - **Data:** PDF, CSV, or YAML patterns → `data/prepare_training_data.py` → `training_data/*.jsonl`.
 - **Train:** Either (a) from scratch (see `train/README_FROM_SCRATCH.md`) or (b) `train/finetune_unsloth.py` (TinyLlama).
-- **Demo:** `demo/gradio_ui.py` (web UI) or `demo/chat.py` (CLI) – ask questions and see answers so anyone can see how the model is trained and used.
+- **Demo:** `app/gradio_ui.py` (web UI) or `app/chat.py` (CLI) – ask questions and see answers so anyone can see how the model is trained and used.

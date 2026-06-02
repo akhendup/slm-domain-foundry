@@ -1,5 +1,5 @@
 """
-Additional tests for demo/gradio_ui.py — quality HTML and rebuild UI functions.
+Additional tests for app/gradio_ui.py — quality HTML and rebuild UI functions.
 These cover the remaining helper functions not in test_gradio_ui_helpers.py.
 """
 import json
@@ -19,63 +19,63 @@ pytestmark = pytest.mark.unit
 
 class TestMakeQualityHtmlBranches:
     def test_excellent_rating(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # final < 1.2 and reduction > 40%
         result = _make_quality_html(0.8, 0.9, 2.0, 500)
         assert "Excellent" in result
 
     def test_good_rating(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # 1.2 <= final < 1.8 and reduction > 25%
         result = _make_quality_html(1.5, 1.6, 2.5, 500)
         assert "Good" in result
 
     def test_okay_rating(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # 1.8 <= final < 2.2 and reduction > 10%
         result = _make_quality_html(2.0, 2.1, 2.5, 500)
         assert "Okay" in result
 
     def test_fair_rating(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # 2.2 <= final < 2.8
         result = _make_quality_html(2.5, 2.5, 2.8, 500)
         assert "Fair" in result
 
     def test_poor_rating(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # final >= 2.8
         result = _make_quality_html(3.0, 3.0, 3.5, 100)
         assert "Poor" in result
 
     def test_warning_very_small_dataset(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         result = _make_quality_html(0.8, 0.9, 2.0, 20)
         assert "Very small dataset" in result or "very small" in result.lower()
 
     def test_warning_small_dataset(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         result = _make_quality_html(0.8, 0.9, 2.0, 100)
         assert "Small dataset" in result or "small" in result.lower()
 
     def test_overfitting_warning(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         # eval_loss > train_loss * 1.3 → overfitting warning
         result = _make_quality_html(1.0, 2.0, 2.5, 500)
         assert "overfitting" in result.lower()
 
     def test_no_initial_loss(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         result = _make_quality_html(1.0, 1.1, None, 500)
         assert isinstance(result, str) and len(result) > 0
 
     def test_no_eval_loss(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         result = _make_quality_html(1.0, None, 2.0, 500)
         assert isinstance(result, str) and len(result) > 0
 
     def test_zero_examples(self):
-        from demo.gradio_ui import _make_quality_html
+        from app.gradio_ui import _make_quality_html
         result = _make_quality_html(1.0, 1.1, 2.0, 0)
         assert isinstance(result, str)
 
@@ -86,19 +86,19 @@ class TestMakeQualityHtmlBranches:
 
 class TestMakeDataSampleHtml:
     def test_returns_empty_when_no_file(self, tmp_path):
-        from demo.gradio_ui import _make_data_sample_html
+        from app.gradio_ui import _make_data_sample_html
         result = _make_data_sample_html(tmp_path / "nonexistent.jsonl")
         assert result == ""
 
     def test_returns_empty_when_file_empty(self, tmp_path):
-        from demo.gradio_ui import _make_data_sample_html
+        from app.gradio_ui import _make_data_sample_html
         f = tmp_path / "empty.jsonl"
         f.write_text("", encoding="utf-8")
         result = _make_data_sample_html(f)
         assert result == ""
 
     def test_returns_html_with_data(self, tmp_path):
-        from demo.gradio_ui import _make_data_sample_html
+        from app.gradio_ui import _make_data_sample_html
         f = tmp_path / "train.jsonl"
         examples = [
             {"conversations": [
@@ -119,7 +119,7 @@ class TestMakeDataSampleHtml:
 
 class TestRebuildTrainingUi:
     def test_returns_tuple_when_not_active(self):
-        from demo.gradio_ui import _rebuild_training_ui, _training_state
+        from app.gradio_ui import _rebuild_training_ui, _training_state
         # Save state and reset to clean (not active)
         orig = dict(_training_state)
         _training_state["active"] = False
@@ -132,7 +132,7 @@ class TestRebuildTrainingUi:
             _training_state.update(orig)
 
     def test_returns_tuple_when_done(self):
-        from demo.gradio_ui import _rebuild_training_ui, _training_state
+        from app.gradio_ui import _rebuild_training_ui, _training_state
         orig = dict(_training_state)
         _training_state.update({
             "active": False, "done": True, "failed": False,
@@ -154,7 +154,7 @@ class TestRebuildTrainingUi:
 
     def test_returns_tuple_when_active(self):
         import time
-        from demo.gradio_ui import _rebuild_training_ui, _training_state
+        from app.gradio_ui import _rebuild_training_ui, _training_state
         orig = dict(_training_state)
         _training_state.update({
             "active": True, "done": False, "failed": False,
@@ -174,7 +174,7 @@ class TestRebuildTrainingUi:
             _training_state.update(orig)
 
     def test_returns_tuple_when_failed(self):
-        from demo.gradio_ui import _rebuild_training_ui, _training_state
+        from app.gradio_ui import _rebuild_training_ui, _training_state
         orig = dict(_training_state)
         _training_state.update({
             "active": False, "done": False, "failed": True,
@@ -201,7 +201,7 @@ class TestRebuildTrainingUi:
 class TestChatSystemPrompt:
     def test_default_prompt_is_generic(self):
         """Default prompt must not contain product-specific hardcoded names."""
-        import demo.gradio_ui as gui
+        import app.gradio_ui as gui
         assert "Teradata" not in gui._CHAT_SYSTEM_PROMPT
 
     def test_env_var_overrides_prompt(self, monkeypatch):

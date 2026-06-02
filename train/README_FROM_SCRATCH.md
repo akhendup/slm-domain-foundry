@@ -31,6 +31,6 @@ If you want a single “from scratch” script inside this repo, the next step i
 - Loads `training_data/train_sharegpt.jsonl` (or the .txt export),
 - Builds or loads a tokenizer,
 - Trains a 2–4 layer GPT-2-style model with `Trainer`,
-- Saves the model so the same **demo** (Q&A chat) can load it and run questions (with a small adapter for the different model type).
+- Saves the model so the same **app** (Q&A chat) can load it and run questions (with a small adapter for the different model type).
 
-This keeps the flow: **data → prepare → train (finetune OR from scratch) → demo**.
+This keeps the flow: **data → prepare → train (finetune OR from scratch) → app**.

@@ -1,10 +1,10 @@
-"""Unit tests for demo/swarm.py — no real model weights required."""
+"""Unit tests for app/swarm.py — no real model weights required."""
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from demo.swarm import SwarmManager
+from app.swarm import SwarmManager
 
 pytestmark = pytest.mark.unit
 
@@ -29,13 +29,13 @@ def _mock_generate(model, tokenizer, messages, **kwargs):
 class TestSwarmLoad:
     def test_load_success_returns_ok_message(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             msg = s.load("m1", tmp_path)
         assert "Loaded" in msg and "m1" in msg
 
     def test_load_adds_to_pool(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         assert "m1" in s.names()
 
@@ -52,21 +52,21 @@ class TestSwarmLoad:
 
     def test_load_duplicate_name_returns_error(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
             msg = s.load("m1", tmp_path)
         assert "already" in msg.lower()
 
     def test_load_exception_returns_error_message(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=RuntimeError("gpu oom")):
+        with patch("app.swarm.load_model", side_effect=RuntimeError("gpu oom")):
             msg = s.load("bad", tmp_path)
         assert "Failed" in msg or "gpu oom" in msg
         assert "bad" not in s.names()
 
     def test_load_multiple_different_names(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("a", tmp_path)
             s.load("b", tmp_path)
         assert s.names() == ["a", "b"]
@@ -79,14 +79,14 @@ class TestSwarmLoad:
 class TestSwarmUnload:
     def test_unload_removes_from_pool(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         s.unload("m1")
         assert "m1" not in s.names()
 
     def test_unload_returns_ok_message(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         msg = s.unload("m1")
         assert "Unloaded" in msg
@@ -98,7 +98,7 @@ class TestSwarmUnload:
 
     def test_unload_does_not_affect_other_models(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("keep", tmp_path)
             s.load("remove", tmp_path)
         s.unload("remove")
@@ -113,7 +113,7 @@ class TestSwarmUnload:
 class TestSwarmClear:
     def test_clear_removes_all(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
             s.load("m2", tmp_path)
         removed = s.clear()
@@ -132,7 +132,7 @@ class TestSwarmClear:
 class TestSwarmIntrospection:
     def test_names_sorted_alphabetically(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("zebra", tmp_path)
             s.load("alpha", tmp_path)
             s.load("beta", tmp_path)
@@ -144,23 +144,23 @@ class TestSwarmIntrospection:
     def test_size_increments_on_load(self, tmp_path):
         s = SwarmManager()
         assert s.size() == 0
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         assert s.size() == 1
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m2", tmp_path)
         assert s.size() == 2
 
     def test_size_decrements_on_unload(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         s.unload("m1")
         assert s.size() == 0
 
     def test_is_loaded_true_after_load(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         assert s.is_loaded("m1") is True
 
@@ -169,7 +169,7 @@ class TestSwarmIntrospection:
 
     def test_is_loaded_false_after_unload(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
         s.unload("m1")
         assert s.is_loaded("m1") is False
@@ -182,8 +182,8 @@ class TestSwarmIntrospection:
 class TestGenerateOne:
     def test_calls_generate_response(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load), \
-             patch("demo.swarm.generate_response", return_value="the answer"):
+        with patch("app.swarm.load_model", side_effect=_mock_load), \
+             patch("app.swarm.generate_response", return_value="the answer"):
             s.load("m1", tmp_path)
             result = s.generate_one("m1", [{"role": "user", "content": "q"}])
         assert result == "the answer"
@@ -202,8 +202,8 @@ class TestGenerateOne:
             captured.update(kw)
             return "ok"
 
-        with patch("demo.swarm.load_model", side_effect=_mock_load), \
-             patch("demo.swarm.generate_response", side_effect=_cap):
+        with patch("app.swarm.load_model", side_effect=_mock_load), \
+             patch("app.swarm.generate_response", side_effect=_cap):
             s.load("m1", tmp_path)
             s.generate_one("m1", [], max_new_tokens=64, temperature=0.1)
 
@@ -221,21 +221,21 @@ class TestGenerateAll:
 
     def test_all_models_receive_query(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("a", tmp_path)
             s.load("b", tmp_path)
-        with patch("demo.swarm.generate_response", return_value="resp"):
+        with patch("app.swarm.generate_response", return_value="resp"):
             results = s.generate_all([{"role": "user", "content": "hi"}])
         assert set(results.keys()) == {"a", "b"}
         assert all(v == "resp" for v in results.values())
 
     def test_all_three_models_get_results(self, tmp_path):
         s = SwarmManager()
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("x", tmp_path)
             s.load("y", tmp_path)
             s.load("z", tmp_path)
-        with patch("demo.swarm.generate_response", return_value="r"):
+        with patch("app.swarm.generate_response", return_value="r"):
             results = s.generate_all([])
         assert set(results.keys()) == {"x", "y", "z"}
 
@@ -245,10 +245,10 @@ class TestGenerateAll:
         def _always_fail(m, t, msgs, **kw):
             raise RuntimeError("oom")
 
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("bad", tmp_path)
 
-        with patch("demo.swarm.generate_response", side_effect=_always_fail):
+        with patch("app.swarm.generate_response", side_effect=_always_fail):
             results = s.generate_all([])
 
         assert "bad" in results
@@ -257,7 +257,7 @@ class TestGenerateAll:
     def test_one_fails_others_still_succeed(self, tmp_path):
         s = SwarmManager()
 
-        with patch("demo.swarm.load_model", side_effect=_mock_load):
+        with patch("app.swarm.load_model", side_effect=_mock_load):
             s.load("m1", tmp_path)
             s.load("m2", tmp_path)
 
@@ -275,7 +275,7 @@ class TestGenerateAll:
                 raise RuntimeError("first fails")
             return "ok"
 
-        with patch("demo.swarm.generate_response", side_effect=_selective):
+        with patch("app.swarm.generate_response", side_effect=_selective):
             results = s.generate_all([])
 
         assert set(results.keys()) == {"m1", "m2"}
@@ -291,9 +291,9 @@ class TestGenerateAll:
 
 class TestGetSwarm:
     def test_returns_swarm_manager_instance(self):
-        from demo.swarm import get_swarm
+        from app.swarm import get_swarm
         assert isinstance(get_swarm(), SwarmManager)
 
     def test_is_singleton(self):
-        from demo.swarm import get_swarm
+        from app.swarm import get_swarm
         assert get_swarm() is get_swarm()

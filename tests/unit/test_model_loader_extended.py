@@ -1,5 +1,5 @@
 """
-Extended unit tests for demo/model_loader.py.
+Extended unit tests for app/model_loader.py.
 Covers: _load_with_patched_config, load_model, generate_response.
 """
 import json
@@ -57,20 +57,20 @@ def _make_model_mock():
 
 class TestLoadWithPatchedConfig:
     def test_raises_when_no_config_json(self, tmp_path):
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         with pytest.raises(FileNotFoundError):
             _load_with_patched_config(tmp_path, torch.device("cpu"))
 
     def test_returns_model_and_tokenizer(self, tmp_path):
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path)
 
         mock_tokenizer = _make_real_tokenizer_mock()
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = mock_tokenizer
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -81,15 +81,15 @@ class TestLoadWithPatchedConfig:
 
     def test_model_moved_to_cpu_device(self, tmp_path):
         """On CPU, model.to(device) is called when device_map is None."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path)
 
         mock_model = _make_model_mock()
         mock_model.device_map = None
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -99,15 +99,15 @@ class TestLoadWithPatchedConfig:
 
     def test_model_not_moved_when_has_device_map(self, tmp_path):
         """Model with device_map is not moved manually."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path)
 
         mock_model = _make_model_mock()
         mock_model.device_map = {"": 0}  # truthy — skip .to()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -117,7 +117,7 @@ class TestLoadWithPatchedConfig:
 
     def test_injects_model_type_into_temp_config(self, tmp_path):
         """Empty config gets model_type injected via _infer_model_type."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path, {})  # no model_type
 
         written_config = {}
@@ -130,9 +130,9 @@ class TestLoadWithPatchedConfig:
 
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.side_effect = capture
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -142,7 +142,7 @@ class TestLoadWithPatchedConfig:
 
     def test_weight_files_not_copied_to_tmp(self, tmp_path):
         """Weight files (.safetensors, .bin) are not copied to temp directory."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path)
         (model_dir / "model.bin").write_bytes(b"more weights")
 
@@ -161,9 +161,9 @@ class TestLoadWithPatchedConfig:
 
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.side_effect = capture
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -173,15 +173,15 @@ class TestLoadWithPatchedConfig:
 
     def test_mps_device_moves_model(self, tmp_path):
         """On MPS, model.to(device) is called when device_map is None."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         model_dir = _make_model_dir(tmp_path)
 
         mock_model = _make_model_mock()
         mock_model.device_map = None
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -191,16 +191,16 @@ class TestLoadWithPatchedConfig:
 
     def test_resolves_subdir_config(self, tmp_path):
         """If config.json is in a subdirectory, it is found and used."""
-        from demo.model_loader import _load_with_patched_config
+        from app.model_loader import _load_with_patched_config
         sub = tmp_path / "checkpoint-100"
         sub.mkdir()
         _make_model_dir(sub)
 
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoConfig"), \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoConfig"), \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -216,7 +216,7 @@ class TestLoadWithPatchedConfig:
 class TestLoadModelExtended:
     def _setup(self, tmp_path, monkeypatch):
         """Prepare a model dir and disable GPU/Unsloth/ORT."""
-        import demo.model_loader as ml
+        import app.model_loader as ml
         model_dir = _make_model_dir(tmp_path)
         monkeypatch.setattr(ml, "_UNSLOTH_AVAILABLE", False)
         monkeypatch.setattr(ml, "_ORT_AVAILABLE", False)
@@ -226,13 +226,13 @@ class TestLoadModelExtended:
         return model_dir
 
     def test_standard_transformers_path_cpu(self, tmp_path, monkeypatch):
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         model_dir = self._setup(tmp_path, monkeypatch)
 
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -242,14 +242,14 @@ class TestLoadModelExtended:
         assert tokenizer is not None
 
     def test_model_moved_to_cpu_after_load(self, tmp_path, monkeypatch):
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         model_dir = self._setup(tmp_path, monkeypatch)
 
         mock_model = _make_model_mock()
         mock_model.device_map = None
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             mock_tok_cls.from_pretrained.return_value = _make_real_tokenizer_mock()
             mock_model_cls.from_pretrained.return_value = mock_model
 
@@ -259,16 +259,16 @@ class TestLoadModelExtended:
 
     def test_value_error_model_type_triggers_patched_config(self, tmp_path, monkeypatch):
         """ValueError about model_type falls back to _load_with_patched_config."""
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         model_dir = self._setup(tmp_path, monkeypatch)
 
         mock_model = _make_model_mock()
         mock_model.device_map = {"": 0}  # prevent .to() call in load_model
         mock_tokenizer = _make_real_tokenizer_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM"), \
-             patch("demo.model_loader._load_with_patched_config",
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM"), \
+             patch("app.model_loader._load_with_patched_config",
                    return_value=(mock_model, mock_tokenizer)) as mock_patched:
             mock_tok_cls.from_pretrained.side_effect = ValueError("Unrecognized model in config: unknown")
 
@@ -279,15 +279,15 @@ class TestLoadModelExtended:
 
     def test_value_error_about_model_type_keyword(self, tmp_path, monkeypatch):
         """ValueError containing 'model_type' also falls back to _load_with_patched_config."""
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         model_dir = self._setup(tmp_path, monkeypatch)
 
         mock_model = _make_model_mock()
         mock_tokenizer = _make_real_tokenizer_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM"), \
-             patch("demo.model_loader._load_with_patched_config",
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM"), \
+             patch("app.model_loader._load_with_patched_config",
                    return_value=(mock_model, mock_tokenizer)) as mock_patched:
             mock_tok_cls.from_pretrained.side_effect = ValueError("missing model_type in config")
 
@@ -297,11 +297,11 @@ class TestLoadModelExtended:
 
     def test_other_value_error_is_reraised(self, tmp_path, monkeypatch):
         """ValueError unrelated to model_type propagates."""
-        from demo.model_loader import load_model
+        from app.model_loader import load_model
         model_dir = self._setup(tmp_path, monkeypatch)
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM"):
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM"):
             mock_tok_cls.from_pretrained.side_effect = ValueError("something completely different")
 
             with pytest.raises(ValueError, match="something completely different"):
@@ -309,8 +309,8 @@ class TestLoadModelExtended:
 
     def test_ort_path_used_when_available(self, tmp_path, monkeypatch):
         """ORT path is taken on CPU when _ORT_AVAILABLE is True."""
-        from demo.model_loader import load_model
-        import demo.model_loader as ml
+        from app.model_loader import load_model
+        import app.model_loader as ml
         model_dir = _make_model_dir(tmp_path)
 
         monkeypatch.setattr(ml, "_UNSLOTH_AVAILABLE", False)
@@ -326,7 +326,7 @@ class TestLoadModelExtended:
 
         monkeypatch.setattr(ml, "_ORTModelForCausalLM", mock_ort_cls)
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls:
             mock_tok_cls.from_pretrained.return_value = mock_tokenizer
 
             model, tokenizer = load_model(model_dir)
@@ -335,8 +335,8 @@ class TestLoadModelExtended:
 
     def test_ort_exception_falls_through(self, tmp_path, monkeypatch):
         """ORT path exception falls through to standard transformers."""
-        from demo.model_loader import load_model
-        import demo.model_loader as ml
+        from app.model_loader import load_model
+        import app.model_loader as ml
         model_dir = _make_model_dir(tmp_path)
 
         monkeypatch.setattr(ml, "_UNSLOTH_AVAILABLE", False)
@@ -351,8 +351,8 @@ class TestLoadModelExtended:
 
         mock_model = _make_model_mock()
 
-        with patch("demo.model_loader.AutoTokenizer") as mock_tok_cls, \
-             patch("demo.model_loader.AutoModelForCausalLM") as mock_model_cls:
+        with patch("app.model_loader.AutoTokenizer") as mock_tok_cls, \
+             patch("app.model_loader.AutoModelForCausalLM") as mock_model_cls:
             # first call (ORT path) raises, second call (standard) succeeds
             mock_tok_cls.from_pretrained.side_effect = [
                 Exception("ORT tokenizer"),  # ORT path raises
@@ -371,14 +371,14 @@ class TestLoadModelExtended:
 
 class TestGenerateResponse:
     def test_returns_string(self):
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         result = generate_response(model, tokenizer, [{"role": "user", "content": "What is CSUM?"}])
         assert isinstance(result, str)
 
     def test_strips_whitespace(self):
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         tokenizer.decode.return_value = "  padded response  "
@@ -386,7 +386,7 @@ class TestGenerateResponse:
         assert result == "padded response"
 
     def test_string_content_passed_through(self):
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [{"role": "user", "content": "Plain question"}]
@@ -396,7 +396,7 @@ class TestGenerateResponse:
 
     def test_list_content_joined_to_string(self):
         """Gradio 5.x passes content as [{type, text}, ...] — should be joined."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [
@@ -413,7 +413,7 @@ class TestGenerateResponse:
 
     def test_list_content_non_dict_items(self):
         """List content with non-dict items: str() is called on each element."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [{"role": "user", "content": ["part1", "part2"]}]
@@ -424,7 +424,7 @@ class TestGenerateResponse:
 
     def test_non_string_int_content_converted(self):
         """Non-string, non-list content is converted via str()."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [{"role": "user", "content": 42}]
@@ -434,7 +434,7 @@ class TestGenerateResponse:
 
     def test_none_content_becomes_empty_string(self):
         """None content converts to empty string."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [{"role": "user", "content": None}]
@@ -444,7 +444,7 @@ class TestGenerateResponse:
 
     def test_tpl_out_with_input_ids_attribute(self):
         """BatchEncoding-like output: uses .input_ids attribute."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
 
@@ -458,7 +458,7 @@ class TestGenerateResponse:
 
     def test_generate_called_with_custom_params(self):
         """max_new_tokens and temperature are passed to model.generate."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         generate_response(
@@ -473,7 +473,7 @@ class TestGenerateResponse:
 
     def test_do_sample_false_when_temperature_zero(self):
         """temperature=0.0 → do_sample=False."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         generate_response(model, tokenizer, [{"role": "user", "content": "Q"}], temperature=0.0)
@@ -482,7 +482,7 @@ class TestGenerateResponse:
 
     def test_do_sample_true_when_temperature_positive(self):
         """temperature > 0 → do_sample=True."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         generate_response(model, tokenizer, [{"role": "user", "content": "Q"}], temperature=0.5)
@@ -491,7 +491,7 @@ class TestGenerateResponse:
 
     def test_no_model_parameters_uses_get_device(self):
         """When model has no parameters(), device is inferred from _get_device."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         # SimpleNamespace: no 'parameters' attribute, has 'generate'
         model = types.SimpleNamespace(
             generate=MagicMock(return_value=torch.zeros(1, 10, dtype=torch.long))
@@ -502,7 +502,7 @@ class TestGenerateResponse:
 
     def test_multiturn_messages(self):
         """Multiple messages (multi-turn) are forwarded to apply_chat_template."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         messages = [
@@ -516,7 +516,7 @@ class TestGenerateResponse:
 
     def test_decode_called_on_new_tokens_only(self):
         """Only the newly generated tokens (after input) are decoded."""
-        from demo.model_loader import generate_response
+        from app.model_loader import generate_response
         model = _make_model_mock()
         tokenizer = _make_real_tokenizer_mock()
         # input_ids has 5 tokens; generate returns 10 tokens total

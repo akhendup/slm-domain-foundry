@@ -3,7 +3,7 @@
 Fine-tune a small language model using standard HuggingFace Trainer + PEFT LoRA.
 Works on CPU, MPS (Mac Apple Silicon), and CUDA without requiring Unsloth.
 Merges LoRA weights into the base model before saving so the output is a
-standalone model loadable by demo/model_loader.py.
+standalone model loadable by app/model_loader.py.
 
 Usage:
   python -m train.finetune_cpu --train-file training_data/train_sharegpt.jsonl \
