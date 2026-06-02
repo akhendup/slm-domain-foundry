@@ -47,9 +47,11 @@ def _chat_with_ollama(
 ) -> str:
     """Send a message to an Ollama/llama.cpp/LM Studio server and return the reply."""
     try:
-        import requests
+        import requests  # noqa: F401 — checked by local_llm_chat
     except ImportError:
         return "ERROR: 'requests' package required. Run: pip install requests"
+
+    from app.ollama_client import format_local_llm_error, local_llm_chat
 
     messages = [{"role": "system", "content": system_prompt}]
     for user_msg, assistant_msg in history:
@@ -58,20 +60,14 @@ def _chat_with_ollama(
             messages.append({"role": "assistant", "content": assistant_msg})
     messages.append({"role": "user", "content": message})
 
-    url = f"{host.rstrip('/')}/v1/chat/completions"
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 512,
-        "stream": False,
-    }
+    host = host.rstrip("/")
+    url = f"{host}/v1/chat/completions"
     try:
-        resp = requests.post(url, json=payload, timeout=60)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        return local_llm_chat(host, model, messages)
+    except ValueError as exc:
+        return f"ERROR: {exc}"
     except Exception as exc:
-        return f"ERROR: Could not reach local LLM at {url}: {exc}"
+        return f"ERROR: {format_local_llm_error(exc, host=host, model=model, url=url)}"
 
 
 def run_demo_ollama(host: str, model: str, interactive: bool = False):
@@ -148,12 +144,17 @@ def main():
                    help="Use a local OpenAI-compatible LLM server instead of a trained model")
     p.add_argument("--ollama-host", default="http://localhost:11434",
                    help="Local LLM server URL (default: http://localhost:11434)")
-    p.add_argument("--ollama-model", default="llama3",
-                   help="Model name on the local server (default: llama3)")
+    p.add_argument("--ollama-model", default=None,
+                   help="Model name on the local server (default: first model from ollama list)")
     args = p.parse_args()
 
     if args.ollama:
-        run_demo_ollama(args.ollama_host, args.ollama_model, args.interactive)
+        from app.ollama_client import default_ollama_model
+        ollama_model = args.ollama_model or default_ollama_model(args.ollama_host)
+        if not ollama_model:
+            print("ERROR: No --ollama-model given and no models found. Run: ollama pull <model>")
+            sys.exit(1)
+        run_demo_ollama(args.ollama_host, ollama_model, args.interactive)
     else:
         run_demo(args.model_dir, args.interactive)
 

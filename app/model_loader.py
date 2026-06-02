@@ -33,6 +33,18 @@ except (ImportError, Exception):
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 
+def _configure_tokenizer_pad(tokenizer: Any) -> None:
+    """Set a pad token when missing; prefer unk over eos to avoid mask warnings."""
+    if tokenizer.pad_token is not None:
+        return
+    if getattr(tokenizer, "unk_token", None) is not None:
+        tokenizer.pad_token = tokenizer.unk_token
+        tokenizer.pad_token_id = tokenizer.unk_token_id
+    else:
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
+
 def _get_device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
@@ -120,6 +132,7 @@ def _load_with_patched_config(model_dir: Path, device: torch.device) -> Tuple[An
         (tmp_path / "config.json").write_text(json.dumps(config_dict, indent=2))
 
         tokenizer = AutoTokenizer.from_pretrained(str(tmp_path), trust_remote_code=True)
+        _configure_tokenizer_pad(tokenizer)
         config = AutoConfig.from_pretrained(str(tmp_path))
         model = AutoModelForCausalLM.from_pretrained(
             str(model_dir),
@@ -152,9 +165,7 @@ def _load_peft_adapter(model_dir: Path, device: torch.device) -> Tuple[Any, Any]
 
     print(f"Loading base model '{base_name}' for PEFT adapter…", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        tokenizer.pad_token_id = tokenizer.eos_token_id
+    _configure_tokenizer_pad(tokenizer)
 
     base_model = AutoModelForCausalLM.from_pretrained(
         base_name,
@@ -208,6 +219,7 @@ def load_model(model_dir: Path) -> Tuple[Any, Any]:
     if device.type == "cpu" and _ORT_AVAILABLE:
         try:
             tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+            _configure_tokenizer_pad(tokenizer)
             model = _ORTModelForCausalLM.from_pretrained(str(model_dir), export=True)
             return model, tokenizer
         except Exception:
@@ -216,6 +228,7 @@ def load_model(model_dir: Path) -> Tuple[Any, Any]:
     # Standard HuggingFace transformers (MPS or CUDA fallback from Unsloth)
     try:
         tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+        _configure_tokenizer_pad(tokenizer)
         model = AutoModelForCausalLM.from_pretrained(
             str(model_dir),
             torch_dtype=_dtype_for_device(device),
@@ -267,15 +280,20 @@ def generate_response(
     else:
         input_ids = _tpl_out.to(device)
     input_length = input_ids.shape[1]
+    attention_mask = torch.ones_like(input_ids, device=device)
+    pad_id = tokenizer.pad_token_id
+    if pad_id is not None:
+        attention_mask = (input_ids != pad_id).long()
 
     with torch.no_grad():
         out = model.generate(
             input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             temperature=temperature,
             top_p=0.9,
             do_sample=temperature > 0.0,
-            pad_token_id=tokenizer.eos_token_id,
+            pad_token_id=pad_id if pad_id is not None else tokenizer.eos_token_id,
             repetition_penalty=1.3,
             no_repeat_ngram_size=4,
         )

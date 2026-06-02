@@ -985,11 +985,26 @@ def _memory_interaction_choices(limit: int = 100) -> List[str]:
     return choices
 
 
-def _parse_interaction_id(choice: str) -> str:
+def _normalize_dropdown_choice(choice: Any) -> str:
+    """Coerce Gradio Dropdown values (sometimes a one-element list) to a string."""
+    if choice is None:
+        return ""
+    if isinstance(choice, list):
+        choice = choice[0] if choice else ""
+    return str(choice).strip()
+
+
+def _parse_interaction_id(choice: Any) -> str:
     """Extract the record ID from a dropdown choice string."""
+    choice = _normalize_dropdown_choice(choice)
     if not choice:
         return ""
     return choice.split(" | ")[0].strip()
+
+
+def _memory_dd_update() -> dict:
+    """Refresh Memory tab dropdown choices (Gradio 5-safe)."""
+    return gr.update(choices=_memory_interaction_choices(), value=None)
 
 
 def _make_interaction_detail_html(record_id: str) -> str:
@@ -1054,40 +1069,40 @@ def _make_frequent_questions_html(min_count: int = 2) -> str:
 
 # Memory action handlers
 
-def _memory_refresh() -> Tuple[str, str, List[str]]:
+def _memory_refresh() -> Tuple[str, str, dict]:
     """Refresh stats, reset dropdown."""
     return (
         _make_memory_stats_html(),
         _make_frequent_questions_html(),
-        _memory_interaction_choices(),
+        _memory_dd_update(),
     )
 
 
-def _memory_select(choice: str) -> Tuple[str, str]:
+def _memory_select(choice: Any) -> Tuple[str, str]:
     """Load detail for selected interaction."""
     rid = _parse_interaction_id(choice)
     return rid, _make_interaction_detail_html(rid)
 
 
-def _memory_approve(record_id: str) -> Tuple[str, str, str, List[str]]:
+def _memory_approve(record_id: str) -> Tuple[str, str, str, dict]:
     if record_id:
         set_approval(_MEMORY_DIR, record_id, True)
     return (
         "Approved." if record_id else "No interaction selected.",
         _make_memory_stats_html(),
         _make_interaction_detail_html(record_id),
-        _memory_interaction_choices(),
+        _memory_dd_update(),
     )
 
 
-def _memory_reject(record_id: str) -> Tuple[str, str, str, List[str]]:
+def _memory_reject(record_id: str) -> Tuple[str, str, str, dict]:
     if record_id:
         set_approval(_MEMORY_DIR, record_id, False)
     return (
         "Rejected." if record_id else "No interaction selected.",
         _make_memory_stats_html(),
         _make_interaction_detail_html(record_id),
-        _memory_interaction_choices(),
+        _memory_dd_update(),
     )
 
 
@@ -2368,10 +2383,10 @@ def _ollama_chat(
       - LM Studio     (http://localhost:1234)
       - vLLM          (http://localhost:8000)
     """
-    import requests as _requests
+    from app.ollama_client import default_ollama_model, format_local_llm_error, local_llm_chat
 
     host = (host or "http://localhost:11434").rstrip("/")
-    model_name = (model_name or "llama3").strip()
+    model_name = (model_name or default_ollama_model(host) or "").strip()
     msg_text = _normalize_content(message["content"] if isinstance(message, dict) else message)
     if not msg_text.strip():
         return "Please enter a question."
@@ -2392,48 +2407,42 @@ def _ollama_chat(
     messages.append({"role": "user", "content": msg_text})
 
     url = f"{host}/v1/chat/completions"
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "temperature": 0.2,
-        "max_tokens": 512,
-        "stream": False,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer local"}
     try:
-        resp = _requests.post(url, json=payload, headers=headers, timeout=60)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except _requests.exceptions.ConnectionError:
-        return (
-            f"Cannot connect to local LLM at `{host}`. "
-            "Make sure Ollama/llama.cpp/LM Studio is running and the URL is correct."
-        )
+        return local_llm_chat(host, model_name, messages)
+    except ValueError as exc:
+        return str(exc)
     except Exception as exc:
-        return f"Error: {exc}"
+        return format_local_llm_error(exc, host=host, model=model_name, url=url)
 
 
 def _ollama_test_connection(host: str, model_name: str) -> str:
     """Ping the local LLM server and return a status message."""
     import requests as _requests
 
+    from app.ollama_client import _model_installed, list_ollama_models
+
     host = (host or "http://localhost:11434").rstrip("/")
     try:
         # Try /api/tags (Ollama) or /v1/models (OpenAI-compatible) to check connectivity
         try:
-            r = _requests.get(f"{host}/api/tags", timeout=5)
-            if r.ok:
-                tags = r.json().get("models", [])
-                names = [m.get("name", "") for m in tags]
+            names = list_ollama_models(host)
+            if names:
                 model_name = (model_name or "").strip()
-                found = any(model_name in n for n in names) if model_name else bool(names)
-                if names:
-                    available = ", ".join(names[:5])
-                    suffix = " ..." if len(names) > 5 else ""
-                    if found:
-                        return f"Connected to Ollama at {host}. Model '{model_name}' is available. (All: {available}{suffix})"
-                    else:
-                        return f"Connected to Ollama at {host}, but model '{model_name}' not found. Available: {available}{suffix}"
+                found = _model_installed(model_name, names) if model_name else False
+                available = ", ".join(names[:5])
+                suffix = " ..." if len(names) > 5 else ""
+                if not model_name:
+                    return (
+                        f"Connected to Ollama at {host}. "
+                        f"Set Model name to one of: {available}{suffix}"
+                    )
+                if found:
+                    return f"Connected to Ollama at {host}. Model '{model_name}' is available. (All: {available}{suffix})"
+                return (
+                    f"Connected to Ollama at {host}, but model '{model_name}' is not installed. "
+                    f"Available: {available}{suffix}. "
+                    f"Use one of these names or run: ollama pull {model_name}"
+                )
         except Exception:
             pass
         # Fallback: try /v1/models
@@ -2454,7 +2463,11 @@ def _ollama_test_connection(host: str, model_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def build_app() -> gr.Blocks:
+    from app.ollama_client import default_ollama_model
+
     device_label = _get_device_label()
+    _ollama_host_default = "http://localhost:11434"
+    _ollama_model_default = default_ollama_model(_ollama_host_default)
 
     # Reflect already-completed steps on startup
     uploaded = _DATA_DIR.exists() and (
@@ -2870,20 +2883,21 @@ def build_app() -> gr.Blocks:
                     "Point this tab at a running [Ollama](https://ollama.ai), "
                     "[llama.cpp](https://github.com/ggerganov/llama.cpp), or "
                     "[LM Studio](https://lmstudio.ai) server and start chatting immediately.\n\n"
-                    "**Quick start:** `ollama serve` then `ollama pull llama3` — takes ~5 min on first run."
+                    "**Quick start:** `ollama serve`, then use a model from `ollama list` "
+                    "(e.g. `ollama pull qwen3:8b`). The name must match exactly."
                 )
                 with gr.Row():
                     with gr.Column(scale=3):
                         ollama_host = gr.Textbox(
                             label="Server URL",
-                            value="http://localhost:11434",
+                            value=_ollama_host_default,
                             placeholder="http://localhost:11434  (Ollama default)",
                         )
                     with gr.Column(scale=2):
                         ollama_model = gr.Textbox(
                             label="Model name",
-                            value="llama3",
-                            placeholder="llama3, mistral, phi3, etc.",
+                            value=_ollama_model_default,
+                            placeholder="Must match `ollama list` (e.g. qwen3:8b)",
                         )
                     with gr.Column(scale=1, min_width=160):
                         ollama_test_btn = gr.Button("Test Connection", variant="secondary")
@@ -2902,12 +2916,12 @@ def build_app() -> gr.Blocks:
                     additional_inputs=[ollama_host, ollama_model],
                     # When additional_inputs are present Gradio requires examples as list-of-lists
                     examples=[
-                        ["What is CSUM in Teradata SQL?", "http://localhost:11434", "llama3"],
-                        ["Show me an example of the RANK analytic function.", "http://localhost:11434", "llama3"],
-                        ["What is the nPath function used for?", "http://localhost:11434", "llama3"],
-                        ["Explain the QUANTILE function with an example.", "http://localhost:11434", "llama3"],
-                        ["What is the difference between RANK and DENSE_RANK?", "http://localhost:11434", "llama3"],
-                    ],
+                        ["What is CSUM in Teradata SQL?", _ollama_host_default, _ollama_model_default],
+                        ["Show me an example of the RANK analytic function.", _ollama_host_default, _ollama_model_default],
+                        ["What is the nPath function used for?", _ollama_host_default, _ollama_model_default],
+                        ["Explain the QUANTILE function with an example.", _ollama_host_default, _ollama_model_default],
+                        ["What is the difference between RANK and DENSE_RANK?", _ollama_host_default, _ollama_model_default],
+                    ] if _ollama_model_default else None,
                 )
                 try:
                     gr.ChatInterface(type="messages", **_ollama_chat_kwargs)
@@ -3068,6 +3082,7 @@ def build_app() -> gr.Blocks:
                             label="Select an interaction to review",
                             choices=_memory_interaction_choices(),
                             value=None,
+                            allow_custom_value=True,
                         )
                     with gr.Column(scale=1, min_width=120):
                         mem_refresh_btn = gr.Button("Refresh", variant="secondary")

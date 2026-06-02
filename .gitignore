@@ -6,6 +6,9 @@ env/
 # Generated / local
 training_data/
 output_model/
+conversation_memory/
+knowledge_library/
+saved_models/
 __pycache__/
 *.pyc
 *.pyo

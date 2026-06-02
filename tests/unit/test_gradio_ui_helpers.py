@@ -461,3 +461,21 @@ class TestGetRetriever:
         r1 = _get_retriever()
         r2 = _get_retriever()
         assert r1 is r2
+
+
+class TestMemoryDropdownHelpers:
+    def test_parse_interaction_id_from_string(self):
+        from app.gradio_ui import _parse_interaction_id
+        choice = "abc123 | ✓ 2026-06-02 05:13  'What is CSUM?'"
+        assert _parse_interaction_id(choice) == "abc123"
+
+    def test_parse_interaction_id_from_list(self):
+        """Gradio 5 may pass a one-element list as the dropdown value."""
+        from app.gradio_ui import _parse_interaction_id
+        choice = ["ed910883 | · 2026-06-02 05:13  'Show me an example SQL query.'"]
+        assert _parse_interaction_id(choice) == "ed910883"
+
+    def test_parse_interaction_id_empty(self):
+        from app.gradio_ui import _parse_interaction_id
+        assert _parse_interaction_id(None) == ""
+        assert _parse_interaction_id([]) == ""
