@@ -9,6 +9,8 @@ output_model/
 conversation_memory/
 knowledge_library/
 saved_models/
+unsloth_compiled_cache/
+slurm_output_*.log
 __pycache__/
 *.pyc
 *.pyo

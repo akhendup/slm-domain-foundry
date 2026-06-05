@@ -2674,7 +2674,7 @@ def build_app() -> gr.Blocks:
                         model_name = gr.Dropdown(
                             choices=[
                                 "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-                                "unsloth/TinyLlama-1.1b-Chat-v1.0",
+                                "unsloth/tinyllama-chat-bnb-4bit",
                                 "unsloth/Llama-3.2-1B-Instruct",
                                 "meta-llama/Llama-3.2-1B-Instruct",
                             ],

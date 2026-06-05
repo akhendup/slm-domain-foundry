@@ -111,7 +111,7 @@ python -m train.finetune_unsloth \
   --output-dir output_model
 ```
 
-Use `--model-name unsloth/TinyLlama-1.1b-Chat-v1.0` (default) or e.g. `unsloth/Llama-3.2-1B-Instruct` for a slightly larger model.
+Use `--model-name unsloth/tinyllama-chat-bnb-4bit` (default) or e.g. `unsloth/Llama-3.2-1B-Instruct` for a slightly larger model.
 
 **Option A – Train from scratch:**  
 See `train/README_FROM_SCRATCH.md`. Use `scripts/export_for_from_scratch.py` to export `train_sharegpt.jsonl` to a single text file, then use NanoGPT/minGPT or a minimal Hugging Face script.
