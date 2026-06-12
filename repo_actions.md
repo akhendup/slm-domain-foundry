@@ -305,22 +305,24 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ### 7. Final Pre-Release Checklist
 
-- [ ] **Security scan**
-  - Run `safety check` on requirements
-  - Check for exposed secrets in commit history (`git log -p | grep -i password`)
+- [x] **Security scan**
+  - `safety scan` + `pip-audit` run 2026-06-12 (see changelog)
+  - Git history scanned for credential patterns — **none found**
+  - Re-run: `./scripts/security_scan.sh`
+  - **Note**: Unpinned `>=` specifiers hide many CVEs in range scans; pin deps before production deploy. `pip-audit` flagged `torch` CVE-2025-3000 (no fix version published at scan time).
 
 - [ ] **Documentation review**
   - Spellcheck README, CONTRIBUTING, docstrings
   - Ensure all links work
 
-- [ ] **Sample data audit**
+- [x] **Sample data audit**
   - No personal data
   - No proprietary content
   - Properly attributed if using public datasets
 
-- [ ] **Version tagging**
+- [x] **Version tagging**
   - Tag `v0.1.0-beta` before public push
-  - Write release notes
+  - Write release notes (in annotated tag + changelog below)
 
 - [ ] **Make repo public on GitHub**
   - Push from Gitea → `github.com/agkhan/slm-domain-foundry`
@@ -598,11 +600,6 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 - **Initial commit**: 27 commits, 33 MiB, full history preserved
 - **This document created**: `repo_actions.md` initialized with Phase 1 + Phase 2 plan
 
-- [x] **Sample data audit**
-  - No personal data
-  - No proprietary content
-  - Properly attributed if using public datasets
-
 ### 2026-06-12 (Phase 1 complete)
 
 - **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`, `examples/domain_config_sql.yaml`
@@ -611,6 +608,37 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 - **Docs & legal**: README overhaul, MIT LICENSE, CONTRIBUTING.md
 - **Dependencies**: Split requirements + `pyproject.toml`
 - **Tests/CI**: `tests/unit/test_config.py`, Python 3.10–3.12 matrix, coverage target 75%
+
+### 2026-06-12 (Pre-release: security scan + v0.1.0-beta)
+
+- **Security scan** (`safety scan`, `pip-audit`, git history):
+  - 0 vulnerabilities reported on resolved packages (safety)
+  - 271 CVEs in unpinned dependency ranges ignored by default (pin before production)
+  - `pip-audit`: torch CVE-2025-3000 on currently installed 2.12.0 (no fix version listed)
+  - Git history: no API keys, passwords, or private keys detected
+  - Repeatable script: `scripts/security_scan.sh`
+- **Release tag**: `v0.1.0-beta` — first public-ready beta for domain-adaptive SLM training
+
+#### v0.1.0-beta release notes
+
+**Highlights**
+- End-to-end SLM pipeline: data prep → Unsloth fine-tuning → Gradio/CLI inference
+- Medical AI default profile (`config.yaml`, `domain_config.yaml`, sample clinical data)
+- Domain-adaptive YAML config (swap to SQL/financial/legal via config files)
+- MIT licensed, split requirements, CI on Python 3.10–3.12
+
+**Quick start**
+```bash
+pip install -r requirements.txt
+python -m data.prepare_training_data --csv sample_data/medical_qa.csv --yaml-dir sample_data/patternexamples --output-dir training_data
+python -m train.finetune_unsloth --config config.yaml
+python -m app.gradio_ui --model-dir output_model
+```
+
+**Known limitations**
+- Phase 2 features (synthetic data, ORPO, DAPT, Korean templates) not yet included
+- Dependencies use `>=` ranges; pin for production deployments
+- GPU training requires separate `unsloth` install with CUDA
 
 ### [Future entries go here]
 
@@ -625,6 +653,6 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ---
 
-**Last Updated**: 2026-06-12 (Phase 1)
+**Last Updated**: 2026-06-12 (pre-release: v0.1.0-beta)
 **Maintained By**: AG Khan  
 **Contact**: [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues)
