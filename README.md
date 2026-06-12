@@ -29,8 +29,11 @@ flowchart LR
 
 ## Quick start (medical example)
 
+Clone from your Git host (private Gitea today; public GitHub after release):
+
 ```bash
-git clone https://github.com/agkhan/slm-domain-foundry.git
+git clone http://workstation.local:3000/agkhan/slm-domain-foundry.git
+# After public release: git clone https://github.com/agkhan/slm-domain-foundry.git
 cd slm-domain-foundry
 python -m venv venv
 source venv/bin/activate
@@ -166,7 +169,17 @@ slm-domain-foundry/
 ```bash
 pytest tests/ --tb=short
 pytest tests/ --cov=app --cov=data --cov=train --cov-report=term-missing
+./scripts/security_scan.sh   # optional pre-release dependency + secrets check
 ```
+
+## Repository & issues
+
+| Host | URL | Status |
+|------|-----|--------|
+| Gitea | `http://workstation.local:3000/agkhan/slm-domain-foundry` | Active (private) |
+| GitHub | `https://github.com/agkhan/slm-domain-foundry` | Planned public release |
+
+Report bugs via your Gitea issue tracker until the GitHub repository is public.
 
 ## License
 

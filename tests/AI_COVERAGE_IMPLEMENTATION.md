@@ -39,7 +39,7 @@
 |------|--------|
 | Test count | ~1,196 tests passing (full `pytest tests/`) |
 | Overall coverage | ~76% (`app`+`data`+`train`); `data/` ~92%; `app/gradio_ui.py` ~46% |
-| CI coverage gate | 90% (`.gitea/workflows/tests.yml`) |
+| CI coverage gate | 75% (`.gitea/workflows/tests.yml`; long-term goal 100% on core modules) |
 | `tests/real/` | Real model load, PEFT, `finetune_cpu` in-process train, memory tab, swarm, Ollama live, sharegpt format |
 | Removed | `tests/unit/test_model_loader_extended.py` (mock-based `generate_response` tests) |
 | Code fixes | Chat template fallback (no template); LoRA targets for GPT-2; `train/sharegpt_format.py` shared formatter |
@@ -91,10 +91,10 @@ Use this matrix when placing or skipping tests. **Apple Silicon is a first-class
 
 ### Repository inputs (already in tree)
 
-- `sample_data/sample_qa.csv`
-- `sample_data/patternexamples/` (YAML patterns)
-- `sample_data/TD17_Analytic_Functions.pdf` (PDF e2e)
-- `requirements.txt` (torch, transformers, peft, trl, datasets, gradio, etc.)
+- `sample_data/sample_qa.csv` (generic SLM intro Q&A)
+- `sample_data/medical_qa.csv` (clinical Q&A default profile)
+- `sample_data/patternexamples/` (clinical YAML patterns)
+- `requirements.txt` and split requirement files (see README)
 
 ### Runtime inputs (agent must ensure)
 
@@ -136,9 +136,9 @@ For each module below **&lt; 100%**, add or extend tests using **real files** un
 
 | Module | Suggested action | Test location |
 |--------|------------------|---------------|
-| `prepare_training_data.py` | CLI subprocess: `--csv sample_data/sample_qa.csv`, `--yaml-dir sample_data/patternexamples/analytics`, `--pdf-dir sample_data` with `--manual` if needed | `tests/e2e/` or `tests/real/test_prepare_training_data_cli.py` |
-| `manual_extractor.py` | Run against `sample_data/TD17_Analytic_Functions.pdf` | Extend `tests/e2e/test_pipeline_pdf.py` |
-| `pattern_embedder.py` | Real YAML from `patternexamples/ml/kmeans.yaml` | `tests/real/test_pattern_embedder_real.py` |
+| `prepare_training_data.py` | CLI subprocess: `--csv sample_data/medical_qa.csv`, `--yaml-dir sample_data/patternexamples` | `tests/e2e/` |
+| `manual_extractor.py` | Run against synthetic manual PDF fixtures in `tests/e2e/test_pipeline_pdf.py` | Extend `tests/e2e/test_pipeline_pdf.py` |
+| `pattern_embedder.py` | Real YAML from `sample_data/patternexamples/hypertension.yaml` | `tests/real/test_pattern_embedder_real.py` if present |
 | `template_expander.py` | Load real `data/question_templates.yaml` + `sql_vocabulary.yaml` | `tests/real/test_template_expander_real.py` |
 | `knowledge_capture.py` | Round-trip save/load under `tmp_path` knowledge library | `tests/real/test_knowledge_capture_real.py` |
 | `judge_llm.py` | Use real `app.model_loader` + tiny model if judge path testable without cloud API | Only if no external API; otherwise test rule-based `judge.py` paths |

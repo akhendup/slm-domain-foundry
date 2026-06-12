@@ -311,9 +311,10 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
   - Re-run: `./scripts/security_scan.sh`
   - **Note**: Unpinned `>=` specifiers hide many CVEs in range scans; pin deps before production deploy. `pip-audit` flagged `torch` CVE-2025-3000 (no fix version published at scan time).
 
-- [ ] **Documentation review**
-  - Spellcheck README, CONTRIBUTING, docstrings
-  - Ensure all links work
+- [x] **Documentation review**
+  - Spellcheck README, CONTRIBUTING, docstrings — done 2026-06-12
+  - Ensure all links work — external HF/Karpathy links OK; GitHub repo/issues 404 until public (documented in README)
+  - Updated stale TD17/Teradata references in test docs and CLI demo copy
 
 - [x] **Sample data audit**
   - No personal data
@@ -640,6 +641,15 @@ python -m app.gradio_ui --model-dir output_model
 - Dependencies use `>=` ranges; pin for production deployments
 - GPU training requires separate `unsloth` install with CUDA
 
+### 2026-06-12 (Documentation review)
+
+- README: Gitea clone URL, GitHub marked as planned; repository/issues table added
+- CONTRIBUTING: full install steps, Gitea issue tracker wording, security scan mention
+- `train/README_FROM_SCRATCH.md`: documents existing `scripts/export_for_from_scratch.py`
+- `tests/TESTING.md` + `AI_COVERAGE_IMPLEMENTATION.md`: aligned with 75% CI gate; removed TD17 references
+- `app/chat.py`: medical demo questions (removed Teradata sample prompts)
+- Link check: nanoGPT, minGPT, Hugging Face run_clm — OK; GitHub repo/issues — 404 (expected pre-public)
+
 ### [Future entries go here]
 
 ---
@@ -655,4 +665,4 @@ python -m app.gradio_ui --model-dir output_model
 
 **Last Updated**: 2026-06-12 (pre-release: v0.1.0-beta)
 **Maintained By**: AG Khan  
-**Contact**: [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues)
+**Contact**: Gitea issues on the project host (GitHub issues after public release)

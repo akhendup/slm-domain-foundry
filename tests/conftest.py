@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for the ai_slm_training test suite.
+Shared pytest fixtures for the SLM Domain Foundry test suite.
 """
 import csv
 import json

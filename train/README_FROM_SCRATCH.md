@@ -23,9 +23,17 @@
 
 ## Suggested flow for this repo
 
-- **Data**: Use the same pipeline as for fine-tuning: PDF/CSV → `python -m data.prepare_training_data` → e.g. `train_sharegpt.jsonl` or a single `.txt` of concatenated Q&A.
-- **Export for from-scratch**: Add a small script that reads `train_sharegpt.jsonl` and writes `train_from_scratch.txt` with lines like `Question: ... Answer: ...` so NanoGPT/minGPT or a minimal HF script can consume it.
+- **Data**: Use the same pipeline as for fine-tuning: PDF/CSV → `python -m data.prepare_training_data` → e.g. `train_sharegpt.jsonl`.
+- **Export for from-scratch**: Run `python scripts/export_for_from_scratch.py` to read `train_sharegpt.jsonl` and write `train_from_scratch.txt` with lines like `Question: ... Answer: ...` for NanoGPT/minGPT or a minimal HF script.
 - **Training**: Either a minimal `train/train_from_scratch.py` (tiny GPT-2 config + HF Trainer) or instructions to run NanoGPT/minGPT on `train_from_scratch.txt`.
+
+The export script already exists:
+
+```bash
+python scripts/export_for_from_scratch.py \
+  --input training_data/train_sharegpt.jsonl \
+  --output training_data/train_from_scratch.txt
+```
 
 If you want a single “from scratch” script inside this repo, the next step is to add `train/train_from_scratch.py` that:
 - Loads `training_data/train_sharegpt.jsonl` (or the .txt export),

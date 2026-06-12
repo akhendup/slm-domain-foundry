@@ -28,13 +28,13 @@ from pathlib import Path
 
 from app.model_loader import load_model, generate_response
 
-# Domain-specific demo questions for the Teradata analytic functions training data
+# Domain-specific demo questions (medical sample profile)
 _DEMO_QUESTIONS = [
-    "What is CSUM and what does it compute?",
-    "Show me an example SQL query using the RANK analytic function.",
-    "What are the arguments to QUANTILE?",
-    "How does nPath work and what kind of analysis is it used for?",
-    "What is the difference between CSUM and SUM with OVER?",
+    "What is hypertension?",
+    "What is the first-line treatment for uncomplicated hypertension?",
+    "What aspirin dose is used for secondary prevention after myocardial infarction?",
+    "What lifestyle changes help manage blood pressure?",
+    "What are common contraindications to aspirin?",
 ]
 
 
@@ -91,7 +91,7 @@ def run_demo_ollama(host: str, model: str, interactive: bool = False):
                 break
         print("Goodbye.")
     else:
-        print("Demo: asking sample questions about Teradata analytic functions.\n")
+        print("Demo: asking sample clinical questions.\n")
         for q in _DEMO_QUESTIONS:
             reply = _chat_with_ollama(q, history, host, model)
             print("Q:", q)
@@ -125,7 +125,7 @@ def run_demo(model_dir: Path, interactive: bool = False):
                 break
         print("Goodbye.")
     else:
-        print("Demo: asking sample questions about Teradata analytic functions.\n")
+        print("Demo: asking sample clinical questions.\n")
         for q in _DEMO_QUESTIONS:
             messages = [{"role": "user", "content": q}]
             reply = generate_response(model, tokenizer, messages)

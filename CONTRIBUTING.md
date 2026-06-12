@@ -10,7 +10,8 @@ clean, domain-adaptive starter kit for teams building small language models.
 
    ```bash
    python -m venv venv
-   source venv/bin/activate
+   source venv/bin/activate   # Windows: venv\Scripts\activate
+   pip install -r requirements.txt
    pip install -e ".[dev]"
    ```
 
@@ -18,6 +19,7 @@ clean, domain-adaptive starter kit for teams building small language models.
 
    ```bash
    pytest tests/ --tb=short
+   ./scripts/security_scan.sh   # recommended before release-related PRs
    ```
 
 ## Development guidelines
@@ -30,7 +32,7 @@ clean, domain-adaptive starter kit for teams building small language models.
 
 ## Reporting issues
 
-Open a GitHub issue with:
+Open an issue on the project tracker (Gitea today; GitHub after public release) with:
 
 - A clear description of the problem or feature request
 - Steps to reproduce (for bugs)
