@@ -98,32 +98,51 @@ def main():
         raise SystemExit(1)
 
     progress_cb = _make_progress_callback(TrainerCallback)
+
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path, default=None)
+    pre_args, remaining = pre.parse_known_args()
+
+    from train.config import get_section, load_config, resolve_config_path, resolve_path
+
+    cfg_path = pre_args.config or resolve_config_path()
+    cfg = load_config(cfg_path) if cfg_path.exists() else {}
+    model_cfg = get_section(cfg, "model", default={}) or {}
+    if not isinstance(model_cfg, dict):
+        model_cfg = {}
+
     p = argparse.ArgumentParser(description="Fine-tune SLM with Unsloth")
+    p.add_argument(
+        "--config",
+        type=Path,
+        default=cfg_path if cfg_path.exists() else None,
+        help="Path to config.yaml (CLI flags override config values)",
+    )
     p.add_argument(
         "--stable",
         action="store_true",
         help="12GB-safe mode: disable padding-free/double-buffer, standard grad checkpointing",
     )
-    p.add_argument("--train-file", type=Path, default=Path("training_data/train_sharegpt.jsonl"))
-    p.add_argument("--val-file", type=Path, default=Path("training_data/val_sharegpt.jsonl"))
-    p.add_argument("--output-dir", type=Path, default=Path("output_model"))
+    p.add_argument("--train-file", type=Path, default=resolve_path(cfg, "paths", "training_data", default="training_data") / "train_sharegpt.jsonl")
+    p.add_argument("--val-file", type=Path, default=resolve_path(cfg, "paths", "training_data", default="training_data") / "val_sharegpt.jsonl")
+    p.add_argument("--output-dir", type=Path, default=resolve_path(cfg, "paths", "output_model", default="output_model"))
     p.add_argument(
         "--model-name",
         type=str,
-        default="unsloth/tinyllama-chat-bnb-4bit",
+        default=str(model_cfg.get("base_model", "unsloth/tinyllama-chat-bnb-4bit")),
         help="Hugging Face model id (e.g. unsloth/tinyllama-chat-bnb-4bit or TinyLlama/TinyLlama-1.1B-Chat-v1.0)",
     )
-    p.add_argument("--max-seq-length", type=int, default=1024)
-    p.add_argument("--batch-size", type=int, default=2)
-    p.add_argument("--grad-accum", type=int, default=4)
+    p.add_argument("--max-seq-length", type=int, default=int(model_cfg.get("max_seq_length", 1024)))
+    p.add_argument("--batch-size", type=int, default=int(model_cfg.get("batch_size", 2)))
+    p.add_argument("--grad-accum", type=int, default=int(model_cfg.get("grad_accum", 4)))
     p.add_argument(
         "--dataloader-workers",
         type=int,
         default=0,
         help="DataLoader worker processes (0 avoids CUDA fork segfaults under Slurm)",
     )
-    p.add_argument("--epochs", type=int, default=3)
-    p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument("--epochs", type=int, default=int(model_cfg.get("epochs", 3)))
+    p.add_argument("--lr", type=float, default=float(model_cfg.get("learning_rate", 2e-4)))
     p.add_argument(
         "--save-steps",
         type=int,
@@ -141,7 +160,7 @@ def main():
         default=50,
         help="Run validation every N steps (ignored when --no-eval)",
     )
-    args = p.parse_args()
+    args = p.parse_args(remaining)
 
     if args.stable:
         _apply_stable_unsloth_env()

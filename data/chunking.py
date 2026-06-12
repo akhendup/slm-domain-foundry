@@ -2,12 +2,15 @@
 """
 Simple text chunking for training data. Preserves paragraph boundaries.
 Optional: use sentence-transformers for semantic chunking if installed.
-SQL-aware chunking treats SQL paragraphs as atomic units (never split mid-query).
+Domain-aware chunking treats structured paragraphs as atomic units (never split mid-block).
+Patterns are loaded from domain_config.yaml.
 """
 
 import logging
 import re
 from typing import List
+
+from data.domain_config import has_structured_content
 
 _log = logging.getLogger(__name__)
 
@@ -18,16 +21,9 @@ except ImportError:
     SEMANTIC_AVAILABLE = False
 
 
-_SQL_KW_RE = re.compile(
-    r"\b(SELECT|FROM|WHERE|GROUP\s+BY|ORDER\s+BY|PARTITION\s+BY|OVER|"
-    r"JOIN|CREATE|WITH|QUALIFY|CSUM|MSUM|MAVG|MDIFF|RANK|ROW_NUMBER)\b",
-    re.IGNORECASE,
-)
-
-
 def is_sql_paragraph(para: str) -> bool:
-    """True if paragraph contains SQL content that should not be split across chunks."""
-    return len(_SQL_KW_RE.findall(para)) >= 2
+    """True if paragraph contains structured domain content that should stay intact."""
+    return has_structured_content(para)
 
 
 def chunk_text(

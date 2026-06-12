@@ -1,0 +1,66 @@
+# Domain-specific extraction patterns for SLM Domain Foundry.
+# Adapt this file (or point --domain-config elsewhere) for your vertical.
+#
+# See examples/domain_config_sql.yaml for a SQL/analytics-oriented profile.
+
+domain:
+  name: medical
+
+extraction:
+  # Structured-content detection: paragraphs with >= min_keyword_matches hits
+  # are treated as atomic units during chunking and trigger structured Q&A.
+  min_keyword_matches: 2
+  content_keywords:
+    - patient
+    - diagnosis
+    - treatment
+    - symptom
+    - medication
+    - dosage
+    - contraindication
+    - hypertension
+    - aspirin
+    - clinical
+    - guideline
+    - adverse
+    - efficacy
+
+  # Optional regex override (takes precedence over content_keywords when set)
+  content_keyword_regex: null
+
+  # Pattern for extracting a named function/protocol from structured examples.
+  # Disabled for the default medical profile.
+  function_pattern: null
+
+  non_function_suffixes:
+    - _table
+    - _test
+    - _schema
+    - _data
+    - _view
+    - _input
+    - _output
+    - _result
+    - _sample
+    - _train
+    - _val
+
+  example_section_labels:
+    input:
+      - input
+      - case
+      - presentation
+      - patient history
+    structured:
+      - protocol
+      - treatment plan
+      - sql call
+      - sql query
+    output:
+      - output
+      - result
+      - outcome
+
+yaml_patterns:
+  alias_question: "What is {alias}?"
+  domain_label: ""

@@ -3,7 +3,7 @@
 **Project**: `slm-domain-foundry`  
 **Purpose**: Prepare a domain-adaptive SLM training pipeline for public release on GitHub  
 **Target Audience**: Medical AI team in South Korea + open-source community  
-**Current Status**: Private Gitea repo, forked from `ai_slm_training` on 2026-06-12  
+**Current Status**: Phase 1 cleanup complete (2026-06-12). Ready for pre-release checklist and public GitHub push.
 
 ---
 
@@ -92,17 +92,17 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Extract hardcoded SQL/Teradata regex to `domain_config.yaml`**
+- [x] **Extract hardcoded SQL/Teradata regex to `domain_config.yaml`**
   - Move `_SQL_KW_RE`, `_TD_FUNC_RE`, `_NON_FUNC_SUFFIX_RE` from `manual_extractor.py` to a config file
   - Same for duplicated SQL regex in `chunking.py`
   - Add a `--domain-config` CLI arg to `prepare_training_data.py`
 
-- [ ] **Replace Teradata system prompt in `gradio_ui.py`**
+- [x] **Replace Teradata system prompt in `gradio_ui.py`**
   - Current: hardcoded Teradata-specific system message
   - Target: Load from `config.yaml` or `--system-prompt` CLI arg
   - Example: `You are a medical AI assistant specialized in clinical decision support...`
 
-- [ ] **Swap TD17 sample data for generic medical example**
+- [x] **Swap TD17 sample data for generic medical example**
   - Remove: `sample_data/TD17_Analytic_Functions.pdf`
   - Remove: `sample_data/patternexamples/` YAML files (if Teradata-specific)
   - Add: Public domain medical Q&A CSV or a synthetic clinical vocabulary example
@@ -123,7 +123,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Create `config.yaml` template** with sections:
+- [x] **Create `config.yaml` template** with sections:
   ```yaml
   domain:
     name: "medical"
@@ -148,11 +148,11 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
     knowledge_library: "knowledge_library"
   ```
 
-- [ ] **Add config loader** in `train/config.py`
+- [x] **Add config loader** in `train/config.py`
   - Use `pyyaml` or `toml` stdlib
   - Merge config file + CLI args (CLI overrides config)
 
-- [ ] **Update all scripts** to load from config:
+- [x] **Update all scripts** to load from config:
   - `finetune_unsloth.py`
   - `prepare_training_data.py`
   - `gradio_ui.py`
@@ -167,24 +167,24 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Rewrite intro** with "bring your own domain" framing
+- [x] **Rewrite intro** with "bring your own domain" framing
   - Remove SQL/TD17-specific examples
   - Add medical Q&A walkthrough as primary example
 
-- [ ] **Add architecture diagram**
+- [x] **Add architecture diagram**
   - Data → Training → Inference → RAG flow
   - Use Mermaid or ASCII diagram
 
-- [ ] **Document config.yaml usage**
+- [x] **Document config.yaml usage**
   - Show how to adapt to new domains
   - Include 3 examples: medical, legal, financial
 
-- [ ] **Add Prerequisites section**
+- [x] **Add Prerequisites section**
   - Python 3.10+
   - CUDA 11.8+ for GPU training (optional)
   - Docker (optional)
 
-- [ ] **Add Quick Start with medical example**
+- [x] **Add Quick Start with medical example**
   ```bash
   # 1. Prepare data
   python -m data.prepare_training_data \
@@ -208,13 +208,13 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Add LICENSE file**
+- [x] **Add LICENSE file**
   - Recommendation: **MIT** or **Apache 2.0**
   - MIT: simpler, more permissive
   - Apache 2.0: includes patent grant, better for corporate users
   - Decision: **MIT** (medical AI community prefers permissive)
 
-- [ ] **Add CONTRIBUTING.md**
+- [x] **Add CONTRIBUTING.md**
   - Code of conduct reference
   - How to report issues
   - How to submit PRs
@@ -231,7 +231,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Create `requirements-core.txt`** (data prep only, no torch/unsloth)
+- [x] **Create `requirements-core.txt`** (data prep only, no torch/unsloth)
   ```
   pdfplumber>=0.10.0
   PyPDF2>=3.0.0
@@ -241,7 +241,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
   sentence-transformers  # for semantic chunking
   ```
 
-- [ ] **Create `requirements-train.txt`** (full training stack)
+- [x] **Create `requirements-train.txt`** (full training stack)
   ```
   -r requirements-core.txt
   torch>=2.1.0
@@ -252,7 +252,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
   unsloth  # Install separately: pip install unsloth
   ```
 
-- [ ] **Create `requirements-inference.txt`** (CPU inference only)
+- [x] **Create `requirements-inference.txt`** (CPU inference only)
   ```
   -r requirements-core.txt
   torch>=2.1.0  # CPU-only
@@ -260,7 +260,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
   gradio>=4.0.0
   ```
 
-- [ ] **Add `pyproject.toml`** for proper package metadata
+- [x] **Add `pyproject.toml`** for proper package metadata
   ```toml
   [project]
   name = "slm-domain-foundry"
@@ -286,15 +286,15 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 **Actions**:
 
-- [ ] **Audit `tests/` for domain-specific fixtures**
+- [x] **Audit `tests/` for domain-specific fixtures**
   - Replace TD17/SQL test data with generic fixtures
   - Ensure tests use `config.yaml` if needed
 
-- [ ] **Add test for config loader**
-  - `tests/test_config.py`
+- [x] **Add test for config loader**
+  - `tests/unit/test_config.py`
   - Validate YAML parsing, CLI override, missing keys
 
-- [ ] **Update CI workflow** (`.gitea/workflows/tests.yml`)
+- [x] **Update CI workflow** (`.gitea/workflows/tests.yml`)
   - Run on: `push`, `pull_request`
   - Test matrix: Python 3.10, 3.11, 3.12
   - Coverage report (target ≥75%)
@@ -598,6 +598,20 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 - **Initial commit**: 27 commits, 33 MiB, full history preserved
 - **This document created**: `repo_actions.md` initialized with Phase 1 + Phase 2 plan
 
+- [x] **Sample data audit**
+  - No personal data
+  - No proprietary content
+  - Properly attributed if using public datasets
+
+### 2026-06-12 (Phase 1 complete)
+
+- **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`, `examples/domain_config_sql.yaml`
+- **Config consolidation**: `config.yaml`, `train/config.py`, `--config` on prepare/train/gradio
+- **Medical samples**: `sample_data/medical_qa.csv`, clinical YAML patterns, `data/medical_vocabulary.yaml`
+- **Docs & legal**: README overhaul, MIT LICENSE, CONTRIBUTING.md
+- **Dependencies**: Split requirements + `pyproject.toml`
+- **Tests/CI**: `tests/unit/test_config.py`, Python 3.10–3.12 matrix, coverage target 75%
+
 ### [Future entries go here]
 
 ---
@@ -611,6 +625,6 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ---
 
-**Last Updated**: 2026-06-12 11:00 PDT  
+**Last Updated**: 2026-06-12 (Phase 1)
 **Maintained By**: AG Khan  
 **Contact**: [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues)

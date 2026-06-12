@@ -1,0 +1,40 @@
+# SLM Domain Foundry — default configuration (medical AI starter profile).
+# CLI flags override these values. See README.md for domain adaptation examples.
+
+domain:
+  name: medical
+  system_prompt: >
+    You are a medical AI assistant specialized in clinical decision support.
+    Provide accurate, evidence-based information in clear language.
+    Always note that your responses are for educational purposes and do not
+    replace professional medical advice, diagnosis, or treatment.
+  config_file: domain_config.yaml
+
+model:
+  base_model: unsloth/Llama-3.2-1B-Instruct
+  lora_r: 16
+  lora_alpha: 32
+  max_seq_length: 2048
+  epochs: 3
+  learning_rate: 0.0002
+  batch_size: 2
+  grad_accum: 4
+  language: en
+
+paths:
+  training_data: training_data
+  output_model: output_model
+  knowledge_library: knowledge_library
+  domain_config: domain_config.yaml
+
+data_prep:
+  chunk_size: 800
+  chunk_overlap: 150
+  val_ratio: 0.15
+  seed: 42
+  default_csv: sample_data/medical_qa.csv
+
+inference:
+  host: 0.0.0.0
+  port: 7860
+  chat_max_history_turns: 3

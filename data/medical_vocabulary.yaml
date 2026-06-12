@@ -1,0 +1,74 @@
+# medical_vocabulary.yaml
+#
+# Structured medical domain knowledge for combinatorial Q&A generation.
+# Expanded against question_templates.yaml (general section) via template_expander.py.
+
+metadata:
+  domain: general
+  version: "1.0"
+  description: "Clinical concepts for SLM Domain Foundry sample medical profile"
+
+clinical_topics:
+
+  - name: Hypertension
+    category: cardiology
+    description: >
+      Hypertension is persistently elevated blood pressure that increases the risk of
+      stroke, myocardial infarction, heart failure, and chronic kidney disease.
+      Diagnosis requires repeated measurements. Management combines lifestyle change
+      and antihypertensive medications selected for comorbidities and tolerability.
+    one_sentence: >
+      Hypertension is chronic high blood pressure that raises cardiovascular and renal risk.
+    examples:
+      - scenario: New diagnosis in primary care
+        description: >
+          A patient with repeated readings above guideline thresholds receives counseling
+          on sodium reduction, activity, and initiation of first-line therapy with follow-up.
+    related:
+      - Aspirin
+      - Lifestyle counseling
+    common_errors:
+      - error: Diagnosis from a single office reading
+        cause: White-coat hypertension or inadequate rest
+        solution: Confirm with repeated or home blood pressure monitoring
+    analysis_notes: >
+      Treatment targets may differ in diabetes, CKD, pregnancy, or very older adults.
+      Shared decision-making is essential.
+
+  - name: Aspirin
+    category: pharmacology
+    description: >
+      Aspirin inhibits cyclooxygenase and platelet aggregation. It is used for secondary
+      cardiovascular prevention in selected patients after myocardial infarction, stroke,
+      or certain acute coronary syndromes. Bleeding risk must be weighed against benefit.
+    one_sentence: >
+      Aspirin is an antiplatelet drug used for secondary cardiovascular prevention in selected patients.
+    examples:
+      - scenario: Post-MI secondary prevention
+        description: >
+          Low-dose daily aspirin is continued long-term unless bleeding or intolerance develops.
+    related:
+      - Hypertension
+    common_errors:
+      - error: Primary prevention without individualized assessment
+        cause: Outdated population-level recommendations
+        solution: Apply current guideline criteria and patient preference
+    analysis_notes: >
+      Always review concomitant anticoagulants, NSAIDs, and gastrointestinal bleeding history.
+
+  - name: Lifestyle counseling
+    category: prevention
+    description: >
+      Lifestyle counseling for cardiometabolic health includes dietary sodium reduction,
+      regular physical activity, weight management, smoking cessation, and limiting alcohol.
+      These interventions support blood pressure, glucose, and lipid control.
+    one_sentence: >
+      Lifestyle counseling promotes diet, activity, and behavior changes that reduce cardiometabolic risk.
+    examples:
+      - scenario: Hypertension management
+        description: >
+          Patients receive a DASH-style eating pattern recommendation and a weekly activity goal.
+    related:
+      - Hypertension
+    analysis_notes: >
+      Counseling should be culturally appropriate and feasible for the patient's context.

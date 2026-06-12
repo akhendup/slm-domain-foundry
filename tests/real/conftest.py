@@ -49,7 +49,7 @@ def real_sharegpt_jsonl(tmp_path_factory, sample_data_dir) -> dict[str, Path]:
     """Build real train/val ShareGPT JSONL from sample_data via prepare_training_data."""
     out = tmp_path_factory.mktemp("training_data")
     csv_path = sample_data_dir / "sample_qa.csv"
-    yaml_dir = sample_data_dir / "patternexamples" / "analytics"
+    yaml_dir = sample_data_dir / "patternexamples"
     cmd = [
         sys.executable,
         "-m",

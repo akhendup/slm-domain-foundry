@@ -132,7 +132,39 @@ def _split_train_val(
 
 
 def main():
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path, default=None, help="Path to config.yaml")
+    pre.add_argument("--domain-config", type=Path, default=None, help="Path to domain_config.yaml")
+    pre_args, remaining = pre.parse_known_args()
+
+    from train.config import get_section, load_config, resolve_config_path, resolve_path
+    from data.domain_config import load_domain_config
+
+    cfg_path = pre_args.config or resolve_config_path()
+    cfg = load_config(cfg_path) if cfg_path.exists() else {}
+
+    domain_path = pre_args.domain_config
+    if domain_path is None:
+        domain_path = resolve_path(cfg, "paths", "domain_config", default="domain_config.yaml")
+    load_domain_config(domain_path, reload=True)
+
+    data_cfg = get_section(cfg, "data_prep", default={}) or {}
+    if not isinstance(data_cfg, dict):
+        data_cfg = {}
+
     parser = argparse.ArgumentParser(description="Prepare training data from PDF/CSV")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=cfg_path if cfg_path.exists() else None,
+        help="Path to config.yaml (CLI flags override config values)",
+    )
+    parser.add_argument(
+        "--domain-config",
+        type=Path,
+        default=domain_path,
+        help="Path to domain_config.yaml for keyword/pattern extraction",
+    )
     parser.add_argument("--pdf-dir", type=Path, help="Directory of PDF files")
     parser.add_argument(
         "--manual",
@@ -149,26 +181,32 @@ def main():
         help=(
             "Directory of YAML pattern files (recursively searched). "
             "Each pattern generates typed Q&A covering description, use cases, "
-            "parameters, SQL templates, examples, errors, and best practices."
+            "parameters, examples, errors, and best practices."
         ),
     )
-    parser.add_argument("--output-dir", type=Path, default=Path("training_data"))
+    parser.add_argument("--output-dir", type=Path, default=resolve_path(cfg, "paths", "training_data", default="training_data"))
     parser.add_argument("--format", choices=["alpaca", "sharegpt", "both"], default="both")
-    parser.add_argument("--chunk-size", type=int, default=800)
-    parser.add_argument("--chunk-overlap", type=int, default=150)
-    parser.add_argument("--val-ratio", type=float, default=0.15)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--chunk-size", type=int, default=int(data_cfg.get("chunk_size", 800)))
+    parser.add_argument("--chunk-overlap", type=int, default=int(data_cfg.get("chunk_overlap", 150)))
+    parser.add_argument("--val-ratio", type=float, default=float(data_cfg.get("val_ratio", 0.15)))
+    parser.add_argument("--seed", type=int, default=int(data_cfg.get("seed", 42)))
     parser.add_argument(
         "--no-multiturn",
         action="store_true",
         help="Disable multi-turn conversation generation in manual mode",
     )
+    default_vocab = data_cfg.get("vocab_dir")
+    default_vocab_path = (
+        resolve_path(cfg, "data_prep", "vocab_dir", default=str(default_vocab))
+        if default_vocab
+        else None
+    )
     parser.add_argument(
         "--vocab-dir",
         type=Path,
-        default=None,
+        default=default_vocab_path,
         help=(
-            "Directory containing *_vocabulary.yaml files (e.g. sql_vocabulary.yaml, "
+            "Directory containing *_vocabulary.yaml files (e.g. medical_vocabulary.yaml, "
             "financial_vocabulary.yaml). Each file is combinatorially expanded against "
             "all question templates to produce large Q&A datasets."
         ),
@@ -182,7 +220,7 @@ def main():
             "Approved interactions (approved=true) are included in training data."
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(remaining)
 
     random.seed(args.seed)
     qa_pairs: List[Tuple[str, str]] = []

@@ -1,0 +1,8 @@
+question,answer
+What is hypertension?,"Hypertension is persistently elevated blood pressure, typically defined as systolic ≥130 mmHg or diastolic ≥80 mmHg in adults. It increases risk of stroke, heart disease, and kidney damage."
+What is the first-line treatment for uncomplicated hypertension?,"First-line treatment usually includes lifestyle modification (sodium reduction, exercise, weight management) plus a thiazide diuretic, ACE inhibitor, ARB, or calcium channel blocker depending on patient factors and comorbidities."
+What aspirin dose is used for secondary prevention after myocardial infarction?,"Low-dose aspirin (75–100 mg daily) is commonly used for secondary cardiovascular prevention after MI, unless contraindicated. Always confirm dosing with current clinical guidelines and the patient's full history."
+What are common contraindications to aspirin?,"Contraindications include active bleeding, significant allergy to aspirin or NSAIDs, and caution in certain gastrointestinal, renal, or pediatric conditions. Individual risk must be assessed clinically."
+What lifestyle changes help manage blood pressure?,"Evidence-based changes include reducing dietary sodium, increasing physical activity, limiting alcohol, maintaining healthy weight, and following a DASH-style eating pattern rich in fruits and vegetables."
+What is an SLM?,"A small language model (SLM) is a compact neural network trained to generate or understand text. It has fewer parameters than large models, so it can run on a single laptop or GPU."
+How do I fine-tune an SLM on my domain data?,"Prepare question-answer or document data, convert it to ShareGPT JSONL with prepare_training_data.py, then fine-tune a base model with finetune_unsloth.py using your config.yaml settings."

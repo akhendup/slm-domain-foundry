@@ -1,0 +1,58 @@
+# === METADATA START ===
+name: aspirin
+title: "Aspirin for Cardiovascular Prevention"
+description: |
+  Aspirin (acetylsalicylic acid) inhibits platelet aggregation and is used for
+  secondary prevention of cardiovascular events in selected patients. Dosing,
+  duration, and candidacy depend on bleeding risk, indication, and guideline context.
+category: pharmacology
+# === METADATA END ===
+
+# === USE_CASES START ===
+use_cases:
+  - Secondary prevention after myocardial infarction
+  - Secondary prevention after ischemic stroke or TIA in appropriate patients
+  - Adjunct therapy in certain acute coronary syndromes per protocol
+# === USE_CASES END ===
+
+# === PARAMETERS START ===
+parameters:
+  - name: dose
+    type: string
+    required: true
+    description: "Daily maintenance dose for secondary prevention"
+    example: "75-100 mg once daily"
+
+  - name: duration
+    type: string
+    required: false
+    description: "Typically long-term unless bleeding or intolerance develops"
+    example: "indefinite unless contraindicated"
+# === PARAMETERS END ===
+
+# === EXAMPLES START ===
+examples:
+  - |
+    Case
+
+    Patient with prior MI, no active bleeding, no aspirin allergy.
+
+    Treatment plan
+
+    Start low-dose aspirin daily plus continue statin and blood pressure control
+    as indicated. Review gastrointestinal and bleeding risk factors.
+
+    Outcome
+
+    Monitor for bleeding symptoms and reassess need at regular follow-up visits.
+# === EXAMPLES END ===
+
+# === COMMON_ERRORS START ===
+common_errors:
+  - error: "Using aspirin for primary prevention without individualized risk assessment"
+    cause: "Outdated blanket recommendations"
+    solution: "Apply current guideline criteria and shared decision-making"
+  - error: "Co-prescribing without assessing bleeding risk"
+    cause: "Multiple antithrombotic agents without review"
+    solution: "Evaluate bleeding history, medications, and need for gastroprotection"
+# === COMMON_ERRORS END ===

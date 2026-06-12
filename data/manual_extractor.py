@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Extract training-relevant content from manual PDFs.
-v2: section-aware extraction, header/footer stripping, index detection,
-    typed SQL Q&A generation, multi-turn conversations, near-duplicate removal.
+Section-aware extraction, header/footer stripping, index detection,
+typed Q&A generation, multi-turn conversations, near-duplicate removal.
+Domain-specific keyword/pattern detection is configured in domain_config.yaml.
 """
 
 import hashlib
@@ -11,6 +12,11 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from data.domain_config import (
+    example_section_label_regexes,
+    extract_named_pattern as extract_sql_function_name,
+    has_structured_content as has_sql_content,
+)
 from data.pdf_extractor import PDFExtractor
 
 try:
@@ -304,57 +310,16 @@ def group_pages_into_sections(pages: List[Dict]) -> List[Dict]:
 
 
 # ---------------------------------------------------------------------------
-# SQL content helpers
+# Structured content helpers (patterns loaded from domain_config.yaml)
 # ---------------------------------------------------------------------------
 
-_SQL_KW_RE = re.compile(
-    r"\b(SELECT|FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|JOIN|ON|CREATE|INSERT|"
-    r"UPDATE|DELETE|WITH|UNION|EXCEPT|INTERSECT|PARTITION\s+BY|OVER|"
-    r"ROWS\s+BETWEEN|RANGE\s+BETWEEN|CSUM|MSUM|MAVG|MDIFF|MLINREG|QUANTILE|"
-    r"RANK|DENSE_RANK|ROW_NUMBER|QUALIFY|USING|RETURNS?)\b",
-    re.IGNORECASE,
-)
-
-
-def has_sql_content(text: str) -> bool:
-    """True if text contains at least 2 SQL keywords (likely SQL code)."""
-    return len(_SQL_KW_RE.findall(text)) >= 2
-
-
 def extract_sql_blocks(text: str) -> List[str]:
-    """Return paragraphs that contain SQL content."""
+    """Return paragraphs that contain structured domain content."""
     return [
         para.strip()
         for para in re.split(r"\n\n+", text)
-        if len(_SQL_KW_RE.findall(para)) >= 2
+        if has_sql_content(para)
     ]
-
-
-# Matches Teradata table-operator pattern: FROM FunctionName(
-_TD_FUNC_RE = re.compile(r"\bFROM\s+(\w+)\s*\(", re.IGNORECASE)
-
-# Suffixes that indicate a regular table/view name, not a function name
-_NON_FUNC_SUFFIX_RE = re.compile(
-    r"(?:_table|_test|_schema|_data|_view|_input|_output|_result|_sample|_train|_val)$",
-    re.IGNORECASE,
-)
-
-
-def extract_sql_function_name(sql_text: str) -> Optional[str]:
-    """
-    Extract a Teradata table-operator function name from SQL like 'FROM nPath(...)'.
-    Returns the function name string or None if not found / looks like a data table.
-    """
-    for m in _TD_FUNC_RE.finditer(sql_text):
-        candidate = m.group(1)
-        # Skip names that look like data tables rather than functions
-        if _NON_FUNC_SUFFIX_RE.search(candidate):
-            continue
-        # Skip very short tokens (single letters) or all-lowercase short words
-        if len(candidate) <= 2:
-            continue
-        return candidate
-    return None
 
 
 def _split_example_parts(example_text: str) -> Dict[str, str]:
@@ -363,11 +328,10 @@ def _split_example_parts(example_text: str) -> Dict[str, str]:
     Recognises standalone lines: Input, SQL Call, Output (and variants).
     Returns dict with keys 'input', 'sql', 'output' (values may be empty).
     """
-    _INPUT_RE = re.compile(r"^\s*input(?:\s+(?:data|tables?))?\s*:?\s*$", re.I)
-    _SQL_RE = re.compile(
-        r"^\s*(sql\s+call|sql\s+query|sql\s+example|sql\s+statement)\s*:?\s*$", re.I
-    )
-    _OUTPUT_RE = re.compile(r"^\s*output(?:\s+(?:data|tables?))?\s*:?\s*$", re.I)
+    label_res = example_section_label_regexes()
+    _INPUT_RE = label_res["input"]
+    _SQL_RE = label_res["structured"]
+    _OUTPUT_RE = label_res["output"]
 
     result: Dict[str, str] = {"input": "", "sql": "", "output": ""}
     current: Optional[str] = None

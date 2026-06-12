@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Load Teradata/SQL pattern YAML files and convert them into training Q&A pairs.
+Load YAML pattern files and convert them into training Q&A pairs.
 
 Pattern YAML files follow the structure used in sample_data/patternexamples/:
   name, title, description, use_cases, parameters, templates, examples,
@@ -141,9 +141,16 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
             for q_tmpl in CATEGORY_QUESTIONS:
                 pairs.append((q_tmpl.format(fn=fn), cat_answer))
 
-        # td_func alias question
+        # Optional alias question (wording from domain_config.yaml)
         if td_func and td_func.upper() != name.upper():
-            pairs.append((f"What is the {td_func} function in Teradata?", desc))
+            from data.domain_config import yaml_pattern_settings
+
+            settings = yaml_pattern_settings()
+            alias_q = settings["alias_question"].format(alias=td_func)
+            domain_label = settings.get("domain_label", "").strip()
+            if domain_label:
+                alias_q = f"{alias_q} {domain_label}".strip()
+            pairs.append((alias_q, desc))
 
     # -- Use cases ------------------------------------------------------------
     use_cases = pattern.get("use_cases", [])

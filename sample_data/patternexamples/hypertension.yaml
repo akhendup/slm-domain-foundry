@@ -1,0 +1,68 @@
+# === METADATA START ===
+name: hypertension
+title: "Hypertension Management"
+description: |
+  Hypertension is chronic elevation of blood pressure that increases cardiovascular
+  and renal risk. Management combines lifestyle modification, regular monitoring,
+  and pharmacologic therapy tailored to comorbidities and patient preferences.
+
+  Clinical goals typically include blood pressure control, reduction of end-organ
+  damage, and shared decision-making with the patient.
+category: cardiology
+# === METADATA END ===
+
+# === USE_CASES START ===
+use_cases:
+  - Primary prevention in adults with elevated blood pressure
+  - Secondary prevention after stroke or myocardial infarction
+  - Management in patients with diabetes or chronic kidney disease
+  - Blood pressure monitoring in primary care
+# === USE_CASES END ===
+
+# === PARAMETERS START ===
+parameters:
+  - name: target_systolic
+    type: integer
+    required: true
+    description: "Target systolic blood pressure in mmHg for most adults"
+    example: "130"
+
+  - name: target_diastolic
+    type: integer
+    required: true
+    description: "Target diastolic blood pressure in mmHg"
+    example: "80"
+
+  - name: measurement_method
+    type: string
+    required: true
+    description: "Validated office, home, or ambulatory blood pressure monitoring"
+    example: "automated office measurement after 5 minutes rest"
+# === PARAMETERS END ===
+
+# === EXAMPLES START ===
+examples:
+  - |
+    Case
+
+    55-year-old with repeated office readings 142/88 mmHg, no diabetes.
+
+    Treatment plan
+
+    Recommend sodium reduction, 150 minutes weekly moderate exercise, and initiate
+    an ACE inhibitor or thiazide-type diuretic based on local formulary.
+
+    Outcome
+
+    Reassess blood pressure in 4 weeks and adjust therapy if targets are not met.
+# === EXAMPLES END ===
+
+# === COMMON_ERRORS START ===
+common_errors:
+  - error: "Single elevated reading leads to immediate diagnosis"
+    cause: "White-coat effect or inadequate rest before measurement"
+    solution: "Confirm with repeated measurements or home/ambulatory monitoring"
+  - error: "Ignoring lifestyle counseling"
+    cause: "Jumping directly to medication without behavior change"
+    solution: "Combine lifestyle and pharmacologic strategies from the start when indicated"
+# === COMMON_ERRORS END ===

@@ -1,181 +1,177 @@
-# AI Small Language Model Training
+# SLM Domain Foundry
 
-This project shows **how to train a small language model** end-to-end: from your own data (PDF or CSV) to a model you can ask questions and get answers from.
+A **domain-adaptive pipeline for training small language models (SLMs)** — from your own documents and Q&A data to a model you can chat with in a browser or terminal.
+
+The default profile targets **medical AI** (clinical Q&A, guidelines, vocabulary expansion), but the same pipeline adapts to legal, financial, scientific, or any other vertical by editing YAML config files.
 
 ## What it does
 
-1. **Data** – Load content from PDFs or CSV (e.g. question/answer columns).
-2. **Training data** – Chunk and convert that into instruction/response pairs (Alpaca and ShareGPT formats).
-3. **Training** – Either:
-   - **(a) Train from scratch** – Build a tiny transformer and train it on your text (see `train/README_FROM_SCRATCH.md` and `scripts/export_for_from_scratch.py`).
-   - **(b) Fine-tune** – Fine-tune a small model like **TinyLlama** (or Llama-3.2-1B) on your data with Unsloth.
-4. **Demo** – Run a simple Q&A in the terminal: you ask questions, the model answers, so you can see how it behaves after training.
-
-## Quick start
-
-### Option 1: Docker (runs on any platform with Docker)
-
-All dependencies are in `requirements.txt`; the image works on Linux, macOS, and Windows (Docker Desktop).
-
-```bash
-# Build the image
-docker build -t ai_slm_training .
-
-# Prepare training data (mount a folder with your CSV or PDFs)
-docker run --rm -v "$(pwd)/my_data:/data" ai_slm_training \
-  python -m data.prepare_training_data --csv /data/qa.csv --output-dir /data/training_data
-
-# Or open a shell and run commands
-docker run -it --rm -v "$(pwd)/my_data:/data" ai_slm_training bash
-# Inside: python -m data.prepare_training_data --csv /data/qa.csv --output-dir /data/training_data
-#         python -m train.finetune_unsloth --train-file /data/training_data/train_sharegpt.jsonl ...
-#         python -m app.chat --model-dir /data/output_model --interactive
+```mermaid
+flowchart LR
+  A[PDF / CSV / YAML] --> B[prepare_training_data]
+  B --> C[ShareGPT JSONL]
+  C --> D[finetune_unsloth]
+  D --> E[output_model]
+  E --> F[gradio_ui / chat]
+  G[knowledge_library] --> F
 ```
 
-On **Windows (PowerShell)** use `${PWD}` or full path for the volume, e.g. `-v "C:\path\to\my_data:/data"`.
+1. **Data** — Ingest PDFs (manual mode), CSV Q&A, YAML patterns, or vocabulary files.
+2. **Training data** — Chunk, extract, and convert to Alpaca / ShareGPT JSONL.
+3. **Training** — Fine-tune a small base model (Unsloth + QLoRA) or train from scratch.
+4. **Inference** — Gradio web UI, CLI chat, optional Ollama backend, RAG-lite from a knowledge library.
 
-### Option 2: Local install
+## Prerequisites
+
+- Python **3.10+**
+- **CUDA 11.8+** for GPU training with Unsloth (optional; CPU paths available)
+- **Docker** (optional, for reproducible environments)
+
+## Quick start (medical example)
 
 ```bash
-cd ai_slm_training
+git clone https://github.com/agkhan/slm-domain-foundry.git
+cd slm-domain-foundry
 python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
+# GPU training: pip install unsloth
 ```
 
-### 2. Prepare training data
-
-From a directory of PDFs:
-
-```bash
-python -m data.prepare_training_data --pdf-dir path/to/pdfs --output-dir training_data
-```
-
-From a CSV (with `question` / `answer` columns, or a single `text` column):
-
-```bash
-python -m data.prepare_training_data --csv path/to/qa.csv --output-dir training_data
-```
-
-From a directory of **YAML pattern files** (see `sample_data/patternexamples/`):
-
-```bash
-python -m data.prepare_training_data --yaml-dir sample_data/patternexamples --output-dir training_data
-```
-
-YAML patterns are recursively discovered. Each file generates typed Q&A pairs covering: description, use cases, parameters, SQL templates, concrete examples with expected output, common errors + fixes, and best practices — far higher quality than PDF extraction because the knowledge is already curated and structured. Multi-turn conversations are also produced for patterns with enough content.
-
-You can combine all three sources in one run:
+### 1. Prepare training data
 
 ```bash
 python -m data.prepare_training_data \
-  --pdf-dir sample_data --manual \
+  --csv sample_data/medical_qa.csv \
   --yaml-dir sample_data/patternexamples \
-  --csv path/to/qa.csv \
   --output-dir training_data
 ```
 
-**Manual mode** (for documentation/manuals). Filters TOC, boilerplate, copyright, and index pages; strips running headers/footers; groups pages into sections; generates typed Q&A (What is X? / syntax / arguments / examples) and multi-turn conversations. Output is written **per-manual** under `training_data/<manual_label>/`:
+Optional: expand structured vocabulary (adds many Q&A pairs from `data/medical_vocabulary.yaml`):
 
 ```bash
-python -m data.prepare_training_data --pdf-dir sample_data --manual --output-dir training_data
-# Add --no-multiturn to skip multi-turn conversation generation
+python -m data.prepare_training_data \
+  --csv sample_data/medical_qa.csv \
+  --vocab-dir data \
+  --output-dir training_data
 ```
 
-Example: `sample_data/TD17_Analytic_Functions.pdf` → `training_data/td17_analytic_functions/`. The same extraction pattern applies to all manuals in one run.
-
-Outputs per manual (in `training_data/<manual_label>/`):
-
-- `train_sharegpt.jsonl` / `val_sharegpt.jsonl` – single-turn Q&A, for Unsloth fine-tuning.
-- `train_alpaca.jsonl` / `val_alpaca.jsonl` – Alpaca instruction format.
-- `train_multiturn.jsonl` / `val_multiturn.jsonl` – multi-turn conversations (ShareGPT format).
-
-**Diagnostic script** — inspect what the pipeline extracts at every stage before committing to a full run:
-
-```bash
-python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf
-python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf --verbose
-python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf -o report.txt
-```
-
-Shows: pages kept/filtered, headers/footers detected, sections found, parsed section parts (description/syntax/arguments/examples), Q&A type breakdown, and chunking comparison.
-
-### 3. Train the model
-
-**Option B – Fine-tune TinyLlama (recommended for a first run):**
+### 2. Fine-tune
 
 ```bash
 python -m train.finetune_unsloth \
+  --config config.yaml \
   --train-file training_data/train_sharegpt.jsonl \
-  --val-file training_data/val_sharegpt.jsonl \
-  --output-dir output_model
+  --val-file training_data/val_sharegpt.jsonl
 ```
 
-Use `--model-name unsloth/tinyllama-chat-bnb-4bit` (default) or e.g. `unsloth/Llama-3.2-1B-Instruct` for a slightly larger model.
-
-**Option A – Train from scratch:**  
-See `train/README_FROM_SCRATCH.md`. Use `scripts/export_for_from_scratch.py` to export `train_sharegpt.jsonl` to a single text file, then use NanoGPT/minGPT or a minimal Hugging Face script.
-
-### 4. Run the Q&A demo
-
-**Web UI (recommended)** – Open a browser and chat with the model:
+### 3. Run inference
 
 ```bash
-# Local
 python -m app.gradio_ui --model-dir output_model
-# Then open http://127.0.0.1:7860 in your browser.
-
-# Docker (mount your trained model, map port 7860)
-docker run -p 7860:7860 -v "$(pwd)/output_model:/app/model:ro" ai_slm_training \
-  python run_gradio_ui.py --model-dir /app/model --host 0.0.0.0
-# Then open http://localhost:7860
+# Open http://127.0.0.1:7860
 ```
 
-**CLI** – Terminal-only:
+## Configuration
+
+All defaults live in **`config.yaml`** at the repo root. CLI flags override config values.
+
+```yaml
+domain:
+  name: medical
+  system_prompt: "You are a medical AI assistant..."
+  config_file: domain_config.yaml
+
+model:
+  base_model: unsloth/Llama-3.2-1B-Instruct
+  epochs: 3
+  learning_rate: 0.0002
+
+paths:
+  training_data: training_data
+  output_model: output_model
+```
+
+**Domain extraction patterns** (keywords, example section labels, structured-content detection) live in **`domain_config.yaml`**. Point to a different file with:
 
 ```bash
-python -m app.chat --model-dir output_model              # sample questions
-python -m app.chat --model-dir output_model --interactive  # type questions in terminal
+python -m data.prepare_training_data --domain-config examples/domain_config_sql.yaml ...
 ```
 
-The demo shows how the model responds after training: your data → training → answers in the UI or CLI.
+### Adapting to other domains
+
+| Domain | System prompt | Domain config | Sample data |
+|--------|---------------|---------------|-------------|
+| Medical (default) | `config.yaml` → `domain.system_prompt` | `domain_config.yaml` | `sample_data/medical_qa.csv` |
+| SQL / analytics | Edit prompt in `config.yaml` | `examples/domain_config_sql.yaml` | `data/sql_vocabulary.yaml` |
+| Financial | Edit prompt in `config.yaml` | Copy `domain_config.yaml`, add keywords | `data/financial_vocabulary.yaml` |
+
+Override the chat system prompt without editing files:
+
+```bash
+export SLM_SYSTEM_PROMPT="You are a legal research assistant..."
+python -m app.gradio_ui --model-dir output_model
+```
+
+## Install options
+
+| File | Use case |
+|------|----------|
+| `requirements-core.txt` | Data prep only (no PyTorch) |
+| `requirements-train.txt` | Full training stack |
+| `requirements-inference.txt` | CPU/GPU inference + Gradio |
+| `requirements.txt` | Everything (default) |
+
+Or install as a package:
+
+```bash
+pip install -e ".[train]"    # training
+pip install -e ".[inference]" # demo UI
+pip install -e ".[dev]"       # pytest
+```
+
+## Docker
+
+```bash
+docker build -t slm-domain-foundry .
+docker run --rm -v "$(pwd)/sample_data:/data" slm-domain-foundry \
+  python -m data.prepare_training_data --csv /data/medical_qa.csv --output-dir /data/training_data
+```
 
 ## Project layout
 
 ```
-ai_slm_training/
+slm-domain-foundry/
+├── config.yaml              # Main pipeline config
+├── domain_config.yaml       # Domain keywords & extraction patterns
+├── examples/                # Alternate domain profiles (e.g. SQL)
 ├── data/
-│   ├── pdf_extractor.py      # PDF → text + tables per page (pdfplumber/PyPDF2/OCR)
-│   ├── manual_extractor.py   # Manual mode: filter, strip headers, section-aware Q&A
-│   ├── csv_loader.py         # CSV → text or Q&A pairs
-│   ├── chunking.py           # Text chunking (rule-based, SQL-aware, semantic)
-│   ├── yaml_pattern_loader.py  # YAML pattern files → typed Q&A + multi-turn conversations
-│   └── prepare_training_data.py  # PDF/CSV/YAML → Alpaca/ShareGPT JSONL
-├── scripts/
-│   ├── diagnose_manual.py    # Inspect extraction pipeline stage-by-stage
-│   └── export_for_from_scratch.py  # ShareGPT JSONL → single .txt
+│   ├── prepare_training_data.py
+│   ├── medical_vocabulary.yaml
+│   └── ...
 ├── train/
-│   ├── finetune_unsloth.py   # Fine-tune TinyLlama (or other) with Unsloth
-│   └── README_FROM_SCRATCH.md
+│   ├── config.py            # Config loader
+│   └── finetune_unsloth.py
 ├── app/
-│   ├── chat.py               # CLI Q&A with trained model (Ollama optional)
-│   ├── gradio_ui.py          # Web UI: upload → train → chat → swarm
-│   ├── model_loader.py       # Load merged or PEFT checkpoints for inference
-│   └── swarm.py              # Multi-model parallel inference
-├── demo/                     # Deprecated shims → app (backward compatibility)
-├── scripts/
-│   └── export_for_from_scratch.py  # ShareGPT JSONL → single .txt
-├── Dockerfile
-├── requirements.txt
-└── README.md
+│   ├── gradio_ui.py         # Web UI
+│   └── chat.py              # CLI chat
+├── sample_data/
+│   ├── medical_qa.csv
+│   └── patternexamples/     # YAML clinical patterns
+└── tests/
 ```
 
-## Requirements
+## Testing
 
-- **Single file:** `requirements.txt` – PDF (pdfplumber, PyPDF2), CSV (stdlib), PyTorch, Unsloth, transformers, datasets, trl, etc. Used for both local install and Docker. The default Docker image uses CPU-only PyTorch so it runs on any host; for GPU training use a CUDA base image and install PyTorch with CUDA.
+```bash
+pytest tests/ --tb=short
+pytest tests/ --cov=app --cov=data --cov=train --cov-report=term-missing
+```
 
-## Summary
+## License
 
-- **Data:** PDF, CSV, or YAML patterns → `data/prepare_training_data.py` → `training_data/*.jsonl`.
-- **Train:** Either (a) from scratch (see `train/README_FROM_SCRATCH.md`) or (b) `train/finetune_unsloth.py` (TinyLlama).
-- **Demo:** `app/gradio_ui.py` (web UI) or `app/chat.py` (CLI) – ask questions and see answers so anyone can see how the model is trained and used.
+MIT — see [LICENSE](LICENSE). Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Roadmap
+
+Phase 2 enhancements (synthetic data generation, ORPO alignment, DAPT, RAG-augmented fine-tuning, Korean language support) are tracked in [repo_actions.md](repo_actions.md).

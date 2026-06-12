@@ -1,0 +1,44 @@
+# SQL / analytics domain profile (reference example).
+# Use with: python -m data.prepare_training_data --domain-config examples/domain_config_sql.yaml ...
+
+domain:
+  name: sql
+
+extraction:
+  min_keyword_matches: 2
+  content_keyword_regex: >-
+    \b(SELECT|FROM|WHERE|GROUP\s+BY|ORDER\s+BY|HAVING|JOIN|ON|CREATE|INSERT|UPDATE|DELETE|WITH|UNION|EXCEPT|INTERSECT|PARTITION\s+BY|OVER|ROWS\s+BETWEEN|RANGE\s+BETWEEN|CSUM|MSUM|MAVG|MDIFF|MLINREG|QUANTILE|RANK|DENSE_RANK|ROW_NUMBER|QUALIFY|USING|RETURNS?)\b
+
+  function_pattern: \bFROM\s+(\w+)\s*\(
+
+  non_function_suffixes:
+    - _table
+    - _test
+    - _schema
+    - _data
+    - _view
+    - _input
+    - _output
+    - _result
+    - _sample
+    - _train
+    - _val
+
+  example_section_labels:
+    input:
+      - input
+      - input data
+      - input tables
+    structured:
+      - sql call
+      - sql query
+      - sql example
+      - sql statement
+    output:
+      - output
+      - output data
+      - output tables
+
+yaml_patterns:
+  alias_question: "What is the {alias} function?"
+  domain_label: "in SQL"

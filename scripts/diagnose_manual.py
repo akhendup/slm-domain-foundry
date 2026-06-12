@@ -7,9 +7,9 @@ report at each stage so you can see exactly what training data is produced
 and where content is lost or transformed.
 
 Usage:
-    python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf
-    python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf --verbose
-    python scripts/diagnose_manual.py sample_data/TD17_Analytic_Functions.pdf -o report.txt
+    python scripts/diagnose_manual.py path/to/manual.pdf
+    python scripts/diagnose_manual.py path/to/manual.pdf --verbose
+    python scripts/diagnose_manual.py path/to/manual.pdf -o report.txt
 """
 
 import argparse

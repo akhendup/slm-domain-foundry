@@ -2158,12 +2158,27 @@ def _normalize_content(content: Any) -> str:
     return str(content)
 
 
-_CHAT_SYSTEM_PROMPT = os.environ.get(
-    "SLM_SYSTEM_PROMPT",
-    "You are a concise, helpful assistant. "
-    "Answer questions directly and briefly based on the documentation you were trained on. "
-    "Do not repeat the question. Do not include unrelated examples.",
-)
+def _default_system_prompt() -> str:
+    env_prompt = os.environ.get("SLM_SYSTEM_PROMPT", "").strip()
+    if env_prompt:
+        return env_prompt
+    try:
+        from train.config import get_section, load_config, resolve_config_path
+
+        cfg = load_config(resolve_config_path())
+        prompt = get_section(cfg, "domain", "system_prompt", default="")
+        if prompt:
+            return str(prompt).strip()
+    except Exception:
+        pass
+    return (
+        "You are a concise, helpful assistant. "
+        "Answer questions directly and briefly based on the documentation you were trained on. "
+        "Do not repeat the question. Do not include unrelated examples."
+    )
+
+
+_CHAT_SYSTEM_PROMPT = _default_system_prompt()
 _CHAT_MAX_HISTORY_TURNS = 3  # keep last N user/assistant turn pairs
 
 
@@ -2391,10 +2406,7 @@ def _ollama_chat(
     if not msg_text.strip():
         return "Please enter a question."
 
-    system_prompt = (
-        "You are a concise, helpful assistant specializing in database analytics, "
-        "SQL, and Teradata analytic functions. Answer questions directly and briefly."
-    )
+    system_prompt = _default_system_prompt()
     messages = [{"role": "system", "content": system_prompt}]
     for entry in history:
         if isinstance(entry, dict):
@@ -2916,11 +2928,11 @@ def build_app() -> gr.Blocks:
                     additional_inputs=[ollama_host, ollama_model],
                     # When additional_inputs are present Gradio requires examples as list-of-lists
                     examples=[
-                        ["What is CSUM in Teradata SQL?", _ollama_host_default, _ollama_model_default],
-                        ["Show me an example of the RANK analytic function.", _ollama_host_default, _ollama_model_default],
-                        ["What is the nPath function used for?", _ollama_host_default, _ollama_model_default],
-                        ["Explain the QUANTILE function with an example.", _ollama_host_default, _ollama_model_default],
-                        ["What is the difference between RANK and DENSE_RANK?", _ollama_host_default, _ollama_model_default],
+                        ["What is the first-line treatment for hypertension?", _ollama_host_default, _ollama_model_default],
+                        ["What are common contraindications for aspirin?", _ollama_host_default, _ollama_model_default],
+                        ["How should blood pressure be monitored in adults?", _ollama_host_default, _ollama_model_default],
+                        ["What lifestyle changes help manage hypertension?", _ollama_host_default, _ollama_model_default],
+                        ["When should a patient be referred for specialist care?", _ollama_host_default, _ollama_model_default],
                     ] if _ollama_model_default else None,
                 )
                 try:
@@ -2944,7 +2956,7 @@ def build_app() -> gr.Blocks:
                         with gr.Column(scale=2):
                             kb_title = gr.Textbox(
                                 label="Name / Title *",
-                                placeholder="e.g. nPath, CSUM, Sessionize, QUANTILE",
+                                placeholder="e.g. Hypertension, Aspirin dosing, Diabetes screening",
                             )
                             kb_description = gr.Textbox(
                                 label="What does it do? *",
@@ -3268,7 +3280,24 @@ def build_app() -> gr.Blocks:
 def main():
     import argparse
 
+    from train.config import get_section, load_config, resolve_config_path, resolve_path
+
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", type=Path, default=None)
+    pre_args, remaining = pre.parse_known_args()
+    cfg_path = pre_args.config or resolve_config_path()
+    cfg = load_config(cfg_path) if cfg_path.exists() else {}
+    infer_cfg = get_section(cfg, "inference", default={}) or {}
+    if not isinstance(infer_cfg, dict):
+        infer_cfg = {}
+
     p = argparse.ArgumentParser(description="End-to-end SLM training and demo UI")
+    p.add_argument(
+        "--config",
+        type=Path,
+        default=cfg_path if cfg_path.exists() else None,
+        help="Path to config.yaml",
+    )
     p.add_argument(
         "--model-dir", type=Path, default=None,
         help="Trained model directory (default: <root>/output_model or /app/output_model in Docker)",
@@ -3281,15 +3310,19 @@ def main():
         "--data-dir", type=Path, default=None,
         help="Raw uploaded data directory (default: <root>/data or /app/data in Docker)",
     )
-    p.add_argument("--port", type=int, default=int(os.environ.get("GRADIO_PORT", "7860")))
+    p.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("GRADIO_PORT", infer_cfg.get("port", 7860))),
+    )
     p.add_argument(
         "--host", type=str,
-        default=os.environ.get("GRADIO_HOST", "0.0.0.0"),
+        default=os.environ.get("GRADIO_HOST", infer_cfg.get("host", "0.0.0.0")),
         help="Bind address. Default: 0.0.0.0 (all interfaces). "
              "Set GRADIO_HOST=127.0.0.1 to restrict to localhost only.",
     )
     p.add_argument("--share", action="store_true", default=False)
-    args = p.parse_args()
+    args = p.parse_args(remaining)
 
     global _DATA_DIR, _TRAINING_DATA_DIR, _OUTPUT_MODEL_DIR, _SAVED_MODELS_DIR, _LIBRARY_DIR
     if args.data_dir:

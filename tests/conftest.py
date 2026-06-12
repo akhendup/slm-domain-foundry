@@ -9,6 +9,20 @@ from pathlib import Path
 import pytest
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SQL_DOMAIN_CONFIG = REPO_ROOT / "examples" / "domain_config_sql.yaml"
+
+
+@pytest.fixture(autouse=True)
+def _legacy_sql_domain_for_unit_tests():
+    """Most unit tests were authored against SQL extraction patterns."""
+    if not SQL_DOMAIN_CONFIG.exists():
+        return
+    from data.domain_config import load_domain_config
+
+    load_domain_config(SQL_DOMAIN_CONFIG, reload=True)
+
+
 # ---------------------------------------------------------------------------
 # Filesystem helpers
 # ---------------------------------------------------------------------------
