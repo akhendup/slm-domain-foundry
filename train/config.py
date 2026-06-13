@@ -84,3 +84,33 @@ def merge_cli(config: Mapping[str, Any], args: Mapping[str, Any], mapping: Mappi
         if value is not None:
             merged[out_key] = value
     return merged
+
+
+def get_ui_config(config: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    cfg = config if config is not None else load_config()
+    section = get_section(cfg, "ui", default={}) or {}
+    return section if isinstance(section, dict) else {}
+
+
+def get_ui_list(config: Optional[Mapping[str, Any]] = None, key: str = "", default: Optional[list] = None) -> list:
+    ui = get_ui_config(config)
+    value = ui.get(key, default or [])
+    if isinstance(value, (list, tuple)):
+        return [str(v) for v in value if str(v).strip()]
+    return list(default or [])
+
+
+def get_ui_placeholder(config: Optional[Mapping[str, Any]] = None, key: str = "", default: str = "") -> str:
+    ui = get_ui_config(config)
+    placeholders = ui.get("placeholders", {})
+    if isinstance(placeholders, dict) and key in placeholders:
+        return str(placeholders[key])
+    return default
+
+
+def get_knowledge_form_help(config: Optional[Mapping[str, Any]] = None, key: str = "", default: str = "") -> str:
+    ui = get_ui_config(config)
+    form = ui.get("knowledge_form", {})
+    if isinstance(form, dict) and key in form:
+        return str(form[key])
+    return default

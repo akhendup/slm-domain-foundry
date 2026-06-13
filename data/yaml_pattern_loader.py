@@ -22,10 +22,9 @@ try:
         PARAMETER_QUESTIONS,
     )
 except ImportError:
-    # Fallback if run standalone (tests, scripts)
     DESCRIPTION_QUESTIONS = ["What is {fn}?", "What does {fn} do?"]
     ONE_SENTENCE_QUESTIONS = ["Define {fn} in one sentence."]
-    CATEGORY_QUESTIONS = ["What category of SQL function is {fn}?"]
+    CATEGORY_QUESTIONS = ["What category does {fn} belong to?"]
     USE_CASE_QUESTIONS = ["What are the use cases for {fn}?", "When should I use {fn}?"]
     PARAMETER_QUESTIONS = ["What are the parameters for {fn}?"]
 

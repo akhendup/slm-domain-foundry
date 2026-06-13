@@ -42,10 +42,10 @@ class TestRunDemoNonInteractive:
 
         with patch("app.chat.load_model", return_value=(mock_model, mock_tokenizer)), \
              patch("app.chat.generate_response", side_effect=fake_gen):
-            from app.chat import run_demo, _DEMO_QUESTIONS
+            from app.chat import run_demo, _load_demo_questions
             run_demo(tmp_path, interactive=False)
 
-        assert len(gen_calls) == len(_DEMO_QUESTIONS)
+        assert len(gen_calls) == len(_load_demo_questions())
 
     def test_prints_responses(self, tmp_path, capsys):
         mock_model, mock_tokenizer = self._setup(tmp_path)
@@ -189,10 +189,10 @@ class TestRunDemoOllama:
 
     def test_calls_chat_for_each_demo_question(self, capsys):
         from unittest.mock import patch
-        from app.chat import run_demo_ollama, _DEMO_QUESTIONS
+        from app.chat import run_demo_ollama, _load_demo_questions
         with patch("app.chat._chat_with_ollama", return_value="Ollama response") as mock_fn:
             run_demo_ollama("http://localhost:11434", "llama3", interactive=False)
-        assert mock_fn.call_count == len(_DEMO_QUESTIONS)
+        assert mock_fn.call_count == len(_load_demo_questions())
 
     def test_prints_responses(self, capsys):
         from unittest.mock import patch

@@ -37,13 +37,24 @@ from data.yaml_pattern_loader import generate_qa_from_pattern, generate_multitur
 
 # ---------------------------------------------------------------------------
 # Field definitions — plain-English labels shown to the user in forms
+# Help text is loaded from config.yaml (ui.knowledge_form).
 # ---------------------------------------------------------------------------
+
+
+def _form_help(key: str, default: str) -> str:
+    try:
+        from train.config import get_knowledge_form_help
+
+        return get_knowledge_form_help(key, default)
+    except Exception:
+        return default
+
 
 FIELD_DEFS = [
     {
         "key": "title",
         "label": "Name / Title",
-        "help": "What is this function or feature called? (e.g. 'nPath', 'CSUM', 'Sessionize')",
+        "help": _form_help("title_help", "Canonical name for this topic"),
         "required": True,
         "type": "text",
     },
@@ -61,63 +72,42 @@ FIELD_DEFS = [
     {
         "key": "use_cases_text",
         "label": "When would you use this?",
-        "help": (
-            "List the situations where this is useful. One use case per line. "
-            "E.g.:\n  User journey analysis\n  Funnel analysis\n  Churn prediction"
-        ),
+        "help": _form_help("use_cases_help", "List use cases, one per line."),
         "required": False,
         "type": "textarea",
     },
     {
         "key": "parameters_text",
         "label": "What are the inputs / parameters?",
-        "help": (
-            "Describe each input or parameter. One per line, in the format:\n"
-            "  name: description (example value)\n"
-            "E.g.:\n"
-            "  partition_columns: Columns to group events by, e.g. user_id (user_id)\n"
-            "  order_columns: Columns to sort events by, e.g. timestamp (event_ts)\n"
-            "  pattern: Regex-like sequence to match, e.g. A.B+.C (A.B.C)"
-        ),
+        "help": _form_help("parameters_help", "One parameter per line: name: description (example value)"),
         "required": False,
         "type": "textarea",
     },
     {
         "key": "sql_example",
-        "label": "SQL example",
-        "help": (
-            "Paste a representative SQL query. Don't worry about placeholders — "
-            "real concrete values are fine and actually better for training."
-        ),
+        "label": "Worked example",
+        "help": _form_help("example_help", "Paste a representative protocol, case, or structured example."),
         "required": False,
         "type": "code",
     },
     {
         "key": "sql_description",
-        "label": "What does this SQL example do?",
-        "help": "One sentence describing what the SQL query above demonstrates.",
+        "label": "What does this example demonstrate?",
+        "help": "One sentence describing what the example above shows.",
         "required": False,
         "type": "text",
     },
     {
         "key": "example_output",
         "label": "What does the result look like?",
-        "help": (
-            "Paste sample output rows, or describe the shape of the result. "
-            "E.g.:\n  path                          | count\n  login|browse|purchase         | 1234\n  login|browse                  | 876"
-        ),
+        "help": "Paste sample output rows, or describe the expected outcome.",
         "required": False,
         "type": "textarea",
     },
     {
         "key": "common_errors_text",
         "label": "Common errors or gotchas",
-        "help": (
-            "What mistakes do people make? What are the tricky parts? "
-            "Format as:\n  Problem: solution\n"
-            "E.g.:\n  Spaces in pattern string: Remove all spaces from PATTERN, use A.B.C not 'A B C'\n"
-            "  Reserved keyword as symbol: Avoid Exit/Count — use Exited/Counted instead"
-        ),
+        "help": _form_help("errors_help", "Problem: solution — one pair per line."),
         "required": False,
         "type": "textarea",
     },

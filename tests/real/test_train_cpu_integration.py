@@ -5,6 +5,8 @@ import pytest
 
 pytestmark = [pytest.mark.real, pytest.mark.slow]
 
+peft = pytest.importorskip("peft")
+
 
 def test_finetune_cpu_one_step(real_sharegpt_jsonl, tmp_path):
     out_dir = tmp_path / "output_model"

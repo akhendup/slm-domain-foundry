@@ -28,14 +28,11 @@ from pathlib import Path
 
 from app.model_loader import load_model, generate_response
 
-# Domain-specific demo questions (medical sample profile)
-_DEMO_QUESTIONS = [
-    "What is hypertension?",
-    "What is the first-line treatment for uncomplicated hypertension?",
-    "What aspirin dose is used for secondary prevention after myocardial infarction?",
-    "What lifestyle changes help manage blood pressure?",
-    "What are common contraindications to aspirin?",
-]
+
+def _load_demo_questions() -> list[str]:
+    from train.config import get_ui_list
+
+    return get_ui_list(key="demo_questions")
 
 
 def _chat_with_ollama(
@@ -91,8 +88,8 @@ def run_demo_ollama(host: str, model: str, interactive: bool = False):
                 break
         print("Goodbye.")
     else:
-        print("Demo: asking sample clinical questions.\n")
-        for q in _DEMO_QUESTIONS:
+        print("Demo: asking sample questions.\n")
+        for q in _load_demo_questions():
             reply = _chat_with_ollama(q, history, host, model)
             print("Q:", q)
             print("A:", reply, "\n")
@@ -125,8 +122,8 @@ def run_demo(model_dir: Path, interactive: bool = False):
                 break
         print("Goodbye.")
     else:
-        print("Demo: asking sample clinical questions.\n")
-        for q in _DEMO_QUESTIONS:
+        print("Demo: asking sample questions.\n")
+        for q in _load_demo_questions():
             messages = [{"role": "user", "content": q}]
             reply = generate_response(model, tokenizer, messages)
             print("Q:", q)

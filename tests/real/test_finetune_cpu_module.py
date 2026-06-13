@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+peft = pytest.importorskip("peft")
 import train.finetune_cpu as fc
 
 pytestmark = [pytest.mark.real, pytest.mark.unit]

@@ -19,6 +19,8 @@ from app.model_loader import (
 
 pytestmark = [pytest.mark.real, pytest.mark.unit]
 
+peft = pytest.importorskip("peft")
+
 
 class TestResolveModelDirReal:
     def test_merged_model_dir(self, tiny_lm_dir):

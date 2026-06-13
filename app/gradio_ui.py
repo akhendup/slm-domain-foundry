@@ -2178,6 +2178,27 @@ def _default_system_prompt() -> str:
     )
 
 
+def _ui_chat_examples() -> List[str]:
+    from train.config import get_ui_list
+
+    return get_ui_list(key="chat_examples")
+
+
+def _ui_ollama_example_rows(host: str, model: str) -> Optional[List[List[str]]]:
+    from train.config import get_ui_list
+
+    questions = get_ui_list(key="ollama_examples")
+    if not model or not questions:
+        return None
+    return [[q, host, model] for q in questions]
+
+
+def _ui_ph(key: str, default: str = "") -> str:
+    from train.config import get_ui_placeholder
+
+    return get_ui_placeholder(key=key, default=default)
+
+
 _CHAT_SYSTEM_PROMPT = _default_system_prompt()
 _CHAT_MAX_HISTORY_TURNS = 3  # keep last N user/assistant turn pairs
 
@@ -2804,7 +2825,7 @@ def build_app() -> gr.Blocks:
                     with gr.Column(scale=3):
                         save_name = gr.Textbox(
                             label="Save as name",
-                            placeholder="e.g. td17-analytic-v1",
+                            placeholder=_ui_ph("model_save_name", "e.g. my-model-v1"),
                             max_lines=1,
                         )
                     with gr.Column(scale=1, min_width=140):
@@ -2815,7 +2836,7 @@ def build_app() -> gr.Blocks:
                         with gr.Column(scale=3):
                             rename_input = gr.Textbox(
                                 label="New name",
-                                placeholder="e.g. td17-analytic-v2",
+                                placeholder=_ui_ph("model_rename", "e.g. my-model-v2"),
                                 max_lines=1,
                             )
                         with gr.Column(scale=1, min_width=140):
@@ -2869,13 +2890,7 @@ def build_app() -> gr.Blocks:
                 )
                 _chat_kwargs: dict = dict(
                     fn=_chat,
-                    examples=[
-                        "What is this document about?",
-                        "Show me an example SQL query.",
-                        "What is the syntax for RANK?",
-                        "What does CSUM do?",
-                        "What are the arguments to QUANTILE?",
-                    ],
+                    examples=_ui_chat_examples() or None,
                 )
                 try:
                     chat_interface = gr.ChatInterface(type="messages", **_chat_kwargs)  # noqa: F841
@@ -2903,13 +2918,13 @@ def build_app() -> gr.Blocks:
                         ollama_host = gr.Textbox(
                             label="Server URL",
                             value=_ollama_host_default,
-                            placeholder="http://localhost:11434  (Ollama default)",
+                            placeholder=_ui_ph("ollama_host", "http://localhost:11434"),
                         )
                     with gr.Column(scale=2):
                         ollama_model = gr.Textbox(
                             label="Model name",
                             value=_ollama_model_default,
-                            placeholder="Must match `ollama list` (e.g. qwen3:8b)",
+                            placeholder=_ui_ph("ollama_model", "Model name from server list"),
                         )
                     with gr.Column(scale=1, min_width=160):
                         ollama_test_btn = gr.Button("Test Connection", variant="secondary")
@@ -2927,13 +2942,7 @@ def build_app() -> gr.Blocks:
                     fn=_ollama_chat,
                     additional_inputs=[ollama_host, ollama_model],
                     # When additional_inputs are present Gradio requires examples as list-of-lists
-                    examples=[
-                        ["What is the first-line treatment for hypertension?", _ollama_host_default, _ollama_model_default],
-                        ["What are common contraindications for aspirin?", _ollama_host_default, _ollama_model_default],
-                        ["How should blood pressure be monitored in adults?", _ollama_host_default, _ollama_model_default],
-                        ["What lifestyle changes help manage hypertension?", _ollama_host_default, _ollama_model_default],
-                        ["When should a patient be referred for specialist care?", _ollama_host_default, _ollama_model_default],
-                    ] if _ollama_model_default else None,
+                    examples=_ui_ollama_example_rows(_ollama_host_default, _ollama_model_default),
                 )
                 try:
                     gr.ChatInterface(type="messages", **_ollama_chat_kwargs)
@@ -2956,73 +2965,53 @@ def build_app() -> gr.Blocks:
                         with gr.Column(scale=2):
                             kb_title = gr.Textbox(
                                 label="Name / Title *",
-                                placeholder="e.g. Hypertension, Aspirin dosing, Diabetes screening",
+                                placeholder=_ui_ph("knowledge_title", "Topic name"),
                             )
                             kb_description = gr.Textbox(
                                 label="What does it do? *",
-                                placeholder=(
-                                    "Explain in plain English what this function or feature does, "
-                                    "what data it works on, and what result it produces..."
-                                ),
+                                placeholder=_ui_ph("knowledge_description", "Describe this topic…"),
                                 lines=4,
                             )
                             kb_use_cases = gr.Textbox(
                                 label="When would you use this? (one per line)",
-                                placeholder="User journey analysis\nFunnel analysis\nChurn prediction",
+                                placeholder=_ui_ph("knowledge_use_cases", "One use case per line"),
                                 lines=4,
                             )
                             kb_params = gr.Textbox(
                                 label="Inputs / Parameters (name: description (example))",
-                                placeholder=(
-                                    "partition_columns: Columns to group by, e.g. user_id (user_id)\n"
-                                    "order_columns: Columns to sort by, e.g. timestamp (event_ts)\n"
-                                    "pattern: Sequence to match (A.B+.C)"
+                                placeholder=_ui_ph(
+                                    "knowledge_parameters",
+                                    "parameter_name: description (example value)",
                                 ),
                                 lines=5,
                             )
                             kb_category = gr.Textbox(
                                 label="Category (optional)",
-                                placeholder="analytics, data_quality, ml, timeseries, text…",
+                                placeholder=_ui_ph("knowledge_category", "topic category"),
                             )
                         with gr.Column(scale=2):
                             kb_sql = gr.Textbox(
-                                label="SQL example (paste real SQL — concrete values are fine)",
-                                placeholder=(
-                                    "SELECT * FROM nPath (\n"
-                                    "  ON clickstream PARTITION BY user_id ORDER BY ts\n"
-                                    "  USING\n"
-                                    "    SYMBOLS (event IN ('LOGIN') AS A, event IN ('BUY') AS B)\n"
-                                    "    PATTERN ('A.B')\n"
-                                    "    MODE (NONOVERLAPPING)\n"
-                                    "    RESULT (ACCUMULATE (event OF ANY (A,B)) AS path)\n"
-                                    ")"
-                                ),
+                                label="Worked example (protocol, case, or structured example)",
+                                placeholder=_ui_ph("knowledge_protocol", "Paste a representative example…"),
                                 lines=8,
                             )
                             kb_sql_desc = gr.Textbox(
-                                label="What does this SQL example do?",
-                                placeholder="Find all users who logged in then made a purchase",
+                                label="What does this example demonstrate?",
+                                placeholder=_ui_ph("knowledge_description", "One-sentence summary"),
                             )
                             kb_output = gr.Textbox(
                                 label="What does the result look like? (sample rows or description)",
-                                placeholder=(
-                                    "path                    | count\n"
-                                    "LOGIN|BUY               | 1234\n"
-                                    "LOGIN|BROWSE|BUY        |  876"
-                                ),
+                                placeholder=_ui_ph("knowledge_protocol", "Expected outcome or sample output"),
                                 lines=4,
                             )
                     kb_errors = gr.Textbox(
                         label="Common errors or gotchas (Problem: solution — one per line)",
-                        placeholder=(
-                            "Spaces in pattern string: Remove all spaces, use A.B.C not 'A B C'\n"
-                            "Reserved keyword as symbol name: Use Exited not Exit, Counted not Count"
-                        ),
+                        placeholder=_ui_ph("knowledge_errors", "Problem: solution"),
                         lines=3,
                     )
                     kb_bp = gr.Textbox(
                         label="Tips and best practices (free text — write what you know)",
-                        placeholder="Always run EXPLAIN before executing. Start with a simple pattern like A.B.C...",
+                        placeholder=_ui_ph("knowledge_best_practices", "Tips and best practices…"),
                         lines=3,
                     )
                     with gr.Row():
@@ -3043,7 +3032,7 @@ def build_app() -> gr.Blocks:
                     with gr.Row():
                         kb_delete_slug = gr.Textbox(
                             label="Slug (from the table above)",
-                            placeholder="e.g. npath_sequence_analysis",
+                            placeholder=_ui_ph("knowledge_slug", "entry-slug"),
                             scale=3,
                         )
                         kb_delete_btn = gr.Button("Delete", variant="stop", scale=1)
@@ -3221,7 +3210,7 @@ def build_app() -> gr.Blocks:
                         )
                 swarm_question = gr.Textbox(
                     label="Question",
-                    placeholder="Ask a question — all swarm models will answer…",
+                    placeholder=_ui_ph("swarm_question", "Ask a question…"),
                     lines=2,
                 )
                 swarm_query_btn = gr.Button("Ask Swarm", variant="primary")

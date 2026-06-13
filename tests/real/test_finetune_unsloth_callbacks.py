@@ -10,7 +10,9 @@ pytestmark = [pytest.mark.real, pytest.mark.unit]
 
 
 def test_print_progress_callback(capsys):
-    cb = fu._PrintProgressCallback()
+    from transformers import TrainerCallback
+
+    cb = fu._make_progress_callback(TrainerCallback)
     args = SimpleNamespace(num_train_epochs=1)
     state = SimpleNamespace(epoch=0, global_step=2, max_steps=5)
     cb.on_epoch_begin(args, state, None)

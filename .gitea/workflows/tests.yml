@@ -23,9 +23,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov
-      - name: Run tests (coverage report; target ≥75%)
+      - name: Run tests (100% coverage gate on app, data, train)
         run: |
           pytest tests/ --tb=short \
             --cov=app --cov=data --cov=train \
             --cov-report=term-missing \
-            --cov-fail-under=75
+            --cov-fail-under=100

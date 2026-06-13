@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
+pytest.importorskip("peft")
+
 import train.finetune_cpu as fc
 
 pytestmark = pytest.mark.unit

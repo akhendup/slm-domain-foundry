@@ -31,56 +31,69 @@ try:
     except ImportError:
         _HAS_SFT_CONFIG = False
 except ImportError as e:
-    print(f"ERROR: {e}")
-    print("Install: pip install torch transformers datasets peft trl accelerate")
-    raise SystemExit(1)
+    _TRAIN_IMPORT_ERROR = e
+    _TRAIN_AVAILABLE = False
+else:
+    _TRAIN_AVAILABLE = True
 
-_sig = inspect.signature(TrainingArguments.__init__)
-USE_EVAL_STRATEGY = "eval_strategy" in _sig.parameters
-_sft_sig = inspect.signature(SFTTrainer.__init__)
-_SFT_USES_PROCESSING_CLASS = "processing_class" in _sft_sig.parameters
-# TRL >=0.14 prefers dataset_text_field over formatting_func to avoid batching issues.
-_SFT_USES_DATASET_TEXT_FIELD = "dataset_text_field" in _sft_sig.parameters
+if _TRAIN_AVAILABLE:
+    _sig = inspect.signature(TrainingArguments.__init__)
+    USE_EVAL_STRATEGY = "eval_strategy" in _sig.parameters
+    _sft_sig = inspect.signature(SFTTrainer.__init__)
+    _SFT_USES_PROCESSING_CLASS = "processing_class" in _sft_sig.parameters
+    _SFT_USES_DATASET_TEXT_FIELD = "dataset_text_field" in _sft_sig.parameters
+
+    class _PrintProgressCallback(TrainerCallback):
+        """Print step/epoch progress to stdout so it streams through the UI."""
+
+        def on_epoch_begin(self, args, state, control, **kwargs):
+            epoch = int(state.epoch) + 1
+            print(f"\n--- Epoch {epoch}/{int(args.num_train_epochs)} ---", flush=True)
+
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            if not logs:
+                return
+            parts = []
+            if "loss" in logs:
+                parts.append(f"loss={logs['loss']:.4f}")
+            if "eval_loss" in logs:
+                parts.append(f"eval_loss={logs['eval_loss']:.4f}")
+            if "learning_rate" in logs:
+                parts.append(f"lr={logs['learning_rate']:.2e}")
+            total = state.max_steps or "?"
+            pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
+            print(f"  step {state.global_step}/{total} {pct}  {' | '.join(parts)}", flush=True)
+
+        def on_step_end(self, args, state, control, **kwargs):
+            total = state.max_steps or "?"
+            pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
+            print(f"  step {state.global_step}/{total} {pct}", flush=True)
+
+        def on_epoch_end(self, args, state, control, **kwargs):
+            print(f"  Epoch {int(state.epoch)} complete.", flush=True)
+
+        def on_evaluate(self, args, state, control, **kwargs):
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+else:
+    USE_EVAL_STRATEGY = False
+    _SFT_USES_PROCESSING_CLASS = False
+    _SFT_USES_DATASET_TEXT_FIELD = False
+
+    class _PrintProgressCallback:  # pragma: no cover
+        pass
 
 
-class _PrintProgressCallback(TrainerCallback):
-    """Print step/epoch progress to stdout so it streams through the UI."""
-
-    def on_epoch_begin(self, args, state, control, **kwargs):
-        epoch = int(state.epoch) + 1
-        print(f"\n--- Epoch {epoch}/{int(args.num_train_epochs)} ---", flush=True)
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        if not logs:
-            return
-        parts = []
-        if "loss" in logs:
-            parts.append(f"loss={logs['loss']:.4f}")
-        if "eval_loss" in logs:
-            parts.append(f"eval_loss={logs['eval_loss']:.4f}")
-        if "learning_rate" in logs:
-            parts.append(f"lr={logs['learning_rate']:.2e}")
-        total = state.max_steps or "?"
-        pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
-        print(f"  step {state.global_step}/{total} {pct}  {' | '.join(parts)}", flush=True)
-
-    def on_step_end(self, args, state, control, **kwargs):
-        # Print step position on every step so the UI progress bar updates continuously.
-        # Loss values come separately via on_log (every logging_steps).
-        total = state.max_steps or "?"
-        pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
-        print(f"  step {state.global_step}/{total} {pct}", flush=True)
-
-    def on_epoch_end(self, args, state, control, **kwargs):
-        print(f"  Epoch {int(state.epoch)} complete.", flush=True)
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        """Free CUDA cache after every eval to avoid OOM on the next backward pass."""
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+def _require_train_stack():
+    if not _TRAIN_AVAILABLE:
+        raise ImportError(
+            f"{_TRAIN_IMPORT_ERROR}. Install: pip install torch transformers datasets peft trl accelerate"
+        )
 
 
-def _get_device() -> torch.device:
+def _get_device():
+    _require_train_stack()
     if torch.cuda.is_available():
         return torch.device("cuda")
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -90,6 +103,7 @@ def _get_device() -> torch.device:
 
 def _lora_target_modules(model) -> list[str]:
     """Pick LoRA target module names for the loaded architecture."""
+    _require_train_stack()
     names = {n for n, _ in model.named_modules()}
     llama_like = {"q_proj", "k_proj", "v_proj", "o_proj"}
     if llama_like.issubset(names):
@@ -114,6 +128,8 @@ def _format_sharegpt_example(example, tokenizer):
 
 def main():
     import argparse
+
+    _require_train_stack()
 
     p = argparse.ArgumentParser(description="Fine-tune SLM with HF Trainer + PEFT (CPU/GPU)")
     p.add_argument("--train-file", type=Path, default=Path("training_data/train_sharegpt.jsonl"))

@@ -38,3 +38,48 @@ inference:
   host: 0.0.0.0
   port: 7860
   chat_max_history_turns: 3
+
+ui:
+  demo_questions:
+    - "What is hypertension?"
+    - "What is the first-line treatment for uncomplicated hypertension?"
+    - "What aspirin dose is used for secondary prevention after myocardial infarction?"
+    - "What lifestyle changes help manage blood pressure?"
+    - "What are common contraindications to aspirin?"
+
+  chat_examples:
+    - "What is hypertension?"
+    - "What is the first-line treatment for uncomplicated hypertension?"
+    - "What are common contraindications to aspirin?"
+
+  ollama_examples:
+    - "What is the first-line treatment for hypertension?"
+    - "What are common contraindications for aspirin?"
+    - "How should blood pressure be monitored in adults?"
+    - "What lifestyle changes help manage hypertension?"
+    - "When should a patient be referred for specialist care?"
+
+  placeholders:
+    chat_question: "Ask a clinical or domain question…"
+    model_save_name: "e.g. medical-v1"
+    model_rename: "e.g. medical-v2"
+    ollama_host: "http://localhost:11434"
+    ollama_model: "Model name from `ollama list`"
+    knowledge_title: "e.g. Hypertension, Aspirin dosing"
+    knowledge_description: "Explain what this topic covers and when it applies…"
+    knowledge_use_cases: "Primary care screening\nMedication review\nFollow-up monitoring"
+    knowledge_category: "cardiology, pharmacology, prevention…"
+    knowledge_protocol: "Describe a representative clinical protocol or worked example…"
+    knowledge_parameters: "parameter_name: description (example value)"
+    knowledge_errors: "Problem: solution — one pair per line"
+    knowledge_best_practices: "Tips and best practices for this topic…"
+    knowledge_slug: "library entry slug from the table above"
+    knowledge_notes: "Document limitations, follow-up steps, and common pitfalls…"
+    swarm_question: "Ask a question — all swarm models will answer…"
+
+  knowledge_form:
+    title_help: "Canonical name for this topic (e.g. Hypertension, Aspirin dosing)"
+    use_cases_help: "One use case per line (e.g. Primary care screening)"
+    parameters_help: "One parameter per line: name: description (example value)"
+    example_help: "Paste a worked example, protocol, or case with input and expected outcome"
+    errors_help: "Problem: solution — one pair per line"
