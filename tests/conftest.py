@@ -10,17 +10,17 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SQL_DOMAIN_CONFIG = REPO_ROOT / "examples" / "domain_config_sql.yaml"
+DEFAULT_DOMAIN_CONFIG = REPO_ROOT / "domain_config.yaml"
 
 
 @pytest.fixture(autouse=True)
-def _legacy_sql_domain_for_unit_tests():
-    """Most unit tests were authored against SQL extraction patterns."""
-    if not SQL_DOMAIN_CONFIG.exists():
+def _load_default_domain_config():
+    """Unit tests use the default medical domain extraction profile."""
+    if not DEFAULT_DOMAIN_CONFIG.exists():
         return
     from data.domain_config import load_domain_config
 
-    load_domain_config(SQL_DOMAIN_CONFIG, reload=True)
+    load_domain_config(DEFAULT_DOMAIN_CONFIG, reload=True)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ def tmp_yaml(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Canonical sample data
+# Canonical sample data (medical domain)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -75,41 +75,44 @@ def sample_plain_text():
     return textwrap.dedent("""\
         Introduction
 
-        This document covers analytic functions in Teradata SQL.
-        Analytic functions compute values over groups of rows.
+        This document covers hypertension management in primary care.
+        Blood pressure targets depend on comorbidities and patient age.
 
-        Overview of Window Functions
+        Overview of Lifestyle Modification
 
-        Window functions operate on a set of rows called a window.
-        They are defined using the OVER clause.
+        Sodium reduction and regular exercise are first-line interventions.
+        Shared decision-making improves adherence to treatment plans.
 
-        The PARTITION BY clause divides rows into partitions.
-        The ORDER BY clause sorts rows within each partition.
+        The target blood pressure for most adults is below 130/80 mmHg.
+        Reassessment should occur within four weeks of starting therapy.
     """)
 
 
 @pytest.fixture
-def sample_sql_text():
+def sample_structured_text():
     return textwrap.dedent("""\
-        CSUM Function
+        Hypertension Protocol
 
-        The CSUM function returns a cumulative sum.
+        Case presentation with elevated blood pressure readings in a patient
+        with diabetes requires medication review and lifestyle counseling.
 
-        SELECT customer_id, order_date,
-               CSUM(amount, order_date) OVER (PARTITION BY customer_id ORDER BY order_date)
-               AS running_total
-        FROM orders;
+        Treatment plan
 
-        This query computes a running total per customer.
+        Initiate an ACE inhibitor or thiazide-type diuretic based on formulary.
+        Recommend sodium reduction, exercise, and home blood pressure monitoring.
+
+        Outcome
+
+        Reassess blood pressure in four weeks and adjust therapy if targets are not met.
     """)
 
 
 @pytest.fixture
 def sample_qa_pairs():
     return [
-        ("What is CSUM?", "CSUM returns a cumulative sum over an ordered window."),
-        ("How do I use PARTITION BY?", "PARTITION BY divides rows into groups for analytic functions."),
-        ("What is nPath?", "nPath is a Teradata function for path analysis on sequences of events."),
+        ("What is hypertension?", "Hypertension is chronic elevation of blood pressure."),
+        ("What is the target blood pressure?", "Most adults aim for below 130/80 mmHg."),
+        ("When is aspirin used?", "Low-dose aspirin is used for secondary cardiovascular prevention in selected patients."),
     ]
 
 
@@ -138,32 +141,28 @@ def sample_alpaca_examples(sample_qa_pairs):
 def sample_yaml_pattern():
     """Minimal valid YAML pattern string."""
     return textwrap.dedent("""\
-        name: csum
-        title: "CSUM"
-        description: "Computes a cumulative sum over an ordered window partition."
-        category: analytics
-        teradata_function: CSUM
+        name: hypertension
+        title: "Hypertension Management"
+        description: "Hypertension is chronic elevation of blood pressure that increases cardiovascular risk."
+        category: cardiology
+        pattern_alias: HTN
         use_cases:
-          - Running totals per group
-          - Cumulative revenue analysis
+          - Primary prevention in adults with elevated blood pressure
+          - Secondary prevention after stroke or myocardial infarction
         parameters:
-          - name: value_expression
-            type: numeric
+          - name: target_systolic
+            type: integer
             required: true
-            description: The value to accumulate
-            example: amount
-          - name: ordering_column
-            type: column
-            required: true
-            description: Column to order by within the window
-            example: order_date
+            description: Target systolic blood pressure in mmHg
+            example: "130"
         templates:
           basic:
-            description: "Basic cumulative sum"
-            sql: |
-              SELECT id, CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total
-              FROM t;
-        best_practices: "Always specify ORDER BY to get deterministic results."
+            description: "Initial lifestyle and medication plan"
+            content: |
+              Case: repeated office readings above target.
+              Treatment plan: lifestyle counseling plus first-line antihypertensive therapy.
+              Outcome: reassess in four weeks.
+        best_practices: "Confirm elevated readings before starting long-term therapy."
     """)
 
 
@@ -182,26 +181,26 @@ def ollama_available() -> bool:
 @pytest.fixture
 def sample_pattern_dict():
     return {
-        "name": "csum",
-        "title": "CSUM",
-        "description": "Computes a cumulative sum over an ordered window partition.",
-        "category": "analytics",
-        "teradata_function": "CSUM",
-        "use_cases": ["Running totals per group", "Cumulative revenue analysis"],
+        "name": "hypertension",
+        "title": "Hypertension Management",
+        "description": "Hypertension is chronic elevation of blood pressure that increases cardiovascular risk.",
+        "category": "cardiology",
+        "pattern_alias": "HTN",
+        "use_cases": ["Primary prevention in adults with elevated blood pressure"],
         "parameters": [
             {
-                "name": "value_expression",
-                "type": "numeric",
+                "name": "target_systolic",
+                "type": "integer",
                 "required": True,
-                "description": "The value to accumulate",
-                "example": "amount",
+                "description": "Target systolic blood pressure in mmHg",
+                "example": "130",
             }
         ],
         "templates": {
             "basic": {
-                "description": "Basic cumulative sum",
-                "sql": "SELECT id, CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total FROM t;",
+                "description": "Initial lifestyle and medication plan",
+                "content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy.",
             }
         },
-        "best_practices": "Always specify ORDER BY to get deterministic results.",
+        "best_practices": "Confirm elevated readings before starting long-term therapy.",
     }

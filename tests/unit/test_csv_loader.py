@@ -48,21 +48,21 @@ class TestLoadCsv:
 
     def test_auto_detect_two_columns_default_to_qa(self, tmp_csv):
         path = tmp_csv([
-            {"topic": "CSUM", "explanation": "Cumulative sum function."},
+            {"topic": "Hypertension", "explanation": "Cumulative sum function."},
         ])
         texts, qa = load_csv(path)
         assert len(qa) == 1
-        assert qa[0] == ("CSUM", "Cumulative sum function.")
+        assert qa[0] == ("Hypertension", "Cumulative sum function.")
 
     # -- Explicit columns -----------------------------------------------------
 
     def test_explicit_question_answer(self, tmp_csv):
         path = tmp_csv([
-            {"Q": "What is nPath?", "A": "A path analysis function.", "extra": "ignored"},
+            {"Q": "What is HypertensionProtocol?", "A": "A path analysis function.", "extra": "ignored"},
         ])
         texts, qa = load_csv(path, question_column="Q", answer_column="A")
         assert len(qa) == 1
-        assert qa[0][0] == "What is nPath?"
+        assert qa[0][0] == "What is HypertensionProtocol?"
 
     def test_explicit_text_column(self, tmp_csv):
         path = tmp_csv([

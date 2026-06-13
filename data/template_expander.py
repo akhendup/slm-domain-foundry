@@ -2,16 +2,13 @@
 """
 template_expander.py — Combinatorial Q&A generation from vocabulary YAML files.
 
-Loads structured vocabulary YAML files (sql_vocabulary.yaml, financial_vocabulary.yaml)
+Loads structured vocabulary YAML files (medical_vocabulary.yaml, financial_vocabulary.yaml)
 and expands each entry against all matching question templates from question_templates.yaml,
 producing a large set of Q&A pairs without manually writing each question.
 
 Scale:
-  - SQL vocabulary (~60 topics) × ~100 templates per topic ≈ 6,000+ direct Q&A pairs
-  - + cross-topic comparison pairs (60 × avg 3 related × 12 comparison templates) ≈ 2,160 pairs
-  - + multi-turn conversations wrapping the pairs ≈ 8,000+ multi-turn records
-
-Financial vocabulary (~30 topics) × ~50 templates per topic ≈ 1,500+ pairs.
+  - Medical vocabulary × templates per topic
+  - Financial vocabulary (~30 topics) × ~50 templates per topic ≈ 1,500+ pairs
 
 Usage:
     from data.template_expander import expand_vocab_dir
@@ -284,7 +281,7 @@ class VocabularyExpander:
             return []
 
         pairs = []
-        templates = COMPARISON_QUESTIONS if self._domain == "sql" else GENERAL_COMPARISON_QUESTIONS
+        templates = COMPARISON_QUESTIONS
 
         for related_name in related_list:
             if not isinstance(related_name, str) or not related_name.strip():

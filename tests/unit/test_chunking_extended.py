@@ -1,7 +1,7 @@
 """
 Extended unit tests for data/chunking.py.
 Covers: semantic chunking path, internal _chunk_rule_based edge cases,
-and _chunk_rule_based_sql_aware edge cases not reached by the primary tests.
+and _chunk_rule_based_structured_aware edge cases not reached by the primary tests.
 """
 from unittest.mock import MagicMock, patch
 
@@ -9,10 +9,10 @@ import pytest
 
 import data.chunking as chunking_module
 from data.chunking import (
-    _chunk_rule_based_sql_aware,
+    _chunk_rule_based_structured_aware,
     chunk_text,
-    chunk_text_sql_aware,
-    is_sql_paragraph,
+    chunk_text_structured_aware,
+    is_structured_paragraph,
 )
 
 
@@ -58,11 +58,10 @@ class TestChunkSemantic:
 
         mock_st = MagicMock()
         text = (
-            "The CSUM function returns a cumulative sum over a window partition. "
-            "It uses the OVER clause to define the window. "
-            "Specify PARTITION BY to group results. " * 10
+            "Hypertension management requires clinical assessment of blood pressure. "
+            "Treatment plans combine lifestyle counseling with medication titration. "
+            "Patient follow-up should reassess efficacy and adverse effects. " * 10
         )
-        # Use create=True because SentenceTransformer may not exist in module namespace
         with patch("data.chunking.SentenceTransformer", mock_st, create=True):
             result = chunking_module._chunk_semantic(text, chunk_size=200, overlap=50)
         assert isinstance(result, list)
@@ -96,7 +95,6 @@ class TestChunkSemantic:
         text = "Paragraph one with content.\n\nParagraph two with more content.\n\nParagraph three here."
         with patch("data.chunking.SentenceTransformer", mock_st_class, create=True):
             result = chunk_text(text, chunk_size=50, chunk_overlap=0, use_semantic=True)
-        # Should still return chunks via rule-based fallback
         assert isinstance(result, list)
         assert len(result) >= 1
 
@@ -123,9 +121,8 @@ class TestChunkRuleBasedInternals:
 
     def test_large_single_paragraph_exceeds_chunk(self):
         """A paragraph larger than chunk_size stays in one chunk."""
-        big_para = "word " * 300  # ~1500 chars
+        big_para = "word " * 300
         result = chunk_text(big_para, chunk_size=100, chunk_overlap=0)
-        # The big paragraph may end up in a single chunk (added even if over-size)
         assert len(result) >= 1
 
     def test_overlap_zero_no_carry(self):
@@ -133,78 +130,88 @@ class TestChunkRuleBasedInternals:
         paras = [f"Paragraph {i} content here." for i in range(6)]
         text = "\n\n".join(paras)
         result = chunk_text(text, chunk_size=60, chunk_overlap=0)
-        # Adjacent chunks should share no identical paragraphs (no carry-over)
         for i in range(len(result) - 1):
-            # Words in chunk i should not be entirely present in chunk i+1
             assert result[i] != result[i + 1]
 
 
 # ---------------------------------------------------------------------------
-# _chunk_rule_based_sql_aware internal edge cases
+# _chunk_rule_based_structured_aware internal edge cases
 # ---------------------------------------------------------------------------
 
-class TestChunkSqlAwareInternals:
+class TestChunkStructuredAwareInternals:
     def test_empty_paragraph_skipped(self):
-        """Empty paragraphs inside sql_aware chunker are skipped."""
-        text = "Prose one.\n\n   \n\nSELECT x FROM t WHERE y > 0 ORDER BY z;\n\nProse two."
-        result = chunk_text_sql_aware(text, chunk_size=1000, chunk_overlap=0)
+        """Empty paragraphs inside structured_aware chunker are skipped."""
+        structured = (
+            "Patient with hypertension and diabetes requires medication review, "
+            "clinical follow-up, and lifestyle counseling per guideline recommendations."
+        )
+        text = f"Prose one.\n\n   \n\n{structured}\n\nProse two."
+        result = chunk_text_structured_aware(text, chunk_size=1000, chunk_overlap=0)
         combined = " ".join(result)
         assert "Prose one" in combined
         assert "Prose two" in combined
 
-    def test_overlap_zero_sql_aware(self):
-        """chunk_overlap=0 branch in sql_aware chunker (line 143-144)."""
-        sql = "SELECT id, CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total FROM orders;"
+    def test_overlap_zero_structured_aware(self):
+        """chunk_overlap=0 branch in structured_aware chunker."""
+        structured = (
+            "Treatment plan: initiate ACE inhibitor therapy for the patient with hypertension. "
+            "Recommend aspirin for secondary cardiovascular prevention when clinically indicated."
+        )
         prose_a = "Introduction content here. " * 5
         prose_b = "Conclusion content here. " * 5
-        text = prose_a + "\n\n" + sql + "\n\n" + prose_b
-        result = chunk_text_sql_aware(text, chunk_size=60, chunk_overlap=0)
+        text = prose_a + "\n\n" + structured + "\n\n" + prose_b
+        result = chunk_text_structured_aware(text, chunk_size=60, chunk_overlap=0)
         assert len(result) >= 1
 
-    def test_sql_para_never_in_overlap_carry(self):
-        """SQL paragraphs must not appear in overlap carry-over (line 133-134)."""
-        sql = "SELECT RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS rnk FROM emp;"
+    def test_structured_para_never_in_overlap_carry(self):
+        """Structured paragraphs must not appear in overlap carry-over."""
+        structured = (
+            "Case presentation: elevated blood pressure readings in a patient with diabetes. "
+            "Treatment plan includes medication titration and home blood pressure monitoring."
+        )
         prose_filler = "Generic prose content to fill the chunk size limits. " * 5
-        text = prose_filler + "\n\n" + sql + "\n\n" + prose_filler
-        result = chunk_text_sql_aware(text, chunk_size=100, chunk_overlap=80)
+        text = prose_filler + "\n\n" + structured + "\n\n" + prose_filler
+        result = chunk_text_structured_aware(text, chunk_size=100, chunk_overlap=80)
 
-        # Find the chunk(s) containing the SQL
-        sql_chunks = [c for c in result if "RANK()" in c]
-        assert len(sql_chunks) >= 1
+        structured_chunks = [c for c in result if "Treatment plan" in c]
+        assert len(structured_chunks) >= 1
+        for c in structured_chunks:
+            assert "blood pressure" in c
 
-        # The SQL content should appear complete (not split) in the chunk(s) that have it
-        for c in sql_chunks:
-            assert "RANK() OVER" in c
-
-    def test_sql_para_larger_than_chunk_size(self):
-        """A SQL paragraph larger than chunk_size still stays whole."""
-        sql = "SELECT " + ", ".join(f"CSUM(col{i}, ts) OVER (PARTITION BY id ORDER BY ts) AS r{i}" for i in range(20)) + " FROM t;"
+    def test_structured_para_larger_than_chunk_size(self):
+        """A structured paragraph larger than chunk_size still stays whole."""
+        structured = " ".join(
+            f"Patient symptom {i} requires clinical assessment, medication review, and treatment planning."
+            for i in range(20)
+        )
         prose = "Intro content. " * 5
-        text = prose + "\n\n" + sql
-        result = chunk_text_sql_aware(text, chunk_size=50, chunk_overlap=10)
-        sql_chunks = [c for c in result if "CSUM(col0" in c]
-        assert len(sql_chunks) >= 1
+        text = prose + "\n\n" + structured
+        result = chunk_text_structured_aware(text, chunk_size=50, chunk_overlap=10)
+        structured_chunks = [c for c in result if "Patient symptom 0" in c]
+        assert len(structured_chunks) >= 1
 
 
 # ---------------------------------------------------------------------------
-# is_sql_paragraph additional cases
+# is_structured_paragraph additional cases
 # ---------------------------------------------------------------------------
 
-class TestIsSqlParagraphAdditional:
-    def test_csum_keyword(self):
-        assert is_sql_paragraph("CSUM(amount, ts) OVER (PARTITION BY id)") is True
+class TestIsStructuredParagraphAdditional:
+    def test_hypertension_keywords(self):
+        para = "Patient with hypertension requires medication and clinical follow-up."
+        assert is_structured_paragraph(para) is True
 
-    def test_msum_keyword(self):
-        assert is_sql_paragraph("MSUM(sales, 3) OVER (ORDER BY date)") is True
+    def test_aspirin_guideline_keywords(self):
+        para = "Low-dose aspirin is used per clinical guideline for secondary prevention."
+        assert is_structured_paragraph(para) is True
 
-    def test_qualify_keyword(self):
-        para = "QUALIFY ROW_NUMBER() OVER (ORDER BY id) = 1"
-        assert is_sql_paragraph(para) is True
+    def test_treatment_plan_keywords(self):
+        para = "Treatment plan includes dosage adjustment when adverse symptoms appear."
+        assert is_structured_paragraph(para) is True
 
-    def test_create_table_keyword(self):
-        para = "CREATE TABLE temp AS SELECT id FROM orders WHERE status = 'active'"
-        assert is_sql_paragraph(para) is True
+    def test_single_keyword_not_enough(self):
+        para = "The patient arrived for a routine visit."
+        assert is_structured_paragraph(para) is False
 
-    def test_with_cte_keyword(self):
-        para = "WITH base AS (SELECT id FROM t) SELECT * FROM base ORDER BY id"
-        assert is_sql_paragraph(para) is True
+    def test_plain_prose(self):
+        para = "This paragraph discusses general wellness without domain terminology."
+        assert is_structured_paragraph(para) is False

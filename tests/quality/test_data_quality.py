@@ -14,7 +14,7 @@ from data.prepare_training_data import (
     text_to_qa_heuristic,
     _split_train_val,
 )
-from data.chunking import chunk_text, chunk_text_sql_aware
+from data.chunking import chunk_text, chunk_text_structured_aware
 from data.csv_loader import load_csv
 
 
@@ -192,12 +192,11 @@ class TestQaPairQuality:
             assert len(chunk.strip()) > 0
             assert len(chunk) <= 600  # generous upper bound (overlap can add a bit)
 
-    def test_sql_chunk_preserves_keywords(self, sample_sql_text):
-        chunks = chunk_text_sql_aware(sample_sql_text, chunk_size=200, chunk_overlap=50)
-        # The SELECT statement should appear complete in one chunk
+    def test_structured_chunk_preserves_keywords(self, sample_structured_text):
+        chunks = chunk_text_structured_aware(sample_structured_text, chunk_size=200, chunk_overlap=50)
         all_text = "\n\n".join(chunks)
-        assert "CSUM" in all_text
-        assert "PARTITION BY" in all_text
+        assert "Hypertension" in all_text
+        assert "Treatment plan" in all_text
 
 
 # ---------------------------------------------------------------------------

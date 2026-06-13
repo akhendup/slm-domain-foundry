@@ -31,8 +31,8 @@ Usage
     from data.judge_llm import LocalAPIBackend, HybridJudge
 
     backend = LocalAPIBackend(base_url="http://localhost:11434", model="llama3")
-    judge   = HybridJudge(backend=backend, domain_keywords=["SELECT","FROM"])
-    result  = judge.evaluate("What is CSUM?", "CSUM computes a cumulative sum...")
+    judge   = HybridJudge(backend=backend, domain_keywords=["patient","medication"])
+    result  = judge.evaluate("What is hypertension?", "Hypertension is chronic elevation of blood pressure...")
     print(result.confidence, result.scores)
 
     # Loaded transformers model

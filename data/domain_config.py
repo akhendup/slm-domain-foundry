@@ -156,12 +156,7 @@ def example_section_label_regexes(cfg: Optional[Dict[str, Any]] = None) -> Dict[
 
     return {
         "input": _label_re(list(labels.get("input") or []), "input"),
-        "structured": _label_re(list(labels.get("structured") or []), "sql call"),
+        "structured": _label_re(list(labels.get("structured") or []), "protocol"),
         "output": _label_re(list(labels.get("output") or []), "output"),
     }
 
-
-# Backward-compatible aliases used across the codebase and tests.
-has_sql_content = has_structured_content
-extract_sql_function_name = extract_named_pattern
-is_sql_paragraph = has_structured_content

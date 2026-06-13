@@ -26,15 +26,18 @@ class TestLoadPatternForEdit:
         """Save a complete pattern and return its slug."""
         form = {
             "title": "EditTest",
-            "description": "A function used for testing pattern editing.",
-            "category": "analytics",
-            "use_cases_text": "Running totals\nCumulative revenue",
-            "parameters_text": "value_col: The value column (amount)",
-            "sql_example": "SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;",
-            "sql_description": "Basic cumulative sum",
-            "example_output": "id | total\n1  | 100",
-            "common_errors_text": "Missing ORDER BY: Add ORDER BY inside the OVER clause",
-            "best_practices": "Always use ORDER BY.",
+            "description": "Hypertension management protocol for testing pattern editing.",
+            "category": "cardiology",
+            "use_cases_text": "Primary prevention\nSecondary prevention after stroke",
+            "parameters_text": "target_systolic: Target systolic blood pressure in mmHg (130)",
+            "worked_example": (
+                "Case: repeated office readings above target.\n"
+                "Treatment plan: lifestyle counseling plus first-line antihypertensive therapy."
+            ),
+            "example_summary": "Initial hypertension management plan",
+            "example_output": "BP 128/78 mmHg at four-week follow-up",
+            "common_errors_text": "Missed follow-up: Reassess blood pressure within four weeks",
+            "best_practices": "Confirm elevated readings before starting long-term therapy.",
         }
         pattern = form_to_pattern(form)
         lib_dir = tmp_path / "library"
@@ -58,45 +61,45 @@ class TestLoadPatternForEdit:
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
         assert result["title"] == "EditTest"
-        assert "testing" in result["description"].lower()
+        assert "hypertension" in result["description"].lower()
 
     def test_category_loaded(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
-        assert result.get("category") == "analytics"
+        assert result.get("category") == "cardiology"
 
     def test_use_cases_as_text(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
         uc_text = result.get("use_cases_text", "")
-        assert "Running" in uc_text or "Cumulative" in uc_text
+        assert "Primary" in uc_text or "Secondary" in uc_text
 
     def test_parameters_as_text(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
         params_text = result.get("parameters_text", "")
-        assert "value_col" in params_text
+        assert "target_systolic" in params_text
 
-    def test_sql_example_loaded(self, tmp_path):
+    def test_worked_example_loaded(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
-        assert "CSUM" in result.get("sql_example", "")
+        assert "Treatment plan" in result.get("worked_example", "")
 
-    def test_sql_description_loaded(self, tmp_path):
+    def test_example_summary_loaded(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
-        assert "cumulative" in result.get("sql_description", "").lower()
+        assert "hypertension" in result.get("example_summary", "").lower()
 
     def test_best_practices_loaded(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
-        assert "ORDER BY" in result.get("best_practices", "")
+        assert "elevated readings" in result.get("best_practices", "").lower()
 
     def test_errors_as_text(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
         result = load_pattern_for_edit(slug, lib_dir)
         errors_text = result.get("common_errors_text", "")
-        assert "ORDER BY" in errors_text or "Missing" in errors_text
+        assert "follow-up" in errors_text.lower() or "Reassess" in errors_text
 
     def test_example_output_loaded(self, tmp_path):
         slug, lib_dir = self._save_full_pattern(tmp_path)
@@ -133,8 +136,8 @@ class TestLoadPatternForEdit:
 class TestPreviewQa:
     def _minimal_form(self):
         return {
-            "title": "CSUM",
-            "description": "Computes a cumulative sum over an ordered window partition.",
+            "title": "Hypertension",
+            "description": "Chronic elevation of blood pressure that increases cardiovascular risk.",
         }
 
     def test_returns_tuple(self):
@@ -156,25 +159,27 @@ class TestPreviewQa:
         assert mt is None or isinstance(mt, list)
 
     def test_with_use_cases(self):
-        form = {**self._minimal_form(), "use_cases_text": "Running totals\nCumulative revenue"}
+        form = {**self._minimal_form(), "use_cases_text": "Primary prevention\nSecondary prevention"}
         qa, _ = preview_qa(form)
-        assert len(qa) >= 2  # Should have description + use case pairs
+        assert len(qa) >= 2
 
     def test_with_parameters(self):
-        form = {**self._minimal_form(), "parameters_text": "value_col: The value column (amount)"}
+        form = {**self._minimal_form(), "parameters_text": "target_systolic: Target systolic BP (130)"}
         qa, _ = preview_qa(form)
         assert len(qa) >= 1
 
-    def test_with_sql_example(self):
+    def test_with_worked_example(self):
         form = {
             **self._minimal_form(),
-            "sql_example": "SELECT CSUM(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;",
-            "sql_description": "Running total",
+            "worked_example": (
+                "Case: elevated readings.\n"
+                "Treatment plan: lifestyle counseling plus first-line antihypertensive therapy."
+            ),
+            "example_summary": "Initial management plan",
         }
         qa, _ = preview_qa(form)
         qs = [q for q, _ in qa]
-        # Should generate SQL-related questions
-        assert any("sql" in q.lower() or "example" in q.lower() or "query" in q.lower() for q in qs)
+        assert any("example" in q.lower() or "Hypertension" in q for q in qs)
 
     def test_no_save_side_effects(self, tmp_path):
         """preview_qa must not write any files."""
@@ -233,13 +238,11 @@ class TestSaveToLibraryEdgeCases:
         pattern = form_to_pattern({"title": "UpdateTest", "description": "Initial description here."})
         save_to_library(pattern, lib_dir)
 
-        # Save again with same name/slug but different description
         pattern["description"] = "Updated description content here."
         save_to_library(pattern, lib_dir)
 
         entries = load_library_entries(lib_dir)
         matching = [e for e in entries if e.get("name") == pattern["name"]]
-        # Only one entry should exist for this slug
         assert len(matching) == 1
 
     def test_save_qa_count_in_index(self, tmp_path):

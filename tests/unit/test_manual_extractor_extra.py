@@ -54,13 +54,13 @@ class TestIsBoilerplatePageAdditional:
     def test_copyright_rights_reserved(self):
         """Line 43: copyright + 'rights reserved' → True."""
         from data.manual_extractor import is_boilerplate_page
-        text = "Copyright 2024 Teradata Corporation. All rights reserved."
+        text = "Copyright 2024 Clinical Corporation. All rights reserved."
         assert is_boilerplate_page(text, 1) is True
 
     def test_copyright_with_symbol(self):
         """Line 43: copyright + '©' symbol → True."""
         from data.manual_extractor import is_boilerplate_page
-        text = "© 2024 Teradata Corporation. All rights reserved for this software."
+        text = "© 2024 Clinical Corporation. All rights reserved for this software."
         assert is_boilerplate_page(text, 1) is True
 
     def test_trademark_safety_page(self):
@@ -69,10 +69,10 @@ class TestIsBoilerplatePageAdditional:
         text = "Trademark safety notice: All trademarks are property of their respective owners. " * 4
         assert is_boilerplate_page(text[:750], 1) is True
 
-    def test_docs_teradata_com_short(self):
-        """Line 47: docs.teradata.com in short text → True."""
+    def test_vendor_url_short_page(self):
+        """Short pages dominated by a vendor URL are treated as boilerplate."""
         from data.manual_extractor import is_boilerplate_page
-        text = "For more information visit docs.teradata.com for latest documentation."
+        text = "For more information visit https://example.com/docs for latest documentation."
         assert is_boilerplate_page(text, 1) is True
 
 
@@ -90,7 +90,7 @@ class TestIsIndexPageAdditional:
             "B\n"
             "BETWEEN clause, 40\n"
             "C\n"
-            "CSUM function, 55, 60, 75\n"
+            "Hypertension function, 55, 60, 75\n"
         )
         assert is_index_page(text) is True
 
@@ -105,7 +105,7 @@ class TestFilterPagesAdditional:
         from data.manual_extractor import filter_pages
         pages = [
             {"text": "Table of Contents\nChapter 1 ....... 1\nChapter 2 ....... 10\nChapter 3 ....... 20\n", "page": 1},
-            {"text": "Window functions are a key SQL feature.\nThey operate over partitioned rows.\nCSUM computes cumulative sums.", "page": 2},
+            {"text": "Hypertension management is a key clinical topic.\nTreatment combines lifestyle and medication.\nAspirin is used for secondary prevention.", "page": 2},
         ]
         result = filter_pages(pages, skip_toc=True)
         assert all("Table of Contents" not in p["text"] for p in result)
@@ -114,14 +114,14 @@ class TestFilterPagesAdditional:
         """Line 100: skip_index=True filters index pages."""
         from data.manual_extractor import filter_pages
         long_content = (
-            "CSUM computes a cumulative sum over the window partition.\n"
+            "Hypertension computes a cumulative sum over the window partition.\n"
             "Use ORDER BY clause inside OVER() for deterministic results.\n"
             "Always partition data to limit the scope of the window function.\n"
             "The cumulative sum resets at each partition boundary.\n"
             "This is useful for running totals and progressive aggregation.\n"
         )
         pages = [
-            {"text": "A\nAGGREGATE, 10\nB\nBETWEEN, 40\nC\nCSUM, 55\n", "page": 1},
+            {"text": "A\nASPIRIN, 10\nB\nBLOOD, 40\nC\nCLINICAL, 55\n", "page": 1},
             {"text": long_content, "page": 2},
         ]
         result = filter_pages(pages, skip_index=True)
@@ -132,7 +132,7 @@ class TestFilterPagesAdditional:
         from data.manual_extractor import filter_pages
         pages = [
             {"text": "x", "page": 1},  # too short → not substantive
-            {"text": "Window functions compute over a set of rows.\nCSUM adds values cumulatively.\nUse ORDER BY.", "page": 2},
+            {"text": "Hypertension protocols guide medication titration.\nLifestyle counseling improves adherence.\nReassess in four weeks.", "page": 2},
         ]
         result = filter_pages(pages)
         assert all("Window functions" in p["text"] for p in result)
@@ -149,7 +149,7 @@ class TestDetectRunningHFAdditional:
         pages = [
             {"text": ""},  # no lines
             {"text": "   \n  "},  # no non-empty lines
-            {"text": "Teradata Reference\nSome content here for testing.\nMore content."},
+            {"text": "Clinical Reference\nSome content here for testing.\nMore content."},
         ]
         headers, footers = detect_running_headers_footers(pages)
         assert isinstance(headers, set)
@@ -164,7 +164,7 @@ class TestStripRunningHFAdditional:
     def test_standalone_page_number_removed(self):
         """Line 161: standalone page numbers are removed (need non-empty headers)."""
         from data.manual_extractor import strip_running_headers_footers
-        text = "Window functions overview\n42\nCSUM computes cumulative sums."
+        text = "Hypertension overview\n42\nBlood pressure targets depend on comorbidities."
         # Need non-empty headers to avoid early return
         headers = {"some header"}
         result = strip_running_headers_footers(text, headers, set())
@@ -183,11 +183,11 @@ class TestStripRunningHFAdditional:
         """Line 158-159: lines matching headers are removed."""
         from data.manual_extractor import strip_running_headers_footers
         from data.manual_extractor import _normalize_for_hf
-        text = "Teradata Reference\nSome content here.\n100"
-        header_text = "Teradata Reference"
+        text = "Clinical Reference\nSome content here.\n100"
+        header_text = "Clinical Reference"
         headers = {_normalize_for_hf(header_text)}
         result = strip_running_headers_footers(text, headers, set())
-        assert "Teradata Reference" not in result
+        assert "Clinical Reference" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -220,13 +220,13 @@ class TestGenerateTypedQaAdditional:
         base.update(kwargs)
         return base
 
-    def test_sql_syntax_generates_extra_pairs(self):
+    def test_structured_syntax_generates_extra_pairs(self):
         """Lines 490-493: when syntax contains SQL, additional pairs generated."""
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
-            heading="CSUM",
-            description=["CSUM computes a cumulative sum."],
-            syntax=["SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"],
+            heading="Hypertension",
+            description=["Hypertension computes a cumulative sum."],
+            syntax=["Treatment plan: lifestyle counseling plus first-line therapy"],
         )
         qa = generate_typed_qa(parsed, "tdref")
         qs = [q for q, _ in qa]
@@ -236,8 +236,8 @@ class TestGenerateTypedQaAdditional:
         """Line 524: examples shorter than 30 chars are skipped."""
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
-            heading="CSUM",
-            description=["CSUM computes a cumulative sum."],
+            heading="Hypertension",
+            description=["Hypertension computes a cumulative sum."],
             examples=["short"],  # < 30 chars — should be skipped
         )
         qa = generate_typed_qa(parsed, "tdref")
@@ -248,26 +248,26 @@ class TestGenerateTypedQaAdditional:
     def test_example_with_sql_generates_pairs(self):
         """Lines 531-544: examples with SQL part generate structured pairs."""
         from data.manual_extractor import generate_typed_qa
-        sql_example = (
+        worked_example = (
             "INPUT:\nid | amount\n1  | 100\n\n"
-            "SQL Call:\nSELECT * FROM nPath(PATTERN = 'A') AS r;\n\n"
+            "Treatment plan:\nTreatment plan: lifestyle counseling plus first-line therapy"
             "OUTPUT:\nid | path\n1  | A\n"
         )
         parsed = self._make_parsed(
-            heading="nPath",
-            description=["nPath finds sequences of rows matching a pattern."],
-            examples=[sql_example],
+            heading="HypertensionProtocol",
+            description=["HypertensionProtocol finds sequences of rows matching a pattern."],
+            examples=[worked_example],
         )
         qa = generate_typed_qa(parsed, "tdref")
         qs = [q for q, _ in qa]
-        assert any("complete example" in q.lower() or "nPath" in q for q in qs)
+        assert any("complete example" in q.lower() or "HypertensionProtocol" in q for q in qs)
 
     def test_captions_generate_diagram_questions(self):
         """Lines 559-560: captions in raw text generate 'What does the diagram show?' pairs."""
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
-            heading="CSUM",
-            description=["CSUM computes a cumulative sum."],
+            heading="Hypertension",
+            description=["Hypertension computes a cumulative sum."],
             # Captions are extracted from `raw` via extract_figure_captions(_FIG_RE)
             raw="Figure 1-2: Cumulative sum computation over a time series.",
         )
@@ -290,8 +290,8 @@ class TestGenerateTypedQaAdditional:
         """Lines 477-481: description with 'window' → classification question."""
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
-            heading="CSUM",
-            description=["CSUM is a window function that computes cumulative sums over a partition."],
+            heading="Hypertension",
+            description=["Hypertension is a window function that computes cumulative sums over a partition."],
         )
         qa = generate_typed_qa(parsed, "tdref")
         qs = [q for q, _ in qa]
@@ -307,9 +307,9 @@ class TestGenerateMultiturnConversationAdditional:
         """Lines 596-600: syntax adds extra turns."""
         from data.manual_extractor import generate_multiturn_conversation
         parsed = {
-            "heading": "CSUM",
-            "description": ["CSUM computes cumulative sums."],
-            "syntax": ["SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"],
+            "heading": "Hypertension",
+            "description": ["Hypertension computes cumulative sums."],
+            "syntax": ["Treatment plan: lifestyle counseling plus first-line therapy"],
             "examples": [],
         }
         result = generate_multiturn_conversation(parsed)
@@ -321,10 +321,10 @@ class TestGenerateMultiturnConversationAdditional:
         """Lines 601-605: examples add extra turns."""
         from data.manual_extractor import generate_multiturn_conversation
         parsed = {
-            "heading": "CSUM",
-            "description": ["CSUM computes cumulative sums."],
-            "syntax": ["SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"],
-            "examples": ["SELECT CSUM(x, t) OVER (ORDER BY t) FROM tbl;"],
+            "heading": "Hypertension",
+            "description": ["Hypertension computes cumulative sums."],
+            "syntax": ["Treatment plan: lifestyle counseling plus first-line therapy"],
+            "examples": ["Treatment plan: lifestyle counseling plus first-line therapy"],
         }
         result = generate_multiturn_conversation(parsed)
         assert result is not None
@@ -335,7 +335,7 @@ class TestGenerateMultiturnConversationAdditional:
         """Line 589-590: no desc → None; heading only → insufficient turns → None."""
         from data.manual_extractor import generate_multiturn_conversation
         parsed = {
-            "heading": "CSUM",
+            "heading": "Hypertension",
             "description": [],  # empty
             "syntax": [],
             "examples": [],
@@ -347,8 +347,8 @@ class TestGenerateMultiturnConversationAdditional:
         """Only 2 turns (< 4) → returns None."""
         from data.manual_extractor import generate_multiturn_conversation
         parsed = {
-            "heading": "CSUM",
-            "description": ["CSUM computes cumulative sums."],
+            "heading": "Hypertension",
+            "description": ["Hypertension computes cumulative sums."],
             "syntax": [],
             "examples": [],
         }
@@ -373,8 +373,8 @@ class TestExtractManual:
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = {
             "pages": self._make_pages([
-                "CSUM Function\n\nCSUM computes a cumulative sum over a window.\nUse ORDER BY clause.\nPartition data for efficiency.",
-                "CSUM Syntax\n\nSELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;\nThis produces cumulative totals.",
+                "Hypertension Protocol\n\nInitiate ACE inhibitor or thiazide diuretic.\nRecommend lifestyle counseling.\nReassess blood pressure in four weeks.",
+                "Hypertension Syntax\n\nTreatment plan: lifestyle counseling plus first-line therapy",
             ]),
             "full_text": "some text",
         }
@@ -396,7 +396,7 @@ class TestExtractManual:
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = {
             "pages": self._make_pages([
-                "nPath Function\n\nnPath finds sequences of rows matching a pattern.\nUse PATTERN clause.\nPartition by session ID.",
+                "Aspirin Therapy\n\nLow-dose aspirin reduces recurrent cardiovascular events.\nUse when benefits outweigh bleeding risk.\nReview contraindications first.",
             ]),
         }
 
@@ -411,7 +411,7 @@ class TestExtractManual:
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = {
             "pages": self._make_pages([
-                "CSUM computes cumulative sums.\nUse it with ORDER BY.\nPartition data efficiently.",
+                "Hypertension computes cumulative sums.\nUse it with ORDER BY.\nPartition data efficiently.",
             ]),
         }
 
@@ -426,8 +426,8 @@ class TestExtractManual:
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = {
             "pages": self._make_pages([
-                "CSUM Function\n\nCSUM computes cumulative sums.\nUse ORDER BY.\nAlways partition your data.",
-                "CSUM Examples\n\nExample 1: SELECT CSUM(x) OVER (ORDER BY t);\nThis shows basic usage.\nUsed for running totals.",
+                "Hypertension Protocol\n\nConfirm elevated readings before therapy.\nUse shared decision-making.\nMonitor for adverse effects.",
+                "Hypertension Examples\n\nExample 1: Treatment plan: lifestyle counseling plus first-line therapy",
             ]),
         }
 

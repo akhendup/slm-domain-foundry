@@ -1,7 +1,7 @@
 # Domain-specific extraction patterns for SLM Domain Foundry.
 # Adapt this file (or point --domain-config elsewhere) for your vertical.
 #
-# See examples/domain_config_sql.yaml for a SQL/analytics-oriented profile.
+# See examples/domain_config_financial.yaml for another reference profile.
 
 domain:
   name: medical
@@ -54,8 +54,7 @@ extraction:
     structured:
       - protocol
       - treatment plan
-      - sql call
-      - sql query
+      - clinical plan
     output:
       - output
       - result

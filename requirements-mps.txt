@@ -1,0 +1,31 @@
+# Apple Silicon (MPS) — native macOS install for training + Gradio UI
+#
+# PyTorch wheels from PyPI include Metal/MPS support on macOS 12.3+.
+# bitsandbytes and Unsloth are omitted (CUDA-only / no macOS build).
+#
+# Quick install:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements-mps.txt
+#
+# Or use ./run_local.sh (creates venv and installs this file automatically).
+
+-r requirements-core.txt
+
+# Training stack (HF Trainer + LoRA on MPS, float16)
+torch>=2.1.0
+transformers>=4.36.0
+datasets>=2.14.0
+accelerate>=0.25.0
+peft>=0.7.0
+trl>=0.7.4
+safetensors>=0.4.0
+huggingface-hub>=0.20.0
+tokenizers>=0.15.0
+filelock>=3.12.0
+fsspec>=2023.0
+
+# Inference + Gradio UI
+optimum>=1.16.0
+onnxruntime>=1.17.0
+gradio>=4.0.0
+Pillow>=9.0.0

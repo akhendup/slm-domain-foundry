@@ -23,8 +23,8 @@ def test_format_sharegpt_example_real_tokenizer(tiny_lm_dir):
     tok = AutoTokenizer.from_pretrained(str(tiny_lm_dir))
     row = {
         "conversations": [
-            {"role": "user", "content": "What is CSUM?"},
-            {"role": "assistant", "content": "A cumulative sum function."},
+            {"role": "user", "content": "What is hypertension?"},
+            {"role": "assistant", "content": "Hypertension is chronic elevation of blood pressure."},
         ]
     }
     out = fc._format_sharegpt_example(row, tok)

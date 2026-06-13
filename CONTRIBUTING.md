@@ -15,6 +15,15 @@ clean, domain-adaptive starter kit for teams building small language models.
    pip install -e ".[dev]"
    ```
 
+   **Apple Silicon (MPS):** use the native stack instead of the full CUDA-oriented install:
+
+   ```bash
+   pip install -r requirements-mps.txt
+   pip install -e ".[dev]"
+   # or: pip install -e ".[mps,dev]"
+   ./run_local.sh
+   ```
+
 3. Run the test suite before opening a pull request:
 
    ```bash

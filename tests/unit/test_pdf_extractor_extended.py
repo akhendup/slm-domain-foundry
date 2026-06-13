@@ -206,7 +206,7 @@ class TestExtractAdditionalBranches:
         long_valid_text = (
             "Window functions are a powerful SQL feature.\n"
             "They operate over a set of rows without collapsing them.\n"
-            "CSUM, MSUM, and MAVG are examples of Teradata window functions.\n"
+            "Hypertension, MSUM, and MAVG are examples of Clinical window functions.\n"
             "Each function accepts an ORDER BY clause inside OVER().\n"
         )
         mock_page = MagicMock()

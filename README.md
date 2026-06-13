@@ -93,7 +93,15 @@ chmod +x run_local.sh
 ./run_local.sh
 ```
 
-That script creates a venv, installs deps (skips `bitsandbytes`, which has no macOS build), detects MPS, and starts the Gradio UI. The UI automatically selects **`finetune_cpu`** when CUDA/Unsloth is unavailable.
+That script creates a venv, installs **`requirements-mps.txt`** (PyTorch with MPS, HF Trainer + LoRA, Gradio; skips CUDA-only packages like `bitsandbytes`), detects MPS, and starts the Gradio UI. The UI automatically selects **`finetune_cpu`** when CUDA/Unsloth is unavailable.
+
+Manual MPS install:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-mps.txt
+python -c "import torch; print('MPS:', torch.backends.mps.is_available())"
+```
 
 CLI training on Mac:
 
@@ -130,7 +138,7 @@ paths:
 **Domain extraction patterns** (keywords, example section labels, structured-content detection) live in **`domain_config.yaml`**. Point to a different file with:
 
 ```bash
-python -m data.prepare_training_data --domain-config examples/domain_config_sql.yaml ...
+python -m data.prepare_training_data --domain-config examples/domain_config_financial.yaml ...
 ```
 
 ### Adapting to other domains
@@ -138,8 +146,8 @@ python -m data.prepare_training_data --domain-config examples/domain_config_sql.
 | Domain | System prompt | Domain config | Sample data |
 |--------|---------------|---------------|-------------|
 | Medical (default) | `config.yaml` → `domain.system_prompt` | `domain_config.yaml` | `sample_data/medical_qa.csv` |
-| SQL / analytics | Edit prompt in `config.yaml` | `examples/domain_config_sql.yaml` | `data/sql_vocabulary.yaml` |
-| Financial | Edit prompt in `config.yaml` | Copy `domain_config.yaml`, add keywords | `data/financial_vocabulary.yaml` |
+| Financial | Edit prompt in `config.yaml` | `examples/domain_config_financial.yaml` | `data/financial_vocabulary.yaml` |
+| Custom | Edit prompt in `config.yaml` | Copy `domain_config.yaml`, add keywords | Your CSV / YAML patterns |
 
 Override the chat system prompt without editing files:
 
@@ -152,6 +160,7 @@ python -m app.gradio_ui --model-dir output_model
 
 | File | Use case |
 |------|----------|
+| `requirements-mps.txt` | Apple Silicon native (MPS training + Gradio; no bitsandbytes) |
 | `requirements-core.txt` | Data prep only (no PyTorch) |
 | `requirements-train.txt` | Full training stack |
 | `requirements-inference.txt` | CPU/GPU inference + Gradio |
@@ -161,6 +170,7 @@ Or install as a package:
 
 ```bash
 pip install -e ".[train]"    # training
+pip install -e ".[mps]"      # Apple Silicon native (MPS + Gradio)
 pip install -e ".[inference]" # demo UI
 pip install -e ".[dev]"       # pytest
 ```
@@ -179,7 +189,7 @@ docker run --rm -v "$(pwd)/sample_data:/data" slm-domain-foundry \
 slm-domain-foundry/
 ├── config.yaml              # Main pipeline config
 ├── domain_config.yaml       # Domain keywords & extraction patterns
-├── examples/                # Alternate domain profiles (e.g. SQL)
+├── examples/                # Alternate domain profiles (e.g. financial)
 ├── data/
 │   ├── prepare_training_data.py
 │   ├── medical_vocabulary.yaml

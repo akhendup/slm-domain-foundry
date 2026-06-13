@@ -6,12 +6,12 @@
 # Placeholder: {fn} is replaced with the topic/function/section name from the source document.
 #
 # Sections:
-#   technical  — SQL functions, APIs, software documentation, technical manuals
+#   technical  — APIs, protocols, structured procedures, technical manuals
 #   general    — Textbooks, articles, prose manuals, any non-technical document
 #   financial  — Bank statements, financial reports, invoices, accounting documents
 
 # ---------------------------------------------------------------------------
-# technical — SQL / function / software documentation
+# technical — structured procedures / APIs / technical documentation
 # ---------------------------------------------------------------------------
 technical:
 
@@ -31,10 +31,10 @@ technical:
     - "What is {fn} in plain English?"
 
   category:
-    - "What category of SQL function is {fn}?"
-    - "What type of SQL function is {fn}?"
-    - "Is {fn} an analytic function, aggregate function, or something else?"
-    - "How is {fn} classified in SQL?"
+    - "What category does {fn} belong to?"
+    - "What type of procedure or method is {fn}?"
+    - "How is {fn} classified in this domain?"
+    - "Is {fn} a diagnostic, treatment, or monitoring approach?"
 
   use_case:
     - "What are the use cases for {fn}?"
@@ -56,13 +56,13 @@ technical:
 
   syntax:
     - "What is the syntax for {fn}?"
-    - "What are the required vs optional clauses in {fn}?"
-    - "Which keyword is mandatory in {fn} syntax?"
-    - "What is the minimum valid {fn} expression?"
-    - "How do you write a {fn} expression in SQL?"
-    - "Show me the {fn} SQL syntax."
-    - "What does a basic {fn} query look like?"
-    - "What clauses does {fn} use?"
+    - "What are the required vs optional steps in {fn}?"
+    - "Which step is mandatory in {fn}?"
+    - "What is the minimum valid {fn} workflow?"
+    - "How do you document a {fn} protocol?"
+    - "Show me the standard format for {fn}."
+    - "What does a basic {fn} example look like?"
+    - "What components does {fn} use?"
 
   argument:
     - "What are the arguments to {fn}?"
@@ -89,14 +89,14 @@ technical:
   example:
     - "Show me a complete example of {fn} with input and output."
     - "What is the purpose of this {fn} example?"
-    - "How would you modify this {fn} example to change the output?"
-    - "What are the key SQL clauses in this {fn} example?"
-    - "Explain the SQL logic in this {fn} example."
-    - "What would happen if you changed the ORDER BY in this {fn} example?"
-    - "Write a SQL query using {fn}."
+    - "How would you modify this {fn} example to change the outcome?"
+    - "What are the key steps in this {fn} example?"
+    - "Explain the logic in this {fn} example."
+    - "What would happen if you changed a parameter in this {fn} example?"
+    - "Show me a worked example using {fn}."
     - "Give me a real-world example of {fn}."
     - "Walk me through this {fn} example step by step."
-    - "What is the expected output of this {fn} example?"
+    - "What is the expected outcome of this {fn} example?"
 
   null_behavior:
     - "How does {fn} handle NULL values?"
@@ -118,36 +118,34 @@ technical:
   performance:
     - "How do I optimize {fn} for large datasets?"
     - "What are the performance tips for {fn}?"
+    - "How can I reduce runtime or resource use when applying {fn}?"
+    - "What practices improve reliability when using {fn}?"
+    - "How do I measure the cost or effort of {fn} in practice?"
     - "What makes {fn} slow?"
     - "How does data volume affect {fn} performance?"
-    - "What indexes or statistics help {fn} run faster?"
-    - "How can I reduce I/O when using {fn}?"
-    - "What are the worst-case performance scenarios for {fn}?"
-    - "How does {fn} behave on a table with millions of rows?"
-    - "What execution plan does {fn} typically generate?"
-    - "When should I avoid {fn} for performance reasons?"
-    - "What is the time complexity of {fn}?"
-    - "How does {fn} scale with increasing row count?"
-    - "How can I use EXPLAIN PLAN to diagnose a slow {fn} query?"
-    - "What query hints improve {fn} performance?"
-    - "Does {fn} benefit from partitioning or sorting?"
-    - "How do I measure the cost of {fn} in a query?"
-    - "What is the memory footprint of {fn} for large windows?"
+    - "What resource constraints affect {fn} performance?"
+    - "When should I avoid {fn} for efficiency reasons?"
+    - "How does {fn} scale with increasing workload?"
+    - "How can I profile or diagnose slow {fn} workflows?"
+    - "What configuration choices improve {fn} performance?"
+    - "Does {fn} benefit from batching or staged processing?"
+    - "How do I estimate the effort required for {fn}?"
+    - "What is the practical overhead of {fn} at scale?"
     - "Is {fn} more efficient than its common alternatives?"
 
   error_troubleshoot:
     - "What are common errors when using {fn}?"
-    - "Why does my {fn} query fail?"
+    - "Why does my {fn} workflow fail?"
     - "How do I troubleshoot {fn} issues?"
     - "What error does {fn} produce when the input is invalid?"
     - "Why am I getting no results from {fn}?"
     - "What causes {fn} to return unexpected results?"
-    - "How do I debug a failing {fn} query?"
+    - "How do I debug a failing {fn} example?"
     - "What are the most common mistakes with {fn}?"
     - "What should I check first when {fn} gives wrong results?"
-    - "What syntax errors should I avoid with {fn}?"
+    - "What formatting errors should I avoid with {fn}?"
     - "What data issues cause {fn} to fail silently?"
-    - "How do I fix an ambiguous column error in a {fn} query?"
+    - "How do I fix conflicting inputs in a {fn} workflow?"
     - "What does a {fn} error message mean?"
     - "Why does {fn} return NULL when I expect a value?"
     - "What are the edge cases that break {fn}?"

@@ -24,10 +24,10 @@ Usage
     from data.segmented_memory import SegmentedMemory
 
     mem = SegmentedMemory()
-    mem.set_rom("You are a helpful SQL assistant.")
-    mem.set_kernel({"user": "Alice", "goal": "Learn window functions"})
-    mem.add_turn("user", "What is CSUM?")
-    mem.add_turn("assistant", "CSUM is a cumulative sum function...")
+    mem.set_rom("You are a helpful medical assistant.")
+    mem.set_kernel({"user": "Alice", "goal": "Learn hypertension management"})
+    mem.add_turn("user", "What is hypertension?")
+    mem.add_turn("assistant", "Hypertension is chronic elevation of blood pressure...")
 
     prompt_parts = mem.build_prompt()   # dict with rom/kernel/l1/l2 text
     full_context = mem.render()         # single string ready for the model

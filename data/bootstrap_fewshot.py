@@ -20,7 +20,7 @@ Usage
     from data.bootstrap_fewshot import BootstrapFewShot
 
     candidates = [
-        {"question": "What is CSUM?", "answer": "CSUM computes cumulative sums..."},
+        {"question": "What is hypertension?", "answer": "Hypertension is chronic elevation of blood pressure..."},
         ...
     ]
     bfs = BootstrapFewShot(top_k=5)

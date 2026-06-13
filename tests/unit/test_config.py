@@ -14,7 +14,7 @@ from train.config import get_section, load_config, resolve_path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SQL_DOMAIN = REPO_ROOT / "examples" / "domain_config_sql.yaml"
+FINANCIAL_DOMAIN = REPO_ROOT / "examples" / "domain_config_financial.yaml"
 MEDICAL_DOMAIN = REPO_ROOT / "domain_config.yaml"
 MAIN_CONFIG = REPO_ROOT / "config.yaml"
 
@@ -41,11 +41,22 @@ class TestDomainConfig:
         text = "The patient has hypertension and requires medication dosage review."
         assert has_structured_content(text) is True
 
-    def test_sql_profile_detects_queries(self):
-        load_domain_config(SQL_DOMAIN, reload=True)
-        sql = "SELECT id FROM orders WHERE status = 'active' GROUP BY id"
-        assert has_structured_content(sql) is True
-        assert extract_named_pattern("FROM nPath(ON ...)") == "nPath"
+    def test_financial_profile_detects_ledger_text(self):
+        load_domain_config(FINANCIAL_DOMAIN, reload=True)
+        text = "The account ledger shows debit and credit transactions for reconciliation."
+        assert has_structured_content(text) is True
+
+    def test_extract_named_pattern_from_custom_profile(self, tmp_path):
+        cfg = tmp_path / "domain.yaml"
+        cfg.write_text(
+            "extraction:\n"
+            "  min_keyword_matches: 1\n"
+            "  content_keywords: [patient]\n"
+            "  function_pattern: 'Protocol\\s+(\\w+)'\n",
+            encoding="utf-8",
+        )
+        load_domain_config(cfg, reload=True)
+        assert extract_named_pattern("Protocol HTN for patient monitoring") == "HTN"
 
     def test_yaml_pattern_settings_medical(self):
         load_domain_config(MEDICAL_DOMAIN, reload=True)
@@ -53,10 +64,10 @@ class TestDomainConfig:
         assert "{alias}" in settings["alias_question"]
         assert settings["domain_label"] == ""
 
-    def test_yaml_pattern_settings_sql(self):
-        load_domain_config(SQL_DOMAIN, reload=True)
+    def test_yaml_pattern_settings_financial(self):
+        load_domain_config(FINANCIAL_DOMAIN, reload=True)
         settings = yaml_pattern_settings()
-        assert settings["domain_label"] == "in SQL"
+        assert settings["domain_label"] == "in financial reporting"
 
     def test_plain_text_not_structured_in_medical_profile(self):
         load_domain_config(MEDICAL_DOMAIN, reload=True)

@@ -84,14 +84,14 @@ FIELD_DEFS = [
         "type": "textarea",
     },
     {
-        "key": "sql_example",
+        "key": "worked_example",
         "label": "Worked example",
         "help": _form_help("example_help", "Paste a representative protocol, case, or structured example."),
         "required": False,
         "type": "code",
     },
     {
-        "key": "sql_description",
+        "key": "example_summary",
         "label": "What does this example demonstrate?",
         "help": "One sentence describing what the example above shows.",
         "required": False,
@@ -229,24 +229,22 @@ def form_to_pattern(form_data: Dict[str, str]) -> Dict[str, Any]:
         if parsed_params:
             pattern["parameters"] = parsed_params
 
-    # SQL template
-    sql = form_data.get("sql_example", "").strip()
-    sql_desc = form_data.get("sql_description", "").strip() or "Example SQL query"
-    if sql:
+    example = form_data.get("worked_example", "").strip()
+    example_desc = form_data.get("example_summary", "").strip() or "Worked example"
+    if example:
         pattern["templates"] = {
             "example": {
-                "description": sql_desc,
-                "sql": sql,
+                "description": example_desc,
+                "content": example,
             }
         }
 
-    # Example with output
     output = form_data.get("example_output", "").strip()
-    if sql and output:
+    if example and output:
         pattern["examples"] = [
             {
-                "name": sql_desc,
-                "description": sql_desc,
+                "name": example_desc,
+                "description": example_desc,
                 "expected_result": output,
             }
         ]
@@ -426,15 +424,14 @@ def load_pattern_for_edit(slug: str, library_dir: Path) -> Optional[Dict[str, st
     else:
         form["parameters_text"] = ""
 
-    # SQL template
     tmpl = pattern.get("templates", {})
     if isinstance(tmpl, dict):
         first = next(iter(tmpl.values()), {})
-        form["sql_example"] = first.get("sql", "") or first.get("content", "")
-        form["sql_description"] = first.get("description", "")
+        form["worked_example"] = first.get("content", "")
+        form["example_summary"] = first.get("description", "")
     else:
-        form["sql_example"] = ""
-        form["sql_description"] = ""
+        form["worked_example"] = ""
+        form["example_summary"] = ""
 
     # Example output
     examples = pattern.get("examples", [])

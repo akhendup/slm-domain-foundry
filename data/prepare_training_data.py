@@ -22,12 +22,15 @@ from data.manual_extractor import (
     generate_multiturn_conversation,
     deduplicate_qa_pairs,
     _is_heading_line,
-    has_sql_content,
-    extract_sql_function_name,
     _split_example_parts,
 )
+from data.domain_config import (
+    example_section_label_regexes,
+    extract_named_pattern,
+    has_structured_content,
+)
 from data.csv_loader import load_csv
-from data.chunking import chunk_text, chunk_text_sql_aware
+from data.chunking import chunk_text, chunk_text_structured_aware
 from data.yaml_pattern_loader import load_patterns_as_qa
 from data.template_expander import expand_vocab_dir
 
@@ -35,39 +38,45 @@ from data.template_expander import expand_vocab_dir
 def text_to_qa_heuristic(chunks: List[str], source: str = "doc") -> List[Tuple[str, str]]:
     """
     Turn text chunks into Q&A pairs.
-    - Detects Input/SQL Call/Output example blocks and generates structured questions.
-    - Validates headings before using them (excludes data rows and SQL keywords).
-    - Generates SQL-specific questions for SQL-containing chunks.
+    - Detects Input/structured/Output example blocks and generates structured questions.
+    - Validates headings before using them (excludes data rows and section labels).
+    - Generates domain-specific questions for structured-content chunks.
     - Falls back to a generic summarisation question for everything else.
     """
     qa = []
     short_src = Path(source).stem if source != "doc" else source
+    labels = example_section_label_regexes()
+    section_markers = "|".join(
+        pat.pattern.replace(r"^\s*(?:", "").replace(r")\s*:?\s*$", "")
+        for pat in (labels["input"], labels["structured"], labels["output"])
+    )
 
     for chunk in chunks:
         chunk = chunk.strip()
         if not chunk:
             continue
 
-        # Detect Input/SQL Call/Output structure (example blocks)
-        if re.search(r"^\s*(input|sql\s+call|output)\s*:?\s*$", chunk, re.I | re.M):
+        if re.search(rf"^\s*(?:{section_markers})\s*:?\s*$", chunk, re.I | re.M):
             sub = _split_example_parts(chunk)
-            sql_part = sub.get("sql", "")
-            if sql_part:
-                func_name = extract_sql_function_name(sql_part)
-                if func_name:
-                    qa.append((f"Show me a complete example of {func_name} with input and output.", chunk))
-                    qa.append((f"Write a SQL query using {func_name}.", sql_part))
+            structured_part = sub.get("structured", "")
+            if structured_part:
+                pattern_name = extract_named_pattern(structured_part)
+                if pattern_name:
+                    qa.append((
+                        f"Show me a complete example of {pattern_name} with input and output.",
+                        chunk,
+                    ))
+                    qa.append((f"Show me a worked example using {pattern_name}.", structured_part))
                 else:
-                    qa.append((f"Show me a complete SQL example from {short_src}.", chunk))
+                    qa.append((f"Show me a complete structured example from {short_src}.", chunk))
                 continue
-            elif has_sql_content(chunk):
-                func_name = extract_sql_function_name(chunk)
-                q = (f"Show me an example using {func_name}." if func_name
-                     else f"Show me a SQL example from {short_src}.")
+            elif has_structured_content(chunk):
+                pattern_name = extract_named_pattern(chunk)
+                q = (f"Show me an example using {pattern_name}." if pattern_name
+                     else f"Show me a structured example from {short_src}.")
                 qa.append((q, chunk))
                 continue
 
-        # Heading-based extraction (validated heading only)
         chunk_parts = chunk.split("\n\n", 1)
         if len(chunk_parts) == 2:
             heading = chunk_parts[0].strip()
@@ -77,16 +86,14 @@ def text_to_qa_heuristic(chunks: List[str], source: str = "doc") -> List[Tuple[s
                 qa.append((q, content))
                 continue
 
-        # SQL-specific fallback for chunks containing SQL
-        if has_sql_content(chunk):
-            func_name = extract_sql_function_name(chunk)
-            if func_name:
-                qa.append((f"Show me an example using {func_name}.", chunk))
+        if has_structured_content(chunk):
+            pattern_name = extract_named_pattern(chunk)
+            if pattern_name:
+                qa.append((f"Show me an example using {pattern_name}.", chunk))
             else:
-                qa.append((f"Show me a SQL example from {short_src}.", chunk))
+                qa.append((f"Show me a structured example from {short_src}.", chunk))
             continue
 
-        # Generic fallback
         if len(chunk) > 50:
             q = f"What does the documentation say about the following from {short_src}?"
             qa.append((q, chunk))
@@ -277,7 +284,7 @@ def main():
                             multiturn.append({"conversations": conv})
 
                 # 2. SQL-aware chunk-based Q&A (supplement for uncaptured content)
-                chunks = chunk_text_sql_aware(
+                chunks = chunk_text_structured_aware(
                     full_text,
                     chunk_size=args.chunk_size,
                     chunk_overlap=args.chunk_overlap,

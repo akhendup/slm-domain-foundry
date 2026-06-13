@@ -34,8 +34,7 @@ echo "Checking dependencies…"
 # bitsandbytes has no macOS build; skip it there (not needed for standard LoRA).
 # On Linux it installs fine and works with CUDA if available.
 if [[ "$(uname)" == "Darwin" ]]; then
-    grep -v '^bitsandbytes' "$SCRIPT_DIR/requirements.txt" \
-        | "$VENV/bin/pip" install --quiet --prefer-binary -r /dev/stdin
+    "$VENV/bin/pip" install --quiet --prefer-binary -r "$SCRIPT_DIR/requirements-mps.txt"
 else
     "$VENV/bin/pip" install --quiet --prefer-binary -r "$SCRIPT_DIR/requirements.txt"
 fi

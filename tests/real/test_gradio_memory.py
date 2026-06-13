@@ -25,7 +25,7 @@ def test_memory_refresh_select_approve_export(real_memory_dir, tmp_path):
         choice = choices[0]
         rid, detail = _memory_select(choice)
         assert rid == _parse_interaction_id(choice)
-        assert "CSUM" in detail
+        assert "Hypertension" in detail
         rid_list, detail_list = _memory_select([choice])
         assert rid_list == rid
         msg, stats2, detail2, dd2 = _memory_approve(rid)

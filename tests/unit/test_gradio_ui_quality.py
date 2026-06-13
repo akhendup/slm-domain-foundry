@@ -202,7 +202,7 @@ class TestChatSystemPrompt:
     def test_default_prompt_is_generic(self):
         """Default prompt must not contain product-specific hardcoded names."""
         import app.gradio_ui as gui
-        assert "Teradata" not in gui._CHAT_SYSTEM_PROMPT
+        assert "Clinical" not in gui._CHAT_SYSTEM_PROMPT
 
     def test_env_var_overrides_prompt(self, monkeypatch):
         """SLM_SYSTEM_PROMPT env var must replace the default prompt."""

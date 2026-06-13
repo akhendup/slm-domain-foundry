@@ -80,7 +80,7 @@ class TestGenerateQaBestPractices:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for testing.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
         }
 
     def test_best_practices_as_list(self):
@@ -137,7 +137,7 @@ class TestGenerateQaGuardrails:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for path analysis.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "guardrails": [
                 "Cannot be used in OLAP window functions.",
                 "Maximum partition size is 10,000 rows.",
@@ -153,7 +153,7 @@ class TestGenerateQaGuardrails:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "guardrails": [],
         }
         qa = generate_qa_from_pattern(pattern)
@@ -172,7 +172,7 @@ class TestGenerateQaRelatedPatterns:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for path analysis.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "related_patterns": ["OtherFn", "AnotherFn"],
         }
         qa = generate_qa_from_pattern(pattern)
@@ -186,7 +186,7 @@ class TestGenerateQaRelatedPatterns:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for testing.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "related_patterns": ["", "ValidPattern"],
         }
         qa = generate_qa_from_pattern(pattern)
@@ -208,7 +208,7 @@ class TestGenerateQaFallback:
             "name": "bare",
             "title": "BareFn",
             "description": "A bare function with nothing else.",
-            "teradata_function": "BareFn",
+            "pattern_alias": "BareFn",
         }
         qa = generate_qa_from_pattern(pattern)
         assert len(qa) >= 1  # at least the fallback or description pair
@@ -220,7 +220,7 @@ class TestGenerateQaFallback:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "common_errors": [
                 {"cause": "missing clause", "solution": "add it"},  # no 'error' key
                 {"error": "Invalid ORDER BY", "cause": "wrong col", "solution": "use correct col"},
@@ -295,7 +295,7 @@ class TestBuildDebugConversation:
         pattern = {
             "name": "testfn",
             "templates": {
-                "basic": {"sql": "SELECT * FROM testfn(PATTERN = 'A');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
             "common_errors": [],
         }
@@ -309,7 +309,7 @@ class TestBuildDebugConversation:
         pattern = {
             "name": "testfn",
             "templates": {
-                "basic": {"sql": "SELECT * FROM testfn(PATTERN = 'A');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
             "common_errors": [
                 {"error": "No results", "cause": "bad pattern", "solution": "fix pattern"},
@@ -378,7 +378,7 @@ class TestBuildMigrationConversation:
         from data.yaml_pattern_loader import _build_migration_conversation
         pattern = {
             "templates": {
-                "basic": {"sql": "SELECT * FROM TestFn(PATTERN = 'A');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
         }
         result = _build_migration_conversation(pattern, "TestFn", "A description.")
@@ -389,7 +389,7 @@ class TestBuildMigrationConversation:
         from data.yaml_pattern_loader import _build_migration_conversation
         pattern = {
             "templates": {
-                "basic": {"sql": "SELECT * FROM TestFn(PATTERN = 'A');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
             "related_patterns": ["OtherFn", "AnotherFn"],
         }
@@ -417,7 +417,7 @@ class TestGenerateMultiturnConversations:
             "name": "testfn",
             "description": "A function for path analysis.",
             "templates": {
-                "basic": {"sql": "SELECT * FROM TestFn(PATTERN = 'A');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
             "best_practices": "Use ORDER BY.",
         }
@@ -429,10 +429,10 @@ class TestGenerateMultiturnConversations:
         pattern = {
             "title": "TestFn",
             "name": "testfn",
-            "description": "A function for path analysis in Teradata.",
+            "description": "A function for path analysis in Clinical.",
             "use_cases": ["Detect customer churn", "Analyze click paths"],
             "templates": {
-                "basic": {"sql": "SELECT * FROM TestFn(PATTERN = 'A.B');"}
+                "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
             "best_practices": ["Use ORDER BY.", "Partition carefully."],
             "common_errors": [
@@ -499,7 +499,7 @@ class TestGenerateQaSpecificBranches:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "parameters": [{
                 "name": "my_param",
                 "description": "A param.",
@@ -517,11 +517,11 @@ class TestGenerateQaSpecificBranches:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "use_cases": ["Use case 1"],
             "templates": {
                 "no_sql_template": {"description": "A template with no SQL"},  # no sql key
-                "good_template": {"sql": "SELECT * FROM TestFn();", "description": "A good template"},
+                "good_template": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy.", "description": "A good template"},
             },
         }
         qa = generate_qa_from_pattern(pattern)
@@ -537,10 +537,10 @@ class TestGenerateQaSpecificBranches:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "examples": [
                 "a plain string example",  # not a dict — should be skipped
-                {"name": "real_example", "sql": "SELECT * FROM TestFn();", "expected_result": "rows"},
+                {"name": "real_example", "content": "SELECT * FROM TestFn();", "expected_result": "rows"},
             ],
         }
         qa = generate_qa_from_pattern(pattern)
@@ -555,7 +555,7 @@ class TestGenerateQaSpecificBranches:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function.",
-            "teradata_function": "TestFn",
+            "pattern_alias": "TestFn",
             "common_errors": [
                 "This is a plain string error",  # not a dict — should be skipped
                 {"error": "Valid error", "cause": "some cause", "solution": "fix it"},
@@ -565,16 +565,16 @@ class TestGenerateQaSpecificBranches:
         qs = [q for q, _ in qa]
         assert any("Valid error" in q for q in qs)
 
-    def test_teradata_function_different_from_title(self):
-        """Line 323-324: when teradata_function (short) differs from fn, extra pair is added."""
+    def test_pattern_alias_different_from_title(self):
+        """Line 323-324: when pattern_alias (short) differs from fn, extra pair is added."""
         from data.yaml_pattern_loader import generate_qa_from_pattern
         pattern = {
             "name": "testfn",
             "title": "TestFn Full Name",
             "description": "A function.",
-            "teradata_function": "SHORT_FN",  # different from title
+            "pattern_alias": "SHORT_FN",  # different from title
             "examples": [
-                {"name": "ex1", "sql": "SELECT * FROM SHORT_FN();", "expected_result": "rows"},
+                {"name": "ex1", "content": "SELECT * FROM SHORT_FN();", "expected_result": "rows"},
             ],
         }
         qa = generate_qa_from_pattern(pattern)

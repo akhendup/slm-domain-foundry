@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from data.chunking import chunk_text, chunk_text_sql_aware
+from data.chunking import chunk_text, chunk_text_structured_aware
 from data.csv_loader import load_csv
 from data.prepare_training_data import (
     build_alpaca_examples,
@@ -30,11 +30,9 @@ pytestmark = pytest.mark.e2e
 # ---------------------------------------------------------------------------
 
 class TestCsvToTrainingDataPipeline:
-    def test_qa_csv_to_sharegpt_jsonl(self, tmp_path, tmp_csv):
+    def test_qa_csv_to_sharegpt_jsonl(self, tmp_path, tmp_csv, sample_qa_pairs):
         csv_path = tmp_csv([
-            {"question": "What is CSUM?", "answer": "CSUM computes a cumulative sum."},
-            {"question": "What is RANK?", "answer": "RANK assigns a rank to each row."},
-            {"question": "What is MSUM?", "answer": "MSUM computes a moving sum."},
+            {"question": q, "answer": a} for q, a in sample_qa_pairs
         ])
         texts, qa = load_csv(csv_path)
         assert len(qa) == 3
@@ -46,12 +44,12 @@ class TestCsvToTrainingDataPipeline:
         assert out.exists()
         lines = [json.loads(l) for l in out.read_text().strip().split("\n")]
         assert len(lines) == 3
-        assert lines[0]["conversations"][0]["content"] == "What is CSUM?"
+        assert lines[0]["conversations"][0]["content"] == "What is hypertension?"
 
     def test_text_csv_to_alpaca_jsonl(self, tmp_path, tmp_csv):
         csv_path = tmp_csv([
-            {"text": "CSUM computes a cumulative sum over a window partition."},
-            {"text": "RANK assigns an integer rank to each row within a partition."},
+            {"text": "Hypertension is chronic elevation of blood pressure."},
+            {"text": "Low-dose aspirin is used for secondary cardiovascular prevention in selected patients."},
         ])
         texts, qa = load_csv(csv_path)
         assert len(texts) == 2
@@ -91,26 +89,8 @@ class TestCsvToTrainingDataPipeline:
 # ---------------------------------------------------------------------------
 
 class TestChunkingToQaPipeline:
-    def test_plain_text_full_pipeline(self, tmp_path):
-        text = textwrap.dedent("""\
-            Window Functions Overview
-
-            Window functions compute aggregate values over a set of rows.
-            They use the OVER clause with optional PARTITION BY and ORDER BY.
-
-            CSUM Function
-
-            The CSUM function returns a cumulative sum.
-            It accumulates values in the order specified by ORDER BY.
-            Use PARTITION BY to reset the sum for each group.
-
-            RANK Function
-
-            The RANK function assigns an integer rank to each row.
-            Rows with equal values receive the same rank.
-            Gaps appear after ties: ranks go 1, 1, 3, not 1, 1, 2.
-        """)
-        chunks = chunk_text(text, chunk_size=400, chunk_overlap=50)
+    def test_plain_text_full_pipeline(self, tmp_path, sample_plain_text):
+        chunks = chunk_text(sample_plain_text, chunk_size=400, chunk_overlap=50)
         assert len(chunks) >= 1
 
         qa = text_to_qa_heuristic(chunks, source="manual.pdf")
@@ -127,11 +107,11 @@ class TestChunkingToQaPipeline:
             assert convs[0]["role"] == "user"
             assert convs[1]["role"] == "assistant"
 
-    def test_sql_text_full_pipeline(self, tmp_path, sample_sql_text):
-        chunks = chunk_text_sql_aware(sample_sql_text, chunk_size=300, chunk_overlap=50)
-        qa = text_to_qa_heuristic(chunks, source="sql_ref.pdf")
+    def test_structured_text_full_pipeline(self, tmp_path, sample_structured_text):
+        chunks = chunk_text_structured_aware(sample_structured_text, chunk_size=300, chunk_overlap=50)
+        qa = text_to_qa_heuristic(chunks, source="clinical_protocol.pdf")
         examples = build_alpaca_examples(qa)
-        out = tmp_path / "sql_out.jsonl"
+        out = tmp_path / "medical_out.jsonl"
         save_jsonl(examples, out)
         assert out.exists()
         assert out.stat().st_size > 0
@@ -145,7 +125,7 @@ class TestYamlPatternPipeline:
     def test_single_pattern_to_qa_jsonl(self, tmp_path, sample_yaml_pattern):
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
 
         qa_pairs, _ = load_patterns_as_qa(pattern_dir)
         assert len(qa_pairs) >= 5
@@ -160,17 +140,16 @@ class TestYamlPatternPipeline:
     def test_multiple_patterns_combined(self, tmp_path, sample_yaml_pattern):
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
-        # Second pattern
-        second = sample_yaml_pattern.replace("name: csum", "name: msum").replace(
-            'title: "CSUM"', 'title: "MSUM"'
-        )
-        (pattern_dir / "msum.yaml").write_text(second, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        second = sample_yaml_pattern.replace("name: hypertension", "name: aspirin").replace(
+            'title: "Hypertension Management"', 'title: "Aspirin Therapy"'
+        ).replace("pattern_alias: HTN", "pattern_alias: ASA")
+        (pattern_dir / "aspirin.yaml").write_text(second, encoding="utf-8")
 
         qa_pairs, _ = load_patterns_as_qa(pattern_dir)
         questions = [q for q, _ in qa_pairs]
-        assert any("CSUM" in q for q in questions)
-        assert any("MSUM" in q for q in questions)
+        assert any("Hypertension" in q or "HTN" in q for q in questions)
+        assert any("Aspirin" in q or "ASA" in q for q in questions)
 
     def test_real_sample_patterns_if_present(self):
         """Run against the actual sample_data/patternexamples/ if it exists."""
@@ -199,11 +178,9 @@ class TestPrepareCLI:
         assert result.returncode == 0
         assert "pdf" in result.stdout.lower() or "csv" in result.stdout.lower()
 
-    def test_cli_csv_produces_jsonl(self, tmp_path, tmp_csv):
+    def test_cli_csv_produces_jsonl(self, tmp_path, tmp_csv, sample_qa_pairs):
         csv_path = tmp_csv([
-            {"question": "What is SQL?", "answer": "A query language for databases."},
-            {"question": "What is a JOIN?", "answer": "A JOIN combines rows from two tables."},
-            {"question": "What is an index?", "answer": "An index speeds up data retrieval."},
+            {"question": q, "answer": a} for q, a in sample_qa_pairs
         ])
         result = subprocess.run(
             [
@@ -223,7 +200,7 @@ class TestPrepareCLI:
     def test_cli_yaml_produces_jsonl(self, tmp_path, sample_yaml_pattern):
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
 
         result = subprocess.run(
             [

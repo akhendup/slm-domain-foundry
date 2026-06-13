@@ -49,7 +49,7 @@ def test_finetune_cpu_one_step(real_sharegpt_jsonl, tmp_path):
     text = generate_response(
         model,
         tok,
-        [{"role": "user", "content": "What is CSUM?"}],
+        [{"role": "user", "content": "What is hypertension?"}],
         max_new_tokens=12,
         temperature=0.0,
     )

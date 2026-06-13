@@ -18,10 +18,10 @@ pytestmark = pytest.mark.unit
 
 class TestLoadYamlPatternsDir:
     def test_loads_valid_yaml(self, tmp_path, sample_yaml_pattern):
-        (tmp_path / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (tmp_path / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         patterns = load_yaml_patterns_dir(tmp_path)
         assert len(patterns) == 1
-        assert patterns[0]["name"] == "csum"
+        assert patterns[0]["name"] == "hypertension"
 
     def test_skips_invalid_yaml(self, tmp_path, sample_yaml_pattern):
         (tmp_path / "good.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
@@ -37,9 +37,9 @@ class TestLoadYamlPatternsDir:
         assert len(patterns) == 0
 
     def test_recursive_search(self, tmp_path, sample_yaml_pattern):
-        subdir = tmp_path / "analytics"
+        subdir = tmp_path / "cardiology"
         subdir.mkdir()
-        (subdir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (subdir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         patterns = load_yaml_patterns_dir(tmp_path)
         assert len(patterns) == 1
 
@@ -47,7 +47,7 @@ class TestLoadYamlPatternsDir:
         assert load_yaml_patterns_dir(tmp_path) == []
 
     def test_source_file_annotated(self, tmp_path, sample_yaml_pattern):
-        (tmp_path / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (tmp_path / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         patterns = load_yaml_patterns_dir(tmp_path)
         assert "_source_file" in patterns[0]
 
@@ -67,7 +67,7 @@ class TestGenerateQaFromPattern:
     def test_description_generates_qa(self, sample_pattern_dict):
         result = generate_qa_from_pattern(sample_pattern_dict)
         questions = [q for q, _ in result]
-        assert any("CSUM" in q for q in questions)
+        assert any("Hypertension" in q or "hypertension" in q.lower() for q in questions)
 
     def test_use_cases_generate_qa(self, sample_pattern_dict):
         result = generate_qa_from_pattern(sample_pattern_dict)
@@ -82,7 +82,7 @@ class TestGenerateQaFromPattern:
     def test_templates_generate_qa(self, sample_pattern_dict):
         result = generate_qa_from_pattern(sample_pattern_dict)
         answers = [a for _, a in result]
-        assert any("SELECT" in a or "CSUM" in a for a in answers)
+        assert any("Treatment plan" in a or "Case" in a for a in answers)
 
     def test_best_practices_generate_qa(self, sample_pattern_dict):
         result = generate_qa_from_pattern(sample_pattern_dict)
@@ -102,7 +102,6 @@ class TestGenerateQaFromPattern:
             assert q.strip() != ""
 
     def test_minimum_qa_count(self, sample_pattern_dict):
-        # A well-formed pattern with desc + use_cases + params should produce many pairs
         result = generate_qa_from_pattern(sample_pattern_dict)
         assert len(result) >= 5
 
@@ -113,7 +112,6 @@ class TestGenerateQaFromPattern:
 
 class TestGenerateMultiturnFromPattern:
     def test_returns_list_or_none(self, sample_pattern_dict):
-        # Returns a flat list of turn dicts, or None if not enough content
         result = generate_multiturn_from_pattern(sample_pattern_dict)
         assert result is None or isinstance(result, list)
 
@@ -147,7 +145,7 @@ class TestGenerateMultiturnFromPattern:
 class TestLoadPatternsAsQa:
     def test_loads_and_generates_qa(self, tmp_path, sample_yaml_pattern):
         """load_patterns_as_qa returns (qa_pairs, multiturn_convs)."""
-        (tmp_path / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (tmp_path / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         qa_pairs, multiturn = load_patterns_as_qa(tmp_path)
         assert len(qa_pairs) >= 1
         for q, a in qa_pairs:

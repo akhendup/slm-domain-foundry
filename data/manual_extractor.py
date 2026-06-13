@@ -14,8 +14,8 @@ from typing import Dict, List, Optional, Tuple
 
 from data.domain_config import (
     example_section_label_regexes,
-    extract_named_pattern as extract_sql_function_name,
-    has_structured_content as has_sql_content,
+    extract_named_pattern,
+    has_structured_content,
 )
 from data.pdf_extractor import PDFExtractor
 
@@ -105,7 +105,7 @@ def is_index_page(text: str) -> bool:
     single_letter_lines = sum(1 for ln in lines if re.match(r"^[A-Z]$", ln))
     if single_letter_lines >= 3:
         return True
-    # Lines ending in page numbers: "CSUM 42, 56, 103"
+    # Lines ending in page numbers: "Hypertension 42, 56, 103"
     index_entry_lines = sum(
         1 for ln in lines
         if re.search(r"\d+(?:,\s*\d+)*\s*$", ln) and len(ln) < 80
@@ -210,7 +210,7 @@ def strip_running_headers_footers(text: str, headers: set, footers: set) -> str:
 # ---------------------------------------------------------------------------
 
 _HEADING_RE = [
-    # All-caps line: function names like "CSUM", "MOVING AVERAGE"
+    # All-caps line: section titles like "HYPERTENSION", "MOVING AVERAGE"
     re.compile(r"^[A-Z][A-Z0-9 _\-/]{1,59}$"),
     # Numbered section: "3.2 Ordered Analytical Functions"
     re.compile(r"^\d+(?:\.\d+)*\s+[A-Z][^\n]{5,79}$"),
@@ -218,18 +218,11 @@ _HEADING_RE = [
     re.compile(r"^(?:[A-Z][a-z]+\s+){1,6}[A-Z][a-z]+$"),
 ]
 
-# SQL reserved words that should never be treated as function/section headings
-_SQL_RESERVED = frozenset({
-    "USING", "FROM", "SELECT", "WHERE", "ON", "WITH", "JOIN", "OVER",
-    "HAVING", "GROUP", "ORDER", "UNION", "EXCEPT", "INTERSECT",
-    "INSERT", "UPDATE", "DELETE", "CREATE", "TABLE", "INDEX", "VIEW",
-    "RETURNS", "RETURN", "NULL", "NOT", "AND", "OR", "BY", "AS",
-    "PARTITION", "QUALIFY", "CASE", "WHEN", "THEN", "ELSE", "END",
-    "ROWS", "RANGE", "BETWEEN", "UNBOUNDED", "PRECEDING", "FOLLOWING",
-    "CURRENT", "ROW", "DISTINCT", "ALL", "INNER", "OUTER", "LEFT",
-    "RIGHT", "FULL", "CROSS", "NATURAL", "SET", "INTO", "VALUES",
-    "IS", "IN", "LIKE", "EXISTS", "ANY", "SOME",
-    "INPUT", "OUTPUT",  # sub-section headers, not function names
+# Standalone labels that should never be treated as section headings
+_RESERVED_HEADINGS = frozenset({
+    "INPUT", "OUTPUT", "RESULT", "OUTCOME", "CASE", "NOTES",
+    "INTRODUCTION", "OVERVIEW", "SUMMARY", "INDEX", "CONTENTS",
+    "DESCRIPTION", "SYNTAX", "ARGUMENTS", "PARAMETERS", "EXAMPLES",
 })
 
 
@@ -250,8 +243,7 @@ def _is_heading_line(line: str) -> bool:
     # Exclude lines with 2+ numeric tokens (data rows like "1 M 100")
     if len(re.findall(r"\b\d+\b", line)) >= 2:
         return False
-    # Exclude SQL reserved words used as standalone headings
-    if line.upper() in _SQL_RESERVED:
+    if line.upper() in _RESERVED_HEADINGS:
         return False
     # Exclude table-schema header phrases (e.g. "Column Data Type Description",
     # "Input Table Schema", "Output Table Schema")
@@ -313,27 +305,27 @@ def group_pages_into_sections(pages: List[Dict]) -> List[Dict]:
 # Structured content helpers (patterns loaded from domain_config.yaml)
 # ---------------------------------------------------------------------------
 
-def extract_sql_blocks(text: str) -> List[str]:
+def extract_structured_blocks(text: str) -> List[str]:
     """Return paragraphs that contain structured domain content."""
     return [
         para.strip()
         for para in re.split(r"\n\n+", text)
-        if has_sql_content(para)
+        if has_structured_content(para)
     ]
 
 
 def _split_example_parts(example_text: str) -> Dict[str, str]:
     """
-    Split an example block into input/sql/output sub-sections.
-    Recognises standalone lines: Input, SQL Call, Output (and variants).
-    Returns dict with keys 'input', 'sql', 'output' (values may be empty).
+    Split an example block into input/structured/output sub-sections.
+    Section labels come from domain_config.yaml (input, structured, output).
+    Returns dict with keys 'input', 'structured', 'output' (values may be empty).
     """
     label_res = example_section_label_regexes()
     _INPUT_RE = label_res["input"]
-    _SQL_RE = label_res["structured"]
+    _STRUCTURED_RE = label_res["structured"]
     _OUTPUT_RE = label_res["output"]
 
-    result: Dict[str, str] = {"input": "", "sql": "", "output": ""}
+    result: Dict[str, str] = {"input": "", "structured": "", "output": ""}
     current: Optional[str] = None
     buf: List[str] = []
 
@@ -348,10 +340,10 @@ def _split_example_parts(example_text: str) -> Dict[str, str]:
                 result[current] = "\n\n".join(buf).strip()
             current = "input"
             buf = [rest] if rest else []
-        elif _SQL_RE.match(first):
+        elif _STRUCTURED_RE.match(first):
             if current and buf:
                 result[current] = "\n\n".join(buf).strip()
-            current = "sql"
+            current = "structured"
             buf = [rest] if rest else []
         elif _OUTPUT_RE.match(first):
             if current and buf:
@@ -381,22 +373,22 @@ _PART_LABELS: Dict[str, re.Pattern] = {
     "examples": re.compile(r"^\s*(examples?|sample)\s*:?\s*$", re.I),
     # Sub-section headers within examples — all map to the examples bucket
     "result": re.compile(r"^\s*(results?|return value)\s*:?\s*$", re.I),
-    "input_data": re.compile(r"^\s*input(?:\s+(?:data|tables?))?\s*:?\s*$", re.I),
-    "sql_call": re.compile(
-        r"^\s*(sql\s+call|sql\s+query|sql\s+example|sql\s+statement)\s*:?\s*$", re.I
+    "input_data": re.compile(r"^\s*input(?:\s+(?:data|tables?|history))?\s*:?\s*$", re.I),
+    "structured_call": re.compile(
+        r"^\s*(protocol|treatment plan|clinical plan|calculation|journal entry)\s*:?\s*$", re.I
     ),
-    "output": re.compile(r"^\s*output(?:\s+(?:data|tables?))?\s*:?\s*$", re.I),
+    "output": re.compile(r"^\s*output(?:\s+(?:data|tables?|result|outcome))?\s*:?\s*$", re.I),
 }
 
 # Labels that feed content into the examples bucket
-_EXAMPLE_SUB_LABELS = frozenset({"result", "input_data", "sql_call", "output"})
+_EXAMPLE_SUB_LABELS = frozenset({"result", "input_data", "structured_call", "output"})
 
 
 def parse_function_section(section_text: str, heading: str = "") -> Dict:
     """
     Parse a function/feature section into labeled parts.
     Returns: {heading, description, syntax, arguments, notes, examples, raw}
-    Sub-section headers Input/SQL Call/Output are mapped into the examples bucket.
+    Sub-section headers Input/Protocol/Output are mapped into the examples bucket.
     """
     parts: Dict = {
         "heading": heading,
@@ -445,7 +437,7 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
     Generate diverse typed Q&A pairs from a parsed section.
 
     For technical sections (those with structured syntax/arguments/notes), generates
-    SQL-oriented Q&A using the shared template lists from question_templates.py/yaml.
+    typed Q&A using the shared template lists from question_templates.py/yaml.
     For general prose sections (textbooks, non-technical manuals), falls back to the
     GENERAL_* template lists, producing 5-10 pairs per section instead of one.
 
@@ -477,21 +469,20 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
         if any(kw in desc_lower for kw in func_type_keywords):
             for sent in sentences:
                 if any(kw in sent.lower() for kw in func_type_keywords):
-                    pairs.append((f"Is {fn} a window function, aggregate, or table function?", sent.strip()))
-                    pairs.append((f"What category of SQL function is {fn}?", sent.strip()))
+                    pairs.append((f"What category of function or method is {fn}?", sent.strip()))
                     break
 
-    # Syntax questions — use shared SYNTAX_QUESTIONS + SQL-specific extensions
+    # Syntax questions — use shared SYNTAX_QUESTIONS
     if syntax and fn:
         for tmpl in SYNTAX_QUESTIONS:
             pairs.append((tmpl.format(fn=fn), syntax))
-        if has_sql_content(syntax):
-            for sql_q in [
-                f"Can {fn} be used in a subquery?",
-                f"Does {fn} require a PARTITION BY clause?",
-                f"What goes inside the OVER() clause in {fn}?",
+        if has_structured_content(syntax):
+            for extra_q in [
+                f"Can {fn} be used in a nested context?",
+                f"What constraints apply when using {fn}?",
+                f"What are the key components of the {fn} format?",
             ]:
-                pairs.append((sql_q, syntax))
+                pairs.append((extra_q, syntax))
 
     # Argument/parameter questions — use shared ARGUMENT_QUESTIONS
     if args and fn:
@@ -506,37 +497,35 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
             pairs.append((f"When should I use {fn}?", notes))
             pairs.append((f"What problem does {fn} solve?", f"{desc}\n\n{notes}" if desc else notes))
 
-    # Example questions — use shared EXAMPLE_QUESTIONS + SQL-specific additions
+    # Example questions — use shared EXAMPLE_QUESTIONS
     for i, ex in enumerate(examples):
         if len(ex) < 30:
             continue
         label = "another example of" if i > 0 else "an example of"
         sub = _split_example_parts(ex)
-        sql_part = sub.get("sql", "")
+        structured_part = sub.get("structured", "")
         output_part = sub.get("output", "")
 
-        if sql_part:
-            func_name = extract_sql_function_name(sql_part) or fn
+        if structured_part:
+            pattern_name = extract_named_pattern(structured_part) or fn
             if fn:
                 for tmpl in EXAMPLE_QUESTIONS:
                     pairs.append((tmpl.format(fn=fn), ex))
-                pairs.append((f"What would the result be if the {fn} query partition had only one row?", ex))
-                pairs.append((f"What are the key SQL clauses in this {fn} example?", sql_part))
-            pairs.append((f"Write a SQL query using {func_name}.", sql_part))
+                pairs.append((f"What are the key steps in this {fn} example?", structured_part))
+            pairs.append((f"Show me a worked example using {pattern_name}.", structured_part))
             if output_part and fn:
                 pairs.append((f"What does {fn} return in this example?", output_part))
         else:
             if fn:
                 pairs.append((f"Show me {label} {fn}.", ex))
                 pairs.append((f"What is the purpose of this {fn} example?", ex))
-                pairs.append((f"How would you modify this {fn} example to change the output?", ex))
-            if has_sql_content(ex):
-                func_name = extract_sql_function_name(ex) or fn
-                if func_name:
-                    pairs.append((f"What SQL demonstrates how to use {func_name}?", ex))
+                pairs.append((f"How would you modify this {fn} example to change the outcome?", ex))
+            if has_structured_content(ex):
+                pattern_name = extract_named_pattern(ex) or fn
+                if pattern_name:
+                    pairs.append((f"What example demonstrates how to use {pattern_name}?", ex))
                 if fn:
-                    pairs.append((f"Explain the SQL logic in this {fn} example.", ex))
-                    pairs.append((f"What would happen if you changed the ORDER BY in this {fn} example?", ex))
+                    pairs.append((f"Explain the logic in this {fn} example.", ex))
 
     for cap in captions:
         if fn:
@@ -544,7 +533,7 @@ def generate_typed_qa(parsed: Dict, source_label: str = "") -> List[Tuple[str, s
 
     # Fallback for general / non-technical content:
     # If no structured technical pairs were generated, apply GENERAL_* templates
-    # so textbook chapters, prose sections, and non-SQL manuals still produce rich Q&A.
+    # so textbook chapters, prose sections, and non-structured manuals still produce rich Q&A.
     if not pairs:
         raw = (parsed.get("raw") or "").strip()
         if raw and len(raw) > 60 and fn:

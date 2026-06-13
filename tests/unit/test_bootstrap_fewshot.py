@@ -17,7 +17,7 @@ def good_candidates():
     return [
         {
             "question": "How do I compute a running total in SQL?",
-            "answer": "Use CSUM: SELECT col, CSUM(col, col) FROM t ORDER BY col;\n```sql\nSELECT id, CSUM(amount, id) FROM sales;\n```",
+            "answer": "Use Hypertension: SELECT col, Hypertension(col, col) FROM t ORDER BY col;\n```sql\nSELECT id, Hypertension(amount, id) FROM sales;\n```",
         },
         {
             "question": "What is a window function?",

@@ -1,0 +1,52 @@
+# Financial domain profile (reference example).
+# Use with: python -m data.prepare_training_data --domain-config examples/domain_config_financial.yaml ...
+
+domain:
+  name: financial
+
+extraction:
+  min_keyword_matches: 2
+  content_keywords:
+    - account
+    - balance
+    - transaction
+    - ledger
+    - debit
+    - credit
+    - revenue
+    - expense
+    - invoice
+    - payment
+    - reconciliation
+    - amortization
+
+  function_pattern: null
+
+  non_function_suffixes:
+    - _table
+    - _test
+    - _schema
+    - _data
+    - _view
+    - _input
+    - _output
+    - _result
+    - _sample
+
+  example_section_labels:
+    input:
+      - input
+      - opening balance
+      - account summary
+    structured:
+      - journal entry
+      - transaction detail
+      - calculation
+    output:
+      - output
+      - closing balance
+      - result
+
+yaml_patterns:
+  alias_question: "What is {alias}?"
+  domain_label: "in financial reporting"

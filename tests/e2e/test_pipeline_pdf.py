@@ -51,36 +51,35 @@ def _manual_extract_result(full_text="", sections=None, label="test_manual"):
 class TestTextToQaHeuristic:
     """Direct import tests for text_to_qa_heuristic branches."""
 
-    def test_sql_example_block_detected(self):
+    def test_structured_example_block_detected(self):
         from data.prepare_training_data import text_to_qa_heuristic
         chunk = (
-            "INPUT:\nid | amount\n1  | 100\n\n"
-            "SQL Call:\n"
-            "SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;\n\n"
-            "OUTPUT:\nid | total\n1  | 100\n"
+            "Case presentation:\nPatient with diabetes and elevated blood pressure.\n\n"
+            "Treatment plan:\nInitiate ACE inhibitor therapy and home blood pressure monitoring.\n\n"
+            "Outcome:\nBP 128/78 mmHg at four-week follow-up\n"
         )
         qa = text_to_qa_heuristic([chunk], source="doc")
-        # SQL example block generates at least one QA pair
+        # structured example block generates at least one QA pair
         assert len(qa) >= 1
 
-    def test_sql_example_block_no_func_name(self):
+    def test_structured_example_block_no_func_name(self):
         from data.prepare_training_data import text_to_qa_heuristic
         chunk = (
-            "INPUT:\nvalue\n\nSQL Call:\nSELECT * FROM t;\n\nOUTPUT:\nresult\n"
+            "Case:\npatient history\n\nTreatment plan:\nmedication titration and lifestyle counseling\n\nOutcome:\nimproved blood pressure\n"
         )
         qa = text_to_qa_heuristic([chunk], source="myfile.pdf")
         assert len(qa) >= 1
 
-    def test_sql_content_without_example_block(self):
+    def test_structured_content_without_example_block(self):
         from data.prepare_training_data import text_to_qa_heuristic
-        chunk = "SELECT RANK() OVER (ORDER BY salary DESC) FROM employees;"
+        chunk = "Patient with hypertension requires medication review, clinical follow-up, and lifestyle counseling per treatment guideline recommendations."
         qa = text_to_qa_heuristic([chunk], source="doc")
         assert len(qa) >= 1
 
     def test_heading_based_extraction(self):
         from data.prepare_training_data import text_to_qa_heuristic
         # Use a heading that passes _is_heading_line (not starting with digit)
-        chunk = "Window Functions\n\nWindow functions operate over a set of rows defined by a window specification."
+        chunk = "Hypertension Protocol\n\nHypertension management combines lifestyle modification with first-line antihypertensive medication."
         qa = text_to_qa_heuristic([chunk], source="doc")
         assert len(qa) >= 1
         # Heading without "?" gets "What is ...?" prepended
@@ -89,15 +88,15 @@ class TestTextToQaHeuristic:
     def test_heading_generates_what_is_question(self):
         from data.prepare_training_data import text_to_qa_heuristic
         # "Data Types" passes _is_heading_line and doesn't end with "?"
-        chunk = "Data Types\n\nTeradata supports integer, varchar, and decimal data types for columns."
+        chunk = "Blood Pressure Targets\n\nMost adults aim for below 130/80 mmHg with individualized treatment plans."
         qa = text_to_qa_heuristic([chunk], source="doc")
         assert len(qa) >= 1
         qs = [q for q, _ in qa]
-        assert any("Data Types" in q for q in qs)
+        assert any("Blood Pressure Targets" in q for q in qs)
 
     def test_generic_fallback_for_plain_text(self):
         from data.prepare_training_data import text_to_qa_heuristic
-        chunk = "This is a long description of some feature without headings or SQL content in it."
+        chunk = "This is a long description of general wellness without clinical headings or structured protocol content in it."
         qa = text_to_qa_heuristic([chunk], source="myref")
         assert len(qa) == 1
         assert "myref" in qa[0][0]
@@ -112,68 +111,64 @@ class TestTextToQaHeuristic:
         qa = text_to_qa_heuristic(["short"], source="doc")
         assert qa == []
 
-    def test_sql_without_func_name_uses_source(self):
+    def test_structured_without_func_name_uses_source(self):
         from data.prepare_training_data import text_to_qa_heuristic
-        chunk = "SELECT * FROM my_table WHERE condition IS NOT NULL AND flag = 1;"
+        chunk = "Patient with hypertension requires medication review, clinical follow-up, and lifestyle counseling per treatment guideline recommendations."
         qa = text_to_qa_heuristic([chunk], source="myfile.pdf")
         assert len(qa) >= 1
         qs = [q for q, _ in qa]
         assert any("myfile" in q for q in qs)
 
     def test_example_block_with_sql_but_no_func(self):
-        """Input/Output block with SQL but no extractable function name."""
+        """Input/Output block with structured content but no extractable function name."""
         from data.prepare_training_data import text_to_qa_heuristic
         chunk = (
-            "Input:\nrow\n\nSQL Call:\nSELECT * FROM t;\n\nOutput:\nresult\n"
+            "Case:\npatient row\n\nTreatment plan:\nmedication and lifestyle counseling\n\nOutcome:\nstable blood pressure\n"
         )
         qa = text_to_qa_heuristic([chunk], source="myfile.pdf")
         # Should still produce at least one pair
         assert len(qa) >= 1
 
-    def test_sql_example_block_with_extractable_func_name(self):
-        """Input/SQL Call/Output block where FROM funcname() pattern gives func name (lines 54-55)."""
+    def test_structured_example_block_with_treatment_plan(self):
+        """Case/Treatment plan/Outcome block generates structured Q&A pairs."""
         from data.prepare_training_data import text_to_qa_heuristic
         chunk = (
-            "Input:\nid | amount\n1  | 100\n\n"
-            "SQL Call:\n"
-            "SELECT * FROM nPath(MODE = OVERLAPPING, PATTERN = 'A', "
-            "SYMBOLS = (amount > 0 AS A)) AS r;\n\n"
-            "Output:\nid | total\n1  | 100\n"
+            "Case presentation:\n"
+            "Patient with diabetes and repeated elevated blood pressure readings.\n\n"
+            "Treatment plan:\n"
+            "Initiate ACE inhibitor therapy, recommend sodium reduction, exercise, "
+            "and home blood pressure monitoring.\n\n"
+            "Outcome:\n"
+            "Reassess blood pressure in four weeks and adjust therapy if targets are not met."
         )
         qa = text_to_qa_heuristic([chunk], source="doc")
         qs = [q for q, _ in qa]
-        # Should generate questions with 'nPath' (the extracted function name)
-        assert any("nPath" in q for q in qs)
-        # Lines 54-55: two QA pairs generated when func_name is found
-        assert len(qa) >= 2
+        assert any("example" in q.lower() or "Treatment" in q or "hypertension" in q.lower() for q in qs)
+        assert len(qa) >= 1
 
-    def test_sql_fallback_with_extractable_func_name(self):
-        """SQL fallback (no Input/Output markers) with FROM funcname() extracts name (line 80)."""
+    def test_structured_fallback_with_clinical_keywords(self):
+        """Structured-content fallback generates domain-specific questions."""
         from data.prepare_training_data import text_to_qa_heuristic
         chunk = (
-            "The following query demonstrates nPath usage:\n"
-            "SELECT * FROM nPath(MODE = OVERLAPPING, PATTERN = 'A.B', "
-            "SYMBOLS = (qty > 0 AS A, qty < 0 AS B)) AS result;\n"
-            "This shows path analysis over events.\n"
+            "The following protocol demonstrates hypertension management:\n"
+            "Patient with hypertension requires medication review, clinical follow-up, "
+            "and lifestyle counseling per treatment guideline recommendations.\n"
         )
         qa = text_to_qa_heuristic([chunk], source="doc")
         qs = [q for q, _ in qa]
-        # Line 80: func_name branch generates "Show me an example using <func>."
-        assert any("nPath" in q for q in qs)
+        assert any("structured" in q.lower() or "example" in q.lower() for q in qs)
 
-    def test_example_block_no_sql_part_but_has_sql_content(self):
-        """Input/Output block detected, _split_example_parts returns no sql key,
-        but has_sql_content is true → lines 59-64."""
+    def test_example_block_no_sql_part_but_has_structured_content(self):
+        """Input/Output block detected, _split_example_parts returns no structured key,
+        but has_structured_content is true → lines 59-64."""
         from data.prepare_training_data import text_to_qa_heuristic
         # This needs the regex to detect "input"/"output" pattern but _split_example_parts
         # to return empty sql key. Use an unusual structure.
         chunk = (
-            "Input:\n"
-            "SELECT * FROM nPath(PATTERN = 'A') AS r;\n\n"
-            "Output:\nresult rows here\n"
+            "Case:\npatient with elevated readings\n\nOutcome:\nreassess in four weeks\n"
         )
-        # The "Input:" line is detected, but there's no "SQL Call:" line
-        # so _split_example_parts may return sql="" — then we check has_sql_content
+        # The "Input:" line is detected, but there's no "Treatment plan:" line
+        # so _split_example_parts may return sql="" — then we check has_structured_content
         qa = text_to_qa_heuristic([chunk], source="doc")
         assert len(qa) >= 1
 
@@ -195,7 +190,7 @@ class TestPipelineStandardPdf:
             "Window Functions\n\n"
             "Window functions compute results over a set of rows.\n"
             "They do not collapse rows like aggregate functions.\n"
-            "The CSUM function computes cumulative sums efficiently.\n"
+            "Hypertension management requires medication review and clinical follow-up.\n"
         )
 
         sys.argv = [
@@ -249,7 +244,7 @@ class TestPipelineStandardPdf:
 
         out_dir = tmp_path / "out"
         full_text = (
-            "MSUM Function\n\nCSUM computes moving sums over rows.\n"
+            "Aspirin Therapy\n\nLow-dose aspirin is used for secondary cardiovascular prevention.\n"
             "Use PARTITION BY to segment data.\nOrder by time column.\n"
         )
 
@@ -275,7 +270,7 @@ class TestPipelineStandardPdf:
         from data.prepare_training_data import main
 
         csv_path = tmp_csv([
-            {"question": "What is CSUM?", "answer": "CSUM computes cumulative sums."},
+            {"question": "What is hypertension?", "answer": "Hypertension is chronic elevation of blood pressure."},
         ])
         out_dir = tmp_path / "out"
 
@@ -313,11 +308,11 @@ class TestPipelineManualPdf:
 
         out_dir = tmp_path / "out"
         full_text = (
-            "CSUM Function\n\nCSUM computes a cumulative sum over an ordered window.\n"
-            "SELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;\n"
+            "Hypertension Protocol\n\nInitiate lifestyle counseling plus first-line antihypertensive therapy.\n"
+            "SELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;\n"
         )
         sections = [
-            {"heading": "CSUM Function", "text": full_text},
+            {"heading": "Hypertension Function", "text": full_text},
         ]
 
         sys.argv = self._base_argv(pdf_dir, out_dir)
@@ -391,17 +386,17 @@ class TestPipelineManualPdf:
 
         out_dir = tmp_path / "out"
         full_text = (
-            "CSUM Function\n\nCSUM computes cumulative sums.\n"
-            "SELECT CSUM(x, t) OVER (ORDER BY t) FROM tbl;\n"
+            "Hypertension Protocol\n\nTreatment plan includes medication titration and home monitoring.\n"
+            "SELECT Hypertension(x, t) OVER (ORDER BY t) FROM tbl;\n"
         )
-        sections = [{"heading": "CSUM", "text": full_text}]
+        sections = [{"heading": "Hypertension", "text": full_text}]
 
         sys.argv = self._base_argv(pdf_dir, out_dir)
 
         # Patch generate_multiturn_conversation to return a real conversation
         fake_conv = [
-            {"role": "user", "content": "What is CSUM?"},
-            {"role": "assistant", "content": "CSUM computes cumulative sums."},
+            {"role": "user", "content": "What is hypertension?"},
+            {"role": "assistant", "content": "Hypertension is chronic elevation of blood pressure."},
         ]
 
         with patch("data.prepare_training_data.PDFExtractor") as mock_ext_cls, \
@@ -430,8 +425,8 @@ class TestPipelineManualPdf:
             _create_fake_pdf(pdf_dir / name)
 
         out_dir = tmp_path / "out"
-        full_text = "CSUM\n\nCSUM computes cumulative sums over windows.\nMore content here.\n"
-        sections = [{"heading": "CSUM", "text": full_text}]
+        full_text = "Hypertension\n\nChronic elevation of blood pressure increases cardiovascular risk.\nMore content here.\n"
+        sections = [{"heading": "Hypertension", "text": full_text}]
 
         sys.argv = self._base_argv(pdf_dir, out_dir)
 
@@ -465,8 +460,8 @@ class TestPipelineManualPdf:
         ])
         out_dir = tmp_path / "out"
 
-        full_text = "CSUM\n\nCSUM computes cumulative sums.\nUse ORDER BY.\n"
-        sections = [{"heading": "CSUM", "text": full_text}]
+        full_text = "Hypertension\n\nConfirm elevated readings before starting long-term therapy.\n"
+        sections = [{"heading": "Hypertension", "text": full_text}]
 
         sys.argv = [
             "prepare_training_data",
@@ -496,8 +491,8 @@ class TestPipelineManualPdf:
         _create_fake_pdf(pdf_dir / "doc.pdf")
 
         out_dir = tmp_path / "out"
-        full_text = "CSUM\n\nCSUM computes cumulative sums.\nMore details here.\n"
-        sections = [{"heading": "CSUM", "text": full_text}]
+        full_text = "Hypertension\n\nSodium reduction and regular exercise are first-line interventions.\n"
+        sections = [{"heading": "Hypertension", "text": full_text}]
 
         sys.argv = [
             "prepare_training_data",

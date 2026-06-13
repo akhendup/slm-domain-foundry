@@ -80,8 +80,8 @@ def real_memory_dir(tmp_path) -> Path:
     mem = tmp_path / "conversation_memory"
     log_interaction(
         mem,
-        question="What is CSUM?",
-        answer="CSUM is a cumulative sum analytic function.",
+        question="What is hypertension?",
+        answer="Hypertension is chronic elevation of blood pressure.",
         model_name="tiny-gpt2",
     )
     assert (mem / "interactions.jsonl").exists()

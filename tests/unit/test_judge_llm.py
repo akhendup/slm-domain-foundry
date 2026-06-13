@@ -119,9 +119,9 @@ class TestBuildMessages:
         assert msgs[1]["role"] == "user"
 
     def test_content_included(self):
-        msgs = _build_messages("What is CSUM?", "CSUM computes a cumulative sum.")
-        assert "What is CSUM?" in msgs[1]["content"]
-        assert "CSUM computes" in msgs[1]["content"]
+        msgs = _build_messages("What is hypertension?", "Hypertension computes a cumulative sum.")
+        assert "What is hypertension?" in msgs[1]["content"]
+        assert "Hypertension computes" in msgs[1]["content"]
 
     def test_system_prompt_contains_dimensions(self):
         msgs = _build_messages("Q?", "A!")
@@ -217,7 +217,7 @@ class TestTransformersBackend:
 class TestLLMJudge:
     def test_evaluate_returns_result(self):
         judge  = LLMJudge(backend=_mock_backend())
-        result = judge.evaluate("What is CSUM?", "CSUM computes cumulative sums.")
+        result = judge.evaluate("What is hypertension?", "Hypertension computes cumulative sums.")
         assert isinstance(result, JudgeResult)
         assert result.scores == _GOOD_SCORES
         assert 0.0 <= result.confidence <= 1.0
@@ -257,8 +257,8 @@ class TestLLMJudge:
 
     def test_confidence_in_range(self):
         judge  = LLMJudge(backend=_mock_backend())
-        result = judge.evaluate("How does CSUM work?",
-                                "SELECT CSUM(col, col) FROM table ORDER BY col;")
+        result = judge.evaluate("How does Hypertension work?",
+                                "SELECT Hypertension(col, col) FROM table ORDER BY col;")
         assert 0.0 <= result.confidence <= 1.0
 
 
@@ -277,8 +277,8 @@ class TestHybridJudge:
         b = _mock_backend()
         b.complete.side_effect = ConnectionError("refused")
         judge  = HybridJudge(backend=b, log_fallback=False)
-        result = judge.evaluate("What is CSUM?",
-                                "CSUM computes cumulative sums. Use SELECT CSUM(col,col) FROM t;")
+        result = judge.evaluate("What is hypertension?",
+                                "Hypertension computes cumulative sums. Use SELECT Hypertension(col,col) FROM t;")
         assert "heuristic_fallback" in result.flags
         assert 0.0 <= result.confidence <= 1.0
 

@@ -13,11 +13,11 @@ from data.manual_extractor import (
     detect_page_heading,
     detect_running_headers_footers,
     extract_figure_captions,
-    extract_sql_blocks,
-    extract_sql_function_name,
+    extract_structured_blocks,
+    extract_named_pattern,
     generate_typed_qa,
     group_pages_into_sections,
-    has_sql_content,
+    has_structured_content,
     manual_label_from_path,
     parse_function_section,
     strip_running_headers_footers,
@@ -71,7 +71,7 @@ class TestDetectRunningHeadersFooters:
         assert isinstance(h, set) and isinstance(f, set)
 
     def test_detects_repeated_header(self):
-        header = "Teradata SQL Reference"
+        header = "Clinical Practice Guidelines"
         footer = "Page 1"
         pages = []
         for i in range(10):
@@ -100,18 +100,18 @@ class TestStripRunningHeadersFooters:
         assert result == text
 
     def test_removes_header_lines(self):
-        text = "teradata sql reference\nMain content here.\nOther content."
-        headers = {"teradata sql reference"}
+        text = "clinical practice guidelines\nMain content here.\nOther content."
+        headers = {"clinical practice guidelines"}
         result = strip_running_headers_footers(text, headers, set())
-        assert "teradata sql reference" not in result.lower()
+        assert "clinical practice guidelines" not in result.lower()
         assert "Main content" in result
 
     def test_removes_footer_lines(self):
-        text = "Content here.\nOther content.\nteradata reference"
+        text = "Content here.\nOther content.\nclinical reference"
         # footers set contains normalized strings (already lowercased, no page numbers)
-        footers = {"teradata reference"}
+        footers = {"clinical reference"}
         result = strip_running_headers_footers(text, set(), footers)
-        assert "teradata reference" not in result.lower()
+        assert "clinical reference" not in result.lower()
 
     def test_removes_standalone_page_numbers(self):
         text = "Content one.\n42\nContent two."
@@ -131,8 +131,8 @@ class TestIsHeadingLineExtended:
     def test_title_case_phrase(self):
         assert _is_heading_line("Cumulative Sum Function") is True
 
-    def test_all_caps_sql_word_excluded(self):
-        assert _is_heading_line("SELECT") is False
+    def test_reserved_section_label_excluded(self):
+        assert _is_heading_line("INPUT") is False
 
     def test_ends_with_period_excluded(self):
         assert _is_heading_line("This Is A Heading.") is False
@@ -184,7 +184,7 @@ class TestDetectPageHeading:
         assert result is None or isinstance(result, str)
 
     def test_returns_string_or_none(self):
-        text = "CSUM\n\nThe CSUM function computes cumulative sum."
+        text = "Hypertension\n\nThe Hypertension function computes cumulative sum."
         result = detect_page_heading(text)
         assert result is None or isinstance(result, str)
 
@@ -202,8 +202,8 @@ class TestMakeSection:
             {"page": 1, "text": "First page content here."},
             {"page": 2, "text": "Second page content here."},
         ]
-        section = _make_section("CSUM", pages)
-        assert section["heading"] == "CSUM"
+        section = _make_section("Hypertension", pages)
+        assert section["heading"] == "Hypertension"
         assert "page_start" in section
         assert "page_end" in section
         assert "text" in section
@@ -242,14 +242,14 @@ class TestGroupPagesIntoSections:
         assert group_pages_into_sections([]) == []
 
     def test_single_page(self):
-        pages = [{"page": 1, "text": "CSUM\n\nThis function is for cumulative sum."}]
+        pages = [{"page": 1, "text": "Hypertension\n\nThis function is for cumulative sum."}]
         sections = group_pages_into_sections(pages)
         assert len(sections) >= 1
 
     def test_groups_by_heading_change(self):
         pages = [
-            {"page": 1, "text": "Cumulative Sum Function\n\nContent about CSUM."},
-            {"page": 2, "text": "More content about CSUM."},
+            {"page": 1, "text": "Cumulative Sum Function\n\nContent about Hypertension."},
+            {"page": 2, "text": "More content about Hypertension."},
             {"page": 3, "text": "Window Functions Overview\n\nContent about windows."},
         ]
         sections = group_pages_into_sections(pages)
@@ -267,79 +267,71 @@ class TestGroupPagesIntoSections:
 
 
 # ---------------------------------------------------------------------------
-# has_sql_content
+# has_structured_content
 # ---------------------------------------------------------------------------
 
-class TestHasSqlContent:
-    def test_select_from(self):
-        assert has_sql_content("SELECT id FROM orders WHERE status = 'active'") is True
+class TestHasStructuredContent:
+    def test_medical_keywords(self):
+        text = (
+            "Patient with hypertension requires medication review and clinical follow-up "
+            "per treatment guideline recommendations."
+        )
+        assert has_structured_content(text) is True
 
-    def test_window_function(self):
-        assert has_sql_content("CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts)") is True
+    def test_treatment_plan_keywords(self):
+        assert has_structured_content(
+            "Treatment plan includes dosage adjustment when adverse symptoms appear."
+        ) is True
 
     def test_plain_prose(self):
-        assert has_sql_content("This is a plain text sentence with no SQL keywords.") is False
+        assert has_structured_content("This is a plain text sentence with no domain keywords.") is False
 
     def test_single_keyword(self):
-        assert has_sql_content("The SELECT statement retrieves rows.") is False
+        assert has_structured_content("The patient arrived for a routine visit.") is False
 
     def test_empty(self):
-        assert has_sql_content("") is False
+        assert has_structured_content("") is False
 
 
 # ---------------------------------------------------------------------------
-# extract_sql_blocks
+# extract_structured_blocks
 # ---------------------------------------------------------------------------
 
-class TestExtractSqlBlocks:
-    def test_returns_sql_paragraphs(self):
+class TestExtractStructuredBlocks:
+    def test_returns_structured_paragraphs(self):
         text = (
             "Intro text.\n\n"
-            "SELECT id, CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM orders;\n\n"
+            "Patient with hypertension and diabetes requires medication review, "
+            "clinical follow-up, and lifestyle counseling per guideline recommendations.\n\n"
             "Conclusion text."
         )
-        blocks = extract_sql_blocks(text)
+        blocks = extract_structured_blocks(text)
         assert len(blocks) >= 1
-        assert any("SELECT" in b for b in blocks)
+        assert any("hypertension" in b.lower() for b in blocks)
 
     def test_returns_empty_for_prose(self):
-        text = "No SQL here.\n\nJust regular text."
-        blocks = extract_sql_blocks(text)
+        text = "No clinical terms here.\n\nJust regular text."
+        blocks = extract_structured_blocks(text)
         assert blocks == []
 
     def test_returns_list(self):
-        assert isinstance(extract_sql_blocks("text"), list)
+        assert isinstance(extract_structured_blocks("text"), list)
 
 
 # ---------------------------------------------------------------------------
-# extract_sql_function_name
+# extract_named_pattern (medical profile has function_pattern disabled)
 # ---------------------------------------------------------------------------
 
-class TestExtractSqlFunctionName:
-    def test_extracts_npath(self):
-        sql = "SELECT * FROM nPath(ON orders PARTITION BY customer_id ORDER BY ts) dt"
-        result = extract_sql_function_name(sql)
-        assert result == "nPath"
+class TestExtractNamedPattern:
+    def test_returns_none_when_function_pattern_disabled(self):
+        text = "Treatment plan: initiate ACE inhibitor therapy for the patient with hypertension."
+        assert extract_named_pattern(text) is None
 
-    def test_returns_none_for_data_table(self):
-        sql = "SELECT * FROM orders_table WHERE id = 1"
-        result = extract_sql_function_name(sql)
-        assert result is None
+    def test_returns_none_for_plain_prose(self):
+        assert extract_named_pattern("General wellness guidance without named protocols.") is None
 
-    def test_returns_none_when_no_match(self):
-        sql = "SELECT id, amount FROM orders WHERE id = 1"
-        result = extract_sql_function_name(sql)
-        assert result is None
-
-    def test_skips_single_letter_name(self):
-        sql = "SELECT * FROM t(ON data)"
-        result = extract_sql_function_name(sql)
-        assert result is None
-
-    def test_skips_input_table_suffix(self):
-        sql = "SELECT * FROM input_table(ON data PARTITION BY id)"
-        result = extract_sql_function_name(sql)
-        assert result is None
+    def test_returns_none_for_empty(self):
+        assert extract_named_pattern("") is None
 
 
 # ---------------------------------------------------------------------------
@@ -350,30 +342,30 @@ class TestSplitExampleParts:
     def test_basic_split(self):
         text = (
             "Input\n\nid | amount\n1  | 100\n\n"
-            "SQL Call\n\nSELECT CSUM(amount, ts) FROM t;\n\n"
+            "Treatment plan\n\nSELECT Hypertension(amount, ts) FROM t;\n\n"
             "Output\n\nid | total\n1  | 100"
         )
         result = _split_example_parts(text)
         assert isinstance(result, dict)
         assert "input" in result
-        assert "sql" in result
+        assert "structured" in result
         assert "output" in result
 
-    def test_sql_part_extracted(self):
+    def test_structured_part_extracted(self):
         text = (
-            "SQL Call\n\nSELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM orders;\n\n"
+            "Treatment plan\n\nSELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM orders;\n\n"
             "Output\n\nid | total"
         )
         result = _split_example_parts(text)
-        assert "SELECT" in result.get("sql", "")
+        assert "SELECT" in result.get("structured", "")
 
     def test_empty_returns_empty_parts(self):
         result = _split_example_parts("")
-        assert result == {"input": "", "sql": "", "output": ""}
+        assert result == {"input": "", "structured": "", "output": ""}
 
     def test_no_sections_returns_empty_parts(self):
         result = _split_example_parts("Just some text without section headers.")
-        assert result["sql"] == ""
+        assert result["structured"] == ""
         assert result["output"] == ""
 
 
@@ -384,14 +376,14 @@ class TestSplitExampleParts:
 class TestParseFunctionSection:
     def test_basic_parsing(self):
         text = (
-            "Description\n\nCSUM computes a cumulative sum over a window partition.\n\n"
-            "Syntax\n\nCSUM(value_expression, sort_column)\n\n"
+            "Description\n\nHypertension is chronic elevation of blood pressure.\n\n"
+            "Syntax\n\nTarget blood pressure below 130/80 mmHg\n\n"
             "Arguments\n\nvalue_expression: The column to accumulate\n\n"
             "Notes\n\nAlways specify ORDER BY for deterministic results.\n\n"
-            "Examples\n\nSELECT CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"
+            "Examples\n\nSELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"
         )
-        result = parse_function_section(text, heading="CSUM")
-        assert result["heading"] == "CSUM"
+        result = parse_function_section(text, heading="Hypertension")
+        assert result["heading"] == "Hypertension"
         assert isinstance(result["description"], list)
         assert isinstance(result["syntax"], list)
         assert isinstance(result["arguments"], list)
@@ -405,8 +397,8 @@ class TestParseFunctionSection:
                    or "description" in part.lower() for part in result["description"])
 
     def test_examples_captured(self):
-        text = "Examples\n\nSELECT CSUM(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"
-        result = parse_function_section(text, "CSUM")
+        text = "Examples\n\nSELECT Hypertension(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"
+        result = parse_function_section(text, "Hypertension")
         assert len(result["examples"]) >= 1
 
     def test_raw_preserved(self):
@@ -417,11 +409,11 @@ class TestParseFunctionSection:
     def test_input_sql_output_map_to_examples(self):
         text = (
             "Description\n\nMain description.\n\n"
-            "SQL Call\n\nSELECT CSUM(x, t) FROM t;\n\n"
+            "Treatment plan\n\nSELECT Hypertension(x, t) FROM t;\n\n"
             "Output\n\nid | total\n1  | 100"
         )
-        result = parse_function_section(text, "CSUM")
-        # SQL Call and Output sub-sections map to examples
+        result = parse_function_section(text, "Hypertension")
+        # Treatment plan and Output sub-sections map to examples
         assert len(result["examples"]) >= 1
 
 
@@ -431,10 +423,10 @@ class TestParseFunctionSection:
 
 class TestExtractFigureCaptions:
     def test_extracts_figure_caption(self):
-        text = "Some text. Figure 1-1: Sample nPath output showing the result. More text."
+        text = "Some text. Figure 1-1: Sample HypertensionProtocol output showing the result. More text."
         captions = extract_figure_captions(text)
         assert len(captions) >= 1
-        assert "nPath" in captions[0]
+        assert "HypertensionProtocol" in captions[0]
 
     def test_returns_empty_when_none(self):
         assert extract_figure_captions("No figures here.") == []
@@ -454,7 +446,7 @@ class TestExtractFigureCaptions:
 # ---------------------------------------------------------------------------
 
 class TestGenerateTypedQa:
-    def _make_parsed(self, heading="CSUM", desc="Computes a cumulative sum.", syntax="CSUM(val, col)",
+    def _make_parsed(self, heading="Hypertension", desc="Computes a cumulative sum.", syntax="Hypertension(val, col)",
                      args="val: The value to accumulate", notes="Use ORDER BY.", examples=None):
         return {
             "heading": heading,
@@ -462,7 +454,7 @@ class TestGenerateTypedQa:
             "syntax": [syntax],
             "arguments": [args],
             "notes": [notes],
-            "examples": examples or ["SELECT CSUM(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"],
+            "examples": examples or ["SELECT Hypertension(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"],
             "raw": f"{heading}\n\n{desc}",
         }
 
@@ -482,7 +474,7 @@ class TestGenerateTypedQa:
         parsed = self._make_parsed()
         qa = generate_typed_qa(parsed, "source")
         questions = [q for q, _ in qa]
-        assert any("CSUM" in q for q in questions)
+        assert any("Hypertension" in q for q in questions)
 
     def test_syntax_questions_generated(self):
         parsed = self._make_parsed()
@@ -510,8 +502,8 @@ class TestGenerateTypedQa:
 class TestDeduplicateQaPairs:
     def test_removes_exact_duplicates(self):
         pairs = [
-            ("What is CSUM?", "CSUM computes cumulative sum."),
-            ("What is CSUM?", "CSUM computes cumulative sum."),
+            ("What is hypertension?", "Hypertension computes cumulative sum."),
+            ("What is hypertension?", "Hypertension computes cumulative sum."),
             ("What is RANK?", "RANK assigns a rank."),
         ]
         result = deduplicate_qa_pairs(pairs)
@@ -519,8 +511,8 @@ class TestDeduplicateQaPairs:
 
     def test_keeps_same_answer_different_questions(self):
         pairs = [
-            ("What is CSUM?", "CSUM computes cumulative sum."),
-            ("Define CSUM.", "CSUM computes cumulative sum."),
+            ("What is hypertension?", "Hypertension computes cumulative sum."),
+            ("Define Hypertension.", "Hypertension computes cumulative sum."),
         ]
         result = deduplicate_qa_pairs(pairs)
         assert len(result) == 2
@@ -559,6 +551,6 @@ class TestManualLabelFromPath:
         assert " " not in result
 
     def test_returns_filesystem_safe(self):
-        result = manual_label_from_path(Path("Teradata SQL Reference Guide 2024.pdf"))
+        result = manual_label_from_path(Path("Clinical Practice Guidelines Guide 2024.pdf"))
         import re
         assert re.match(r"^[\w\-]+$", result)

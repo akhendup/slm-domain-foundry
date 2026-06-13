@@ -114,7 +114,7 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
     title = (pattern.get("title") or pattern.get("name") or "").strip()
     name = (pattern.get("name") or "").strip()
     fn = title or name
-    td_func = pattern.get("teradata_function", "")
+    pattern_alias = (pattern.get("pattern_alias") or "").strip()
 
     # -- Description ----------------------------------------------------------
     desc = (pattern.get("description") or "").strip()
@@ -141,11 +141,11 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                 pairs.append((q_tmpl.format(fn=fn), cat_answer))
 
         # Optional alias question (wording from domain_config.yaml)
-        if td_func and td_func.upper() != name.upper():
+        if pattern_alias and pattern_alias.upper() != name.upper():
             from data.domain_config import yaml_pattern_settings
 
             settings = yaml_pattern_settings()
-            alias_q = settings["alias_question"].format(alias=td_func)
+            alias_q = settings["alias_question"].format(alias=pattern_alias)
             domain_label = settings.get("domain_label", "").strip()
             if domain_label:
                 alias_q = f"{alias_q} {domain_label}".strip()
@@ -253,7 +253,7 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                 pairs.append((f"How does '{nA}' interact with '{nB}' in {fn}?", cross_answer))
                 pairs.append((f"When configuring '{nA}', what should '{nB}' be set to in {fn}?", cross_answer))
 
-    # -- Templates (SQL or content) -------------------------------------------
+    # -- Templates (structured content) ---------------------------------------
     templates = pattern.get("templates", {})
     first_use_case = use_cases_list[0] if use_cases_list else ""
     template_items: List[Tuple[str, Dict]] = []
@@ -263,15 +263,15 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
     if template_items and fn:
         for tname, tval in template_items:
             tdesc = (tval.get("description") or tname.replace("_", " ")).strip()
-            sql = (tval.get("sql") or tval.get("content") or "").strip()
-            if not sql:
+            body = (tval.get("content") or "").strip()
+            if not body:
                 continue
             req = tval.get("required_parameters", [])
             req_note = f"\n\nRequired parameters: {', '.join(req)}" if req else ""
-            full_answer = f"{sql}{req_note}"
+            full_answer = f"{body}{req_note}"
 
             pairs.append((f"How do I {tdesc.lower()}?", full_answer))
-            pairs.append((f"Write a SQL query to {tdesc.lower()}.", full_answer))
+            pairs.append((f"Show me how to {tdesc.lower()}.", full_answer))
             if req:
                 pairs.append((
                     f"What does the {tname.replace('_', ' ')} template for {fn} look like?",
@@ -280,64 +280,63 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
             pairs.append((f"Walk me through the {tname.replace('_', ' ')} template for {fn}.", full_answer))
             pairs.append((
                 f"What are the required parameters for the {tname.replace('_', ' ')} template in {fn}?",
-                f"Required parameters: {', '.join(req)}\n\nTemplate:\n{sql}" if req
-                else f"All parameters are optional for this template.\n\nTemplate:\n{sql}",
+                f"Required parameters: {', '.join(req)}\n\nTemplate:\n{body}" if req
+                else f"All parameters are optional for this template.\n\nTemplate:\n{body}",
             ))
             pairs.append((
-                f"What does each clause in the {tname.replace('_', ' ')} {fn} template do?",
+                f"What does each part of the {tname.replace('_', ' ')} {fn} template do?",
                 full_answer,
             ))
             if first_use_case:
                 pairs.append((
                     f"How would I adapt the {tname.replace('_', ' ')} template for {first_use_case.lower()}?",
-                    f"Starting from the {tname.replace('_', ' ')} template:\n\n{sql}\n\nAdapt it for: {first_use_case}",
+                    f"Starting from the {tname.replace('_', ' ')} template:\n\n{body}\n\nAdapt it for: {first_use_case}",
                 ))
 
-        # Use-case × template cross questions (first 5 × first 5)
         for uc in use_cases_list[:5]:
             for tname, tval in template_items[:5]:
-                sql = (tval.get("sql") or tval.get("content") or "").strip()
-                if not sql:
+                body = (tval.get("content") or "").strip()
+                if not body:
                     continue
                 tdisp = tname.replace("_", " ")
                 pairs.append((
                     f"Which {fn} template would you use for {uc.lower()}?",
-                    f"For '{uc}', the {tdisp} template is a good starting point:\n\n{sql}",
+                    f"For '{uc}', the {tdisp} template is a good starting point:\n\n{body}",
                 ))
                 pairs.append((
                     f"Adapt the {tdisp} template to solve: {uc.lower()}",
-                    f"Base template ({tdisp}):\n\n{sql}\n\nAdapt the pattern and result clauses for: {uc}",
+                    f"Base template ({tdisp}):\n\n{body}\n\nAdapt it for: {uc}",
                 ))
 
     # -- Examples -------------------------------------------------------------
     examples = pattern.get("examples", [])
     if isinstance(examples, list) and fn:
-        # Canonical "Show me an example of nPath SQL" -> full SQL (fixes wrong filesystem-path answers)
-        first_sql = ""
+        first_example_body = ""
         for ex in examples:
             if isinstance(ex, dict):
-                sq = (ex.get("sql") or "").strip()
-                if sq:
-                    first_sql = sq
+                body = (ex.get("content") or ex.get("expected_result") or "").strip()
+                if body:
+                    first_example_body = body
                     break
-        if first_sql:
-            short = (pattern.get("teradata_function") or fn or "").strip()
-            if short.upper() == "NPATH":
-                short = "nPath"
-            pairs.append((f"Show me an example of {short} SQL.", first_sql))
-            pairs.append((f"Show me an example of {short}.", first_sql))
+        if first_example_body:
+            short = (pattern.get("pattern_alias") or fn or "").strip()
+            pairs.append((f"Show me an example of {short}.", first_example_body))
             if short != fn:
-                pairs.append((f"Show me an example of {fn} SQL.", first_sql))
+                pairs.append((f"Show me an example of {fn}.", first_example_body))
 
         for ex in examples:
-            if not isinstance(ex, dict):
+            if isinstance(ex, dict):
+                exname = (ex.get("name") or "").strip()
+                exdesc = (ex.get("description") or exname).strip()
+                expected = (ex.get("expected_result") or "").strip()
+                ex_params = ex.get("parameters", {})
+                ex_body = (ex.get("content") or "").strip()
+                content = expected or ex_body or exdesc
+            elif isinstance(ex, str) and ex.strip():
+                content = ex.strip()
+                exname = exdesc = expected = ex_params = ex_body = ""
+            else:
                 continue
-            exname = (ex.get("name") or "").strip()
-            exdesc = (ex.get("description") or exname).strip()
-            expected = (ex.get("expected_result") or "").strip()
-            ex_params = ex.get("parameters", {})
-            ex_sql = (ex.get("sql") or "").strip()
-            content = expected or ex_sql or exdesc
             if not content:
                 continue
 
@@ -352,14 +351,13 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                     f"Pattern: {pat_val}\n\n{expected}" if expected else f"Pattern: {pat_val}",
                 ))
 
-            # Expanded example questions
             if exname:
-                pairs.append((f"Explain the {fn} query for '{exname}'.", content))
+                pairs.append((f"Explain the {fn} example for '{exname}'.", content))
                 pairs.append((
-                    f"What business question does the '{exname}' {fn} example answer?",
+                    f"What question does the '{exname}' {fn} example answer?",
                     f"The '{exname}' example addresses: {exdesc}\n\n{content}",
                 ))
-                pairs.append((f"What output would you expect from the '{exname}' {fn} example?", content))
+                pairs.append((f"What outcome would you expect from the '{exname}' {fn} example?", content))
                 if ex_params:
                     pairs.append((
                         f"What are the key parameters shown in the '{exname}' {fn} example?",
@@ -448,7 +446,7 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                     pairs.append((f"Why is '{topic}' important when using {fn}?", bpv_str))
                     pairs.append((f"What happens if you ignore '{topic}' in {fn}?", bpv_str))
 
-    # -- Pattern syntax (nPath-style) ----------------------------------------
+    # -- Pattern syntax (sequence / operator blocks) -------------------------
     pattern_syntax = pattern.get("pattern_syntax", {})
     if isinstance(pattern_syntax, dict) and fn:
         operators = pattern_syntax.get("operators", [])
@@ -569,26 +567,30 @@ def generate_multiturn_from_pattern(pattern: Dict) -> Optional[List[Dict]]:
     if isinstance(templates, dict):
         for tname, tval in templates.items():
             if isinstance(tval, dict):
-                sql = (tval.get("sql") or tval.get("content") or "").strip()
-                if sql:
+                body = (tval.get("content") or "").strip()
+                if body:
                     tdesc = (tval.get("description") or tname.replace("_", " ")).strip()
                     turns += [
                         {"role": "user", "content": f"Can you show me the syntax for {fn}?"},
-                        {"role": "assistant", "content": f"{tdesc}:\n\n{sql}"},
+                        {"role": "assistant", "content": f"{tdesc}:\n\n{body}"},
                     ]
                     break
 
-    # First concrete example
     if isinstance(examples, list) and examples:
         ex = examples[0]
         if isinstance(ex, dict):
             exname = (ex.get("name") or "").strip()
-            expected = (ex.get("expected_result") or "").strip()
-            if exname and expected:
-                turns += [
-                    {"role": "user", "content": "Can you show me a concrete example?"},
-                    {"role": "assistant", "content": expected},
-                ]
+            expected = (ex.get("expected_result") or ex.get("content") or "").strip()
+        elif isinstance(ex, str):
+            exname = ""
+            expected = ex.strip()
+        else:
+            expected = ""
+        if expected:
+            turns += [
+                {"role": "user", "content": "Can you show me a concrete example?"},
+                {"role": "assistant", "content": expected},
+            ]
 
     # Gotchas
     if common_errors:
@@ -611,27 +613,27 @@ def generate_multiturn_from_pattern(pattern: Dict) -> Optional[List[Dict]]:
 
 
 def _build_debug_conversation(pattern: Dict, fn: str, desc: str) -> Optional[List[Dict]]:
-    """Multi-turn: debug angle — diagnosing a query that returns no results."""
+    """Multi-turn: debug angle — diagnosing an example that does not work as expected."""
     common_errors = pattern.get("common_errors", [])
     templates = pattern.get("templates", {})
-    first_sql = ""
+    first_body = ""
     if isinstance(templates, dict):
         for tval in templates.values():
             if isinstance(tval, dict):
-                sql = (tval.get("sql") or tval.get("content") or "").strip()
-                if sql:
-                    first_sql = sql
+                body = (tval.get("content") or "").strip()
+                if body:
+                    first_body = body
                     break
-    if not first_sql and not common_errors:
+    if not first_body and not common_errors:
         return None
     turns: List[Dict] = [
-        {"role": "user", "content": f"I ran an {fn} query and it returned no results. How do I debug it?"},
-        {"role": "assistant", "content": f"{fn} returning no results usually means the PATTERN didn't match any event sequences, the PARTITION data is too sparse, or the SYMBOLS clause is filtering too aggressively.\n\nDescription of {fn}: {desc}"},
+        {"role": "user", "content": f"My {fn} example did not produce the expected outcome. How do I debug it?"},
+        {"role": "assistant", "content": f"When {fn} fails or looks wrong, check inputs, required parameters, and common pitfalls first.\n\nDescription of {fn}: {desc}"},
     ]
-    if first_sql:
+    if first_body:
         turns += [
-            {"role": "user", "content": "Can you show me a diagnostic query I can start with?"},
-            {"role": "assistant", "content": f"Start with this template and verify each clause:\n\n{first_sql}"},
+            {"role": "user", "content": "Can you show me a diagnostic example I can start with?"},
+            {"role": "assistant", "content": f"Start with this template and verify each step:\n\n{first_body}"},
         ]
     if common_errors:
         error_lines = [
@@ -648,7 +650,7 @@ def _build_debug_conversation(pattern: Dict, fn: str, desc: str) -> Optional[Lis
 
 
 def _build_performance_conversation(pattern: Dict, fn: str, desc: str) -> Optional[List[Dict]]:
-    """Multi-turn: performance angle — optimizing a query."""
+    """Multi-turn: performance angle — improving efficiency or reliability."""
     best_practices_raw = pattern.get("best_practices")
     if isinstance(best_practices_raw, str):
         bp = best_practices_raw.strip()
@@ -663,8 +665,8 @@ def _build_performance_conversation(pattern: Dict, fn: str, desc: str) -> Option
     if not bp and not gl:
         return None
     turns: List[Dict] = [
-        {"role": "user", "content": f"How do I make {fn} queries run faster?"},
-        {"role": "assistant", "content": f"Performance of {fn} depends on partition size, data ordering, and pattern complexity. {desc}"},
+        {"role": "user", "content": f"How do I use {fn} more efficiently?"},
+        {"role": "assistant", "content": f"Efficiency for {fn} depends on scope, data quality, and following recommended practices. {desc}"},
     ]
     if bp:
         turns += [
@@ -680,24 +682,24 @@ def _build_performance_conversation(pattern: Dict, fn: str, desc: str) -> Option
 
 
 def _build_migration_conversation(pattern: Dict, fn: str, desc: str) -> Optional[List[Dict]]:
-    """Multi-turn: migration angle — rewriting traditional SQL to use this function."""
+    """Multi-turn: adoption angle — moving from an older approach to this pattern."""
     related = pattern.get("related_patterns", [])
     templates = pattern.get("templates", {})
-    first_sql = ""
+    first_body = ""
     if isinstance(templates, dict):
         for tval in templates.values():
             if isinstance(tval, dict):
-                sql = (tval.get("sql") or tval.get("content") or "").strip()
-                if sql:
-                    first_sql = sql
+                body = (tval.get("content") or "").strip()
+                if body:
+                    first_body = body
                     break
-    if not first_sql:
+    if not first_body:
         return None
     turns: List[Dict] = [
-        {"role": "user", "content": f"I'm currently using CASE statements and self-joins for path analysis. Should I switch to {fn}?"},
-        {"role": "assistant", "content": f"{fn} is designed to replace complex CASE/self-join patterns for path analysis. {desc}"},
-        {"role": "user", "content": f"What does a basic {fn} query look like?"},
-        {"role": "assistant", "content": first_sql},
+        {"role": "user", "content": f"We currently handle this manually with ad hoc steps. Should we adopt {fn}?"},
+        {"role": "assistant", "content": f"{fn} provides a structured approach that can replace inconsistent manual workflows. {desc}"},
+        {"role": "user", "content": f"What does a basic {fn} example look like?"},
+        {"role": "assistant", "content": first_body},
     ]
     if related:
         rel_str = ", ".join(str(r) for r in related[:3])

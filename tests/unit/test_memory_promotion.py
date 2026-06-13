@@ -20,8 +20,8 @@ pytestmark = pytest.mark.unit
 # ---------------------------------------------------------------------------
 
 def _make_record(
-    question: str = "What is CSUM?",
-    answer:   str = "CSUM computes a cumulative sum over a column in Teradata SQL.",
+    question: str = "What is hypertension?",
+    answer:   str = "Hypertension computes a cumulative sum over a column in Clinical SQL.",
     approved: object = None,
     kb_used:  bool   = False,
     rid:      str    = "abc123",
@@ -56,7 +56,7 @@ class TestScoredInteraction:
         r  = _make_record(rid="id1")
         si = ScoredInteraction(record=r)
         assert si.id       == "id1"
-        assert si.question == "What is CSUM?"
+        assert si.question == "What is hypertension?"
         assert si.approved is None
 
     def test_age_increases(self):
@@ -102,10 +102,10 @@ class TestRelevanceScorer:
 
     def test_similar_questions_boost_frequency(self):
         scorer = RelevanceScorer()
-        target = ScoredInteraction(record=_make_record(question="What is CSUM function?", rid="t1"))
+        target = ScoredInteraction(record=_make_record(question="What is hypertension function?", rid="t1"))
         pool   = [
-            ScoredInteraction(record=_make_record(question="What is CSUM?", rid="p1")),
-            ScoredInteraction(record=_make_record(question="How does CSUM work?", rid="p2")),
+            ScoredInteraction(record=_make_record(question="What is hypertension?", rid="p1")),
+            ScoredInteraction(record=_make_record(question="How does Hypertension work?", rid="p2")),
         ]
         _, detail_with    = scorer.score(target, pool)
         _, detail_without = scorer.score(target, [])
@@ -202,7 +202,7 @@ class TestPromotionRun:
         cfg.promotion_threshold = 0.0   # always promote
         pipeline = PromotionPipeline(config=cfg)
         pipeline.ingest(_make_record(approved=True, kb_used=True,
-                                     answer="CSUM computes cumulative sums. " * 10,
+                                     answer="Hypertension computes cumulative sums. " * 10,
                                      rid="r1"))
         result = pipeline.run()
         assert result["short_promoted"] >= 0   # may be 0 if score < threshold
@@ -270,14 +270,14 @@ class TestPersistence:
         cfg.promotion_threshold = 0.0
         p   = PromotionPipeline(config=cfg)
 
-        si = p.ingest(_make_record(question="CSUM cumulative sum Teradata", rid="s1"))
+        si = p.ingest(_make_record(question="Hypertension cumulative sum Clinical", rid="s1"))
         si.relevance = 0.90
         p._short.clear()
         p._mid.append(si)
         si.tier = MemoryTier.MID_TERM
         p.run()
 
-        hits = p.search_long_term("CSUM Teradata")
+        hits = p.search_long_term("Hypertension Clinical")
         assert len(hits) >= 1
 
 

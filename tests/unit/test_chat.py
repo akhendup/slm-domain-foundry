@@ -94,7 +94,7 @@ class TestRunDemoInteractive:
         mock_model, mock_tokenizer = self._setup(tmp_path)
         with patch("app.chat.load_model", return_value=(mock_model, mock_tokenizer)), \
              patch("app.chat.generate_response", return_value="Response"), \
-             patch("builtins.input", side_effect=["What is CSUM?", "quit"]):
+             patch("builtins.input", side_effect=["What is hypertension?", "quit"]):
             from app.chat import run_demo
             run_demo(tmp_path, interactive=True)
 
@@ -197,16 +197,16 @@ class TestRunDemoOllama:
     def test_prints_responses(self, capsys):
         from unittest.mock import patch
         from app.chat import run_demo_ollama
-        with patch("app.chat._chat_with_ollama", return_value="The CSUM answer"):
+        with patch("app.chat._chat_with_ollama", return_value="The hypertension answer"):
             run_demo_ollama("http://localhost:11434", "llama3", interactive=False)
         captured = capsys.readouterr()
-        assert "The CSUM answer" in captured.out
+        assert "The hypertension answer" in captured.out
 
     def test_interactive_exits_on_quit(self, capsys):
         from unittest.mock import patch
         from app.chat import run_demo_ollama
         with patch("app.chat._chat_with_ollama", return_value="Response"), \
-             patch("builtins.input", side_effect=["What is CSUM?", "quit"]):
+             patch("builtins.input", side_effect=["What is hypertension?", "quit"]):
             run_demo_ollama("http://localhost:11434", "llama3", interactive=True)
 
     def test_interactive_exits_on_keyboard_interrupt(self, capsys):
@@ -229,11 +229,11 @@ class TestChatWithOllama:
         mock_resp = MagicMock()
         mock_resp.ok = True
         mock_resp.json.return_value = {
-            "choices": [{"message": {"content": "CSUM computes a cumulative sum."}}]
+            "choices": [{"message": {"content": "Hypertension is chronic elevation of blood pressure."}}]
         }
         with patch("requests.post", return_value=mock_resp):
-            result = _chat_with_ollama("What is CSUM?", [], "http://localhost:11434", "llama3")
-        assert result == "CSUM computes a cumulative sum."
+            result = _chat_with_ollama("What is hypertension?", [], "http://localhost:11434", "llama3")
+        assert result == "Hypertension is chronic elevation of blood pressure."
 
     def test_returns_error_message_on_connection_error(self):
         from unittest.mock import patch

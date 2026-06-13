@@ -21,7 +21,7 @@ except ImportError:
     SEMANTIC_AVAILABLE = False
 
 
-def is_sql_paragraph(para: str) -> bool:
+def is_structured_paragraph(para: str) -> bool:
     """True if paragraph contains structured domain content that should stay intact."""
     return has_structured_content(para)
 
@@ -49,21 +49,21 @@ def chunk_text(
     return _chunk_rule_based(text, chunk_size, chunk_overlap)
 
 
-def chunk_text_sql_aware(
+def chunk_text_structured_aware(
     text: str,
     chunk_size: int = 1000,
     chunk_overlap: int = 200,
 ) -> List[str]:
     """
-    Like chunk_text but treats SQL-containing paragraphs as atomic units:
+    Like chunk_text but treats structured paragraphs as atomic units:
     they are never split across chunks and never included in the overlap
-    carry-over (so SQL context is always complete within a chunk).
+    carry-over (so structured context is always complete within a chunk).
     """
     if not text or not text.strip():
         return []
     if len(text) <= chunk_size:
         return [text.strip()]
-    return _chunk_rule_based_sql_aware(text, chunk_size, chunk_overlap)
+    return _chunk_rule_based_structured_aware(text, chunk_size, chunk_overlap)
 
 
 def _chunk_rule_based(text: str, chunk_size: int, overlap: int) -> List[str]:
@@ -103,10 +103,10 @@ def _chunk_rule_based(text: str, chunk_size: int, overlap: int) -> List[str]:
     return chunks
 
 
-def _chunk_rule_based_sql_aware(text: str, chunk_size: int, overlap: int) -> List[str]:
+def _chunk_rule_based_structured_aware(text: str, chunk_size: int, overlap: int) -> List[str]:
     """
-    Rule-based chunking that keeps SQL paragraphs whole.
-    SQL paragraphs are:
+    Rule-based chunking that keeps structured paragraphs whole.
+    Structured paragraphs are:
     - Never split across chunks (added to current or emitted as their own chunk)
     - Never included in the overlap carry-over region
     """
@@ -119,18 +119,17 @@ def _chunk_rule_based_sql_aware(text: str, chunk_size: int, overlap: int) -> Lis
         para = para.strip()
         if not para:
             continue
-        sql = is_sql_paragraph(para)
+        structured = is_structured_paragraph(para)
         n = len(para) + 2
 
         if current_len + n > chunk_size and current:
             chunks.append("\n\n".join(current))
-            # Overlap: carry over recent non-SQL paragraphs only
             if overlap > 0:
                 overlap_paras: List[str] = []
                 overlap_len = 0
                 for p in reversed(current):
-                    if is_sql_paragraph(p):
-                        break  # never include SQL in overlap
+                    if is_structured_paragraph(p):
+                        break
                     if overlap_len + len(p) <= overlap:
                         overlap_paras.insert(0, p)
                         overlap_len += len(p)

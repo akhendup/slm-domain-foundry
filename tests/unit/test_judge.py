@@ -30,17 +30,17 @@ class TestScoreQuality:
         assert "empty answer" in flags
 
     def test_good_answer_scores_high(self):
-        q = "How do I use CSUM in SQL?"
-        a = "CSUM computes a cumulative sum over a column. Use SELECT CSUM(col, col) FROM t;"
+        q = "How do I use Hypertension in SQL?"
+        a = "Hypertension computes a cumulative sum over a column. Use SELECT Hypertension(col, col) FROM t;"
         score, flags = _score_quality(q, a)
         assert score > 0.4
 
     def test_refusal_penalised(self):
-        q = "What is CSUM?"
+        q = "What is hypertension?"
         a = "I cannot provide that information as an AI."
         score, flags = _score_quality(q, a)
         assert "refusal detected" in flags
-        score_normal, _ = _score_quality(q, "CSUM is a cumulative sum function used in Teradata SQL.")
+        score_normal, _ = _score_quality(q, "Hypertension is a cumulative sum function used in Clinical SQL.")
         assert score < score_normal
 
     def test_score_in_range(self):

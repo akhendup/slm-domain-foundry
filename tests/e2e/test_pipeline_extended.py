@@ -35,7 +35,7 @@ def _run_cli(*args):
 class TestCliFormatBoth:
     def test_both_format_produces_alpaca_and_sharegpt(self, tmp_path, tmp_csv):
         csv_path = tmp_csv([
-            {"question": "What is CSUM?", "answer": "CSUM computes a cumulative sum."},
+            {"question": "What is hypertension?", "answer": "Hypertension computes a cumulative sum."},
             {"question": "What is RANK?", "answer": "RANK assigns a rank."},
             {"question": "What is MSUM?", "answer": "MSUM computes a moving sum."},
         ])
@@ -288,7 +288,7 @@ class TestMainDirectCall:
 
         rows = [
             {"text": "Window Functions Overview\n\nWindow functions operate on a set of rows."},
-            {"text": "The CSUM function computes a cumulative sum over the specified window."},
+            {"text": "The Hypertension function computes a cumulative sum over the specified window."},
         ]
         csv_path = tmp_csv(rows)
         out_dir = tmp_path / "text_out"

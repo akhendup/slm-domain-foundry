@@ -139,9 +139,9 @@ class TestTextToQaHeuristic:
         qs = [q for q, _ in result]
         assert any("Cumulative" in q or "Sum" in q for q in qs)
 
-    def test_sql_chunk_generates_qa(self):
+    def test_structured_chunk_generates_qa(self):
         chunk = textwrap.dedent("""\
-            SELECT id, CSUM(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total
+            SELECT id, Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total
             FROM orders;
         """)
         result = text_to_qa_heuristic([chunk], source="ref.pdf")

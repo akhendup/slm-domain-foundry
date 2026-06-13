@@ -333,16 +333,15 @@ class CurriculumSorter:
         Range: 0.50–0.75 (medium band) so they sit between errors.
         """
         word_count = len(text.split())
-        has_sql    = bool(re.search(
-            r"\b(SELECT|FROM|WHERE|JOIN|GROUP BY|ORDER BY)\b", text, re.IGNORECASE
+        has_structured = bool(re.search(
+            r"\b(patient|medication|treatment|diagnosis|protocol|dosage)\b", text, re.IGNORECASE
         ))
         has_code   = "```" in text or bool(re.search(r"\bdef\b|\bclass\b", text))
 
-        # Short prose → 0.72; long code → 0.55
         base = 0.72
         if word_count > 100:
             base -= 0.10
-        if has_sql or has_code:
+        if has_structured or has_code:
             base -= 0.05
         return max(0.50, min(base, 0.75))
 

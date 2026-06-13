@@ -34,11 +34,11 @@ from data.manual_extractor import (
     generate_typed_qa,
     generate_multiturn_conversation,
     deduplicate_qa_pairs,
-    has_sql_content,
-    extract_sql_blocks,
+    has_structured_content,
+    extract_structured_blocks,
     extract_figure_captions,
 )
-from data.chunking import chunk_text, chunk_text_sql_aware, is_sql_paragraph
+from data.chunking import chunk_text, chunk_text_structured_aware, is_structured_paragraph
 
 
 def hr(char: str = "─", width: int = 72) -> str:
@@ -153,7 +153,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         arg_len = sum(len(x) for x in parsed["arguments"])
         note_len = sum(len(x) for x in parsed["notes"])
         ex_count = len(parsed["examples"])
-        sql_blocks = extract_sql_blocks(s["text"])
+        sql_blocks = extract_structured_blocks(s["text"])
         captions = extract_figure_captions(s["text"])
         emit(f"\n  ── {parsed['heading']} (pages {s['page_start']}–{s['page_end']}) ──")
         emit(f"     description : {desc_len} chars")
@@ -189,7 +189,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
     q_types: dict = {
         "What is / Describe / Purpose": 0,
         "When to use / Problem solved": 0,
-        "Syntax / SQL expression": 0,
+        "Syntax / structured expression": 0,
         "Arguments / Parameters": 0,
         "Example / Demonstrate / SQL": 0,
         "Usage notes / Prerequisites / Gotchas": 0,
@@ -199,7 +199,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
     for q, _ in deduped:
         ql = q.lower()
         if "syntax" in ql or "write a sql" in ql or "expression" in ql or "write a " in ql:
-            q_types["Syntax / SQL expression"] += 1
+            q_types["Syntax / structured expression"] += 1
         elif "argument" in ql or "parameter" in ql:
             q_types["Arguments / Parameters"] += 1
         elif "example" in ql or "demonstrate" in ql or "show me" in ql or "sql demonstrates" in ql:
@@ -242,18 +242,18 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         if (p.get("text") or "").strip()
     )
     old_chunks = chunk_text(full_text, chunk_size=800, chunk_overlap=150)
-    new_chunks = chunk_text_sql_aware(full_text, chunk_size=800, chunk_overlap=150)
+    new_chunks = chunk_text_structured_aware(full_text, chunk_size=800, chunk_overlap=150)
 
-    sql_old = sum(1 for c in old_chunks if is_sql_paragraph(c))
-    sql_new = sum(1 for c in new_chunks if is_sql_paragraph(c))
+    sql_old = sum(1 for c in old_chunks if is_structured_paragraph(c))
+    sql_new = sum(1 for c in new_chunks if is_structured_paragraph(c))
 
     emit(f"  chunk_text (legacy)     : {len(old_chunks)} chunks, {sql_old} contain SQL")
-    emit(f"  chunk_text_sql_aware    : {len(new_chunks)} chunks, {sql_new} contain SQL")
+    emit(f"  chunk_text_structured_aware    : {len(new_chunks)} chunks, {sql_new} contain SQL")
     emit(f"  (SQL-aware preserves SQL blocks whole; overlap skips SQL paragraphs)")
 
     if verbose:
         # Show a SQL-containing chunk if any
-        sql_sample = next((c for c in new_chunks if is_sql_paragraph(c)), None)
+        sql_sample = next((c for c in new_chunks if is_structured_paragraph(c)), None)
         if sql_sample:
             emit(f"\n  Sample SQL-containing chunk:")
             emit(f"  {sql_sample[:400]}")

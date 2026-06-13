@@ -131,15 +131,15 @@ class TestParseErrors:
 class TestFormToPattern:
     def _minimal_form(self):
         return {
-            "title": "CSUM",
-            "description": "Computes a cumulative sum over a defined window partition.",
+            "title": "Hypertension",
+            "description": "Chronic elevation of blood pressure that increases cardiovascular risk.",
         }
 
     def test_minimal_required_fields(self):
         pattern = form_to_pattern(self._minimal_form())
-        assert pattern["name"] == "csum"
-        assert pattern["title"] == "CSUM"
-        assert pattern["description"] == "Computes a cumulative sum over a defined window partition."
+        assert pattern["name"] == "hypertension"
+        assert pattern["title"] == "Hypertension"
+        assert pattern["description"] == "Chronic elevation of blood pressure that increases cardiovascular risk."
         assert pattern["_source"] == "user_library"
 
     def test_name_slug_from_title(self):
@@ -160,22 +160,25 @@ class TestFormToPattern:
         assert "parameters" in pattern
         assert pattern["parameters"][0]["name"] == "col"
 
-    def test_sql_becomes_template(self):
+    def test_worked_example_becomes_template(self):
         form = {
             **self._minimal_form(),
-            "sql_example": "SELECT CSUM(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;",
-            "sql_description": "Running total per id",
+            "worked_example": (
+                "Case: repeated office readings above target.\n"
+                "Treatment plan: lifestyle counseling plus first-line antihypertensive therapy."
+            ),
+            "example_summary": "Initial hypertension management plan",
         }
         pattern = form_to_pattern(form)
         assert "templates" in pattern
-        assert "SELECT CSUM" in pattern["templates"]["example"]["sql"]
+        assert "Treatment plan" in pattern["templates"]["example"]["content"]
 
-    def test_sql_plus_output_becomes_example(self):
+    def test_worked_example_plus_output_becomes_example(self):
         form = {
             **self._minimal_form(),
-            "sql_example": "SELECT CSUM(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;",
-            "sql_description": "Running total",
-            "example_output": "id | total\n1  | 100",
+            "worked_example": "Treatment plan: initiate ACE inhibitor therapy for the patient.",
+            "example_summary": "First-line therapy",
+            "example_output": "BP 128/78 mmHg at four-week follow-up",
         }
         pattern = form_to_pattern(form)
         assert "examples" in pattern
@@ -184,15 +187,15 @@ class TestFormToPattern:
     def test_errors_parsed(self):
         form = {
             **self._minimal_form(),
-            "common_errors_text": "Missing ORDER: Add ORDER BY inside OVER",
+            "common_errors_text": "Missed follow-up: Reassess blood pressure within four weeks",
         }
         pattern = form_to_pattern(form)
         assert "common_errors" in pattern
 
     def test_best_practices_included(self):
-        form = {**self._minimal_form(), "best_practices": "Always specify ORDER BY."}
+        form = {**self._minimal_form(), "best_practices": "Confirm elevated readings before starting long-term therapy."}
         pattern = form_to_pattern(form)
-        assert pattern["best_practices"] == "Always specify ORDER BY."
+        assert pattern["best_practices"] == "Confirm elevated readings before starting long-term therapy."
 
     def test_default_category(self):
         pattern = form_to_pattern(self._minimal_form())

@@ -35,7 +35,7 @@ class TestIsTocPage:
 
     def test_positive_dot_leaders(self):
         text = (
-            "CSUM ....... 42\n"
+            "Hypertension ....... 42\n"
             "MSUM ....... 56\n"
             "RANK ....... 78\n"
             "ROW_NUMBER .. 90\n"
@@ -44,7 +44,7 @@ class TestIsTocPage:
 
     def test_negative_regular_content(self):
         text = (
-            "The CSUM function computes a cumulative sum over a window partition.\n"
+            "The Hypertension function computes a cumulative sum over a window partition.\n"
             "It takes two arguments: a value expression and an ordering column.\n"
             "Use PARTITION BY to define the groups.\n"
         )
@@ -63,7 +63,7 @@ class TestIsTocPage:
 
 class TestIsBoilerplatePage:
     def test_positive_copyright(self):
-        text = "Copyright 2023 Teradata. All rights reserved."
+        text = "Copyright 2023 Clinical. All rights reserved."
         assert is_boilerplate_page(text, page_num=1) is True
 
     def test_positive_nearly_empty(self):
@@ -102,7 +102,7 @@ class TestIsIndexPage:
             "B\n"
             "BETWEEN 67\n"
             "C\n"
-            "CSUM 89, 90, 91\n"
+            "Hypertension 89, 90, 91\n"
         )
         assert is_index_page(text) is True
 
@@ -201,7 +201,7 @@ class TestFilterPages:
 
 class TestDetectRunningHeadersFooters:
     def test_detects_repeated_header(self):
-        header = "Teradata SQL Reference Guide"
+        header = "Clinical Practice Guidelines Guide"
         footer = "Chapter 3"
         pages = []
         for i in range(10):
@@ -209,7 +209,7 @@ class TestDetectRunningHeadersFooters:
             pages.append({"text": text, "page": i})
         headers, footers = detect_running_headers_footers(pages, min_freq=0.35)
         # Normalized header should be detected
-        assert any("teradata sql reference guide" in h for h in headers)
+        assert any("clinical practice guidelines guide" in h for h in headers)
 
     def test_no_detection_few_pages(self):
         pages = [{"text": "Content on page.", "page": i} for i in range(2)]
@@ -230,10 +230,10 @@ class TestDetectRunningHeadersFooters:
 
 class TestStripRunningHeadersFooters:
     def test_strips_header_line(self):
-        text = "teradata sql reference\nReal content line one.\nMore real content here."
-        headers = {"teradata sql reference"}
+        text = "clinical practice guidelines\nReal content line one.\nMore real content here."
+        headers = {"clinical practice guidelines"}
         result = strip_running_headers_footers(text, headers, set())
-        assert "teradata sql reference" not in result.lower()
+        assert "clinical practice guidelines" not in result.lower()
         assert "Real content" in result
 
     def test_no_op_when_empty_sets(self):
@@ -243,8 +243,8 @@ class TestStripRunningHeadersFooters:
 
     def test_normalize_strips_page_numbers(self):
         """_normalize_for_hf should strip leading/trailing page numbers."""
-        assert _normalize_for_hf("42 Teradata Reference") == "teradata reference"
-        assert _normalize_for_hf("Teradata Reference 42") == "teradata reference"
+        assert _normalize_for_hf("42 Clinical Reference") == "clinical reference"
+        assert _normalize_for_hf("Clinical Reference 42") == "clinical reference"
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ class TestStripRunningHeadersFooters:
 class TestGenerateTypedQaTechnical:
     def _parsed(self, **kwargs):
         base = {
-            "heading": "CSUM",
+            "heading": "Hypertension",
             "description": [],
             "syntax": [],
             "arguments": [],
@@ -269,42 +269,42 @@ class TestGenerateTypedQaTechnical:
         """SYNTAX_QUESTIONS templates must appear as questions for syntax sections."""
         from data.question_templates import SYNTAX_QUESTIONS
         parsed = self._parsed(
-            syntax=["CSUM(value, reset_value) OVER (PARTITION BY x ORDER BY y)"]
+            syntax=["Hypertension(value, reset_value) OVER (PARTITION BY x ORDER BY y)"]
         )
-        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        pairs = generate_typed_qa(parsed, source_label="Hypertension")
         questions = [q for q, _ in pairs]
         # At least one SYNTAX_QUESTIONS template should appear
-        filled = [t.format(fn="CSUM") for t in SYNTAX_QUESTIONS]
+        filled = [t.format(fn="Hypertension") for t in SYNTAX_QUESTIONS]
         assert any(q in questions for q in filled)
 
     def test_argument_uses_shared_templates(self):
         """ARGUMENT_QUESTIONS templates must appear for argument sections."""
         from data.question_templates import ARGUMENT_QUESTIONS
         parsed = self._parsed(arguments=["value: numeric expression to accumulate"])
-        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        pairs = generate_typed_qa(parsed, source_label="Hypertension")
         questions = [q for q, _ in pairs]
-        filled = [t.format(fn="CSUM") for t in ARGUMENT_QUESTIONS]
+        filled = [t.format(fn="Hypertension") for t in ARGUMENT_QUESTIONS]
         assert any(q in questions for q in filled)
 
     def test_notes_uses_shared_templates(self):
         """NOTES_QUESTIONS templates must appear for notes sections."""
         from data.question_templates import NOTES_QUESTIONS
         parsed = self._parsed(notes=["Requires an ORDER BY clause inside OVER()."])
-        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        pairs = generate_typed_qa(parsed, source_label="Hypertension")
         questions = [q for q, _ in pairs]
-        filled = [t.format(fn="CSUM") for t in NOTES_QUESTIONS]
+        filled = [t.format(fn="Hypertension") for t in NOTES_QUESTIONS]
         assert any(q in questions for q in filled)
 
     def test_description_produces_multiple_pairs(self):
-        desc = ("CSUM computes a cumulative sum. "
+        desc = ("Hypertension computes a cumulative sum. "
                 "It is a window function that accumulates values across ordered rows.")
         parsed = self._parsed(description=[desc])
-        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        pairs = generate_typed_qa(parsed, source_label="Hypertension")
         assert len(pairs) >= 2
 
     def test_empty_section_produces_no_pairs(self):
         parsed = self._parsed()
-        pairs = generate_typed_qa(parsed, source_label="CSUM")
+        pairs = generate_typed_qa(parsed, source_label="Hypertension")
         # No content → no pairs (or only fallback if raw is set)
         assert isinstance(pairs, list)
 

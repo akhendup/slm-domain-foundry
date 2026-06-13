@@ -167,13 +167,13 @@ def build_context_block(patterns: List[Dict[str, Any]]) -> str:
             if param_names:
                 lines.append("Parameters: " + ", ".join(param_names))
 
-        # First SQL template
+        # First worked example template
         if isinstance(templates, dict):
             for tval in templates.values():
                 if isinstance(tval, dict):
-                    sql = (tval.get("sql") or "").strip()
-                    if sql:
-                        lines.append(f"Example SQL:\n```sql\n{sql}\n```")
+                    body = (tval.get("content") or "").strip()
+                    if body:
+                        lines.append(f"Worked example:\n{body}")
                     break
 
         # First 2 common errors
@@ -205,7 +205,7 @@ class KnowledgeRetriever:
 
     Usage:
         retriever = KnowledgeRetriever(library_dir)
-        context = retriever.get_context("What is nPath?", max_entries=2)
+        context = retriever.get_context("What is hypertension?", max_entries=2)
         # Returns formatted context string, or "" if nothing relevant found.
 
     Call `retriever.reload()` after the user adds a new library entry so the

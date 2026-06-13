@@ -466,7 +466,7 @@ class TestGetRetriever:
 class TestMemoryDropdownHelpers:
     def test_parse_interaction_id_from_string(self):
         from app.gradio_ui import _parse_interaction_id
-        choice = "abc123 | ✓ 2026-06-02 05:13  'What is CSUM?'"
+        choice = "abc123 | ✓ 2026-06-02 05:13  'What is hypertension?'"
         assert _parse_interaction_id(choice) == "abc123"
 
     def test_parse_interaction_id_from_list(self):

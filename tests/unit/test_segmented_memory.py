@@ -43,7 +43,7 @@ class TestExtractKeySentences:
     def test_empty(self):
         assert _extract_key_sentences("", 100) == ""
 
-    def test_sql_sentences_preferred(self):
+    def test_structured_sentences_preferred(self):
         text = (
             "This is an unrelated sentence. "
             "Use SELECT col FROM table WHERE id = 1. "
@@ -138,7 +138,7 @@ class TestKernel:
 class TestL1:
     def test_add_single_turn(self):
         mem = SegmentedMemory()
-        mem.add_turn("user", "What is CSUM?")
+        mem.add_turn("user", "What is hypertension?")
         msgs = mem.get_l1_messages()
         assert len(msgs) == 1
         assert msgs[0]["role"] == "user"

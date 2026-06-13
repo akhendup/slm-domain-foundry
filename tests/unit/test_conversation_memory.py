@@ -347,18 +347,18 @@ class TestMineFrequentQuestions:
         assert mine_frequent_questions(tmp_path) == []
 
     def test_no_repeats_below_min_count(self, tmp_path):
-        log_interaction(tmp_path, "What is CSUM?", "CSUM is cumulative sum.")
+        log_interaction(tmp_path, "What is hypertension?", "Hypertension is cumulative sum.")
         log_interaction(tmp_path, "What is RANK?", "RANK assigns a rank.")
         assert mine_frequent_questions(tmp_path, min_count=2) == []
 
     def test_finds_repeated_questions(self, tmp_path):
         for _ in range(3):
-            log_interaction(tmp_path, "What is CSUM?", "CSUM is cumulative sum.")
+            log_interaction(tmp_path, "What is hypertension?", "Hypertension is cumulative sum.")
         log_interaction(tmp_path, "What is RANK?", "RANK assigns a rank.")
         result = mine_frequent_questions(tmp_path, min_count=2)
         assert len(result) == 1
         q, count, answer = result[0]
-        assert "csum" in q.lower() or "CSUM" in q
+        assert "hypertension" in q.lower() or "Hypertension" in q
         assert count == 3
 
     def test_sorted_by_count_desc(self, tmp_path):
@@ -391,9 +391,9 @@ class TestMineFrequentQuestions:
         assert isinstance(answer, str)
 
     def test_normalises_case_and_punctuation(self, tmp_path):
-        log_interaction(tmp_path, "What is CSUM?", "Answer 1.")
+        log_interaction(tmp_path, "What is hypertension?", "Answer 1.")
         log_interaction(tmp_path, "what is csum", "Answer 2.")
-        log_interaction(tmp_path, "What is CSUM!", "Answer 3.")
+        log_interaction(tmp_path, "What is hypertension!", "Answer 3.")
         result = mine_frequent_questions(tmp_path, min_count=2)
         # All three normalise to the same key
         assert len(result) >= 1

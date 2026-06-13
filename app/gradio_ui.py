@@ -824,7 +824,7 @@ def _make_qa_review_html(n_samples: int = 15) -> str:
     # Question-type breakdown
     q_types: dict = {
         "What is / Describe": 0,
-        "Syntax / SQL": 0,
+        "Syntax / structured": 0,
         "Arguments / Params": 0,
         "Example / Demo": 0,
         "Usage notes": 0,
@@ -833,7 +833,7 @@ def _make_qa_review_html(n_samples: int = 15) -> str:
     for _, q, _ in all_pairs:
         ql = q.lower()
         if "syntax" in ql or "write a" in ql or "expression" in ql:
-            q_types["Syntax / SQL"] += 1
+            q_types["Syntax / structured"] += 1
         elif "argument" in ql or "parameter" in ql:
             q_types["Arguments / Params"] += 1
         elif "example" in ql or "demonstrate" in ql or "show me" in ql:
@@ -1223,13 +1223,13 @@ def _make_qa_preview_html(qa_pairs: list, max_show: int = 10) -> str:
 
 def _kb_preview(
     title: str, description: str, use_cases_text: str, parameters_text: str,
-    sql_example: str, sql_description: str, example_output: str,
+    worked_example: str, example_summary: str, example_output: str,
     common_errors_text: str, best_practices: str, category: str,
 ) -> str:
     form_data = {
         "title": title, "description": description, "use_cases_text": use_cases_text,
-        "parameters_text": parameters_text, "sql_example": sql_example,
-        "sql_description": sql_description, "example_output": example_output,
+        "parameters_text": parameters_text, "worked_example": worked_example,
+        "example_summary": example_summary, "example_output": example_output,
         "common_errors_text": common_errors_text, "best_practices": best_practices,
         "category": category,
     }
@@ -1241,7 +1241,7 @@ def _kb_preview(
 
 def _kb_save(
     title: str, description: str, use_cases_text: str, parameters_text: str,
-    sql_example: str, sql_description: str, example_output: str,
+    worked_example: str, example_summary: str, example_output: str,
     common_errors_text: str, best_practices: str, category: str,
 ) -> Tuple[str, str]:
     """Save the form as a library entry. Returns (status_msg, library_html)."""
@@ -1251,8 +1251,8 @@ def _kb_save(
         return "Description is required.", _make_library_html()
     form_data = {
         "title": title, "description": description, "use_cases_text": use_cases_text,
-        "parameters_text": parameters_text, "sql_example": sql_example,
-        "sql_description": sql_description, "example_output": example_output,
+        "parameters_text": parameters_text, "worked_example": worked_example,
+        "example_summary": example_summary, "example_output": example_output,
         "common_errors_text": common_errors_text, "best_practices": best_practices,
         "category": category,
     }
@@ -2596,7 +2596,7 @@ def build_app() -> gr.Blocks:
                             label="Manual / documentation mode",
                             value=True,
                             info=(
-                                "Best for SQL manuals and technical docs. "
+                                "Best for technical manuals and structured domain docs. "
                                 "Filters TOC, headers/footers, and index pages; "
                                 "extracts section-aware Q&A with typed questions."
                             ),
