@@ -1,4 +1,4 @@
-# CPU / MPS (Mac) — works on any host:
+# CPU-only Linux container (works on any host, including Mac — no Metal/MPS):
 #   docker compose up --build
 #
 # NVIDIA GPU — merge the gpu override:

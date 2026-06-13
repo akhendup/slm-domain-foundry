@@ -24,8 +24,9 @@ flowchart LR
 ## Prerequisites
 
 - Python **3.10+**
-- **CUDA 11.8+** for GPU training with Unsloth (optional; CPU paths available)
-- **Docker** (optional, for reproducible environments)
+- **CUDA 11.8+** for GPU training with Unsloth on NVIDIA hardware (optional)
+- **Apple Silicon Mac** — native install + `run_local.sh` for MPS GPU training/inference (see below)
+- **Docker** (optional; Linux CPU in a container — **no MPS/GPU on Docker Desktop for Mac**)
 
 ## Quick start (medical example)
 
@@ -74,6 +75,37 @@ python -m train.finetune_unsloth \
 python -m app.gradio_ui --model-dir output_model
 # Open http://127.0.0.1:7860
 ```
+
+## Apple Silicon (Mac)
+
+The repo supports **three runtime paths**:
+
+| Hardware | Training | Inference |
+|----------|----------|-----------|
+| **NVIDIA CUDA** | `train/finetune_unsloth.py` (Unsloth + QLoRA) | Unsloth or transformers |
+| **Apple Silicon (MPS)** | `train/finetune_cpu.py` (HF Trainer + LoRA, float16) | `app/model_loader.py` on MPS |
+| **CPU only** | `train/finetune_cpu.py` | transformers / optional ONNX |
+
+On Mac, **do not use Docker for GPU training** — Docker runs Linux and cannot access Metal/MPS. Use the native launcher instead:
+
+```bash
+chmod +x run_local.sh
+./run_local.sh
+```
+
+That script creates a venv, installs deps (skips `bitsandbytes`, which has no macOS build), detects MPS, and starts the Gradio UI. The UI automatically selects **`finetune_cpu`** when CUDA/Unsloth is unavailable.
+
+CLI training on Mac:
+
+```bash
+python -m train.finetune_cpu \
+  --train-file training_data/train_sharegpt.jsonl \
+  --val-file training_data/val_sharegpt.jsonl \
+  --model-name unsloth/Llama-3.2-1B-Instruct \
+  --output-dir output_model
+```
+
+Use a smaller base model (1B–3B) on Apple Silicon for practical memory and speed.
 
 ## Configuration
 

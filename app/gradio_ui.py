@@ -224,6 +224,15 @@ def _get_device_label() -> str:
     return "CPU"
 
 
+def _training_device_type() -> str:
+    """Return cuda, mps, or cpu — used to pick the training backend and user warnings."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def _unsloth_available() -> bool:
     try:
         if torch.cuda.is_available():
@@ -1884,6 +1893,7 @@ def _run_training(
 ) -> Generator[Tuple[str, str, str, str, str], None, None]:
     """Yields (status_card, progress_bar, pipeline, quality, raw_log, chart, activity)."""
     device_label = _get_device_label()
+    device_type = _training_device_type()
     use_unsloth = _unsloth_available()
     script = "train.finetune_unsloth" if use_unsloth else "train.finetune_cpu"
 
@@ -1894,10 +1904,15 @@ def _run_training(
     warnings: List[str] = []
     error: Optional[str] = None
 
-    if "CPU" in device_label and not use_unsloth:
+    if device_type == "cpu":
         warnings.append(
             "Training on CPU is very slow. "
             "For a 1.1B model expect several minutes per step."
+        )
+    elif device_type == "mps":
+        warnings.append(
+            "Using Apple Silicon GPU (MPS) with HuggingFace Trainer + LoRA. "
+            "Unsloth is CUDA-only and is not used on Mac."
         )
 
     current_epoch = 0
