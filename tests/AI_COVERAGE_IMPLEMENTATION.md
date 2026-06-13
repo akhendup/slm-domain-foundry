@@ -31,18 +31,19 @@
 
 ---
 
-## Current baseline (as of 2026-06-02)
+## Current baseline (as of 2026-06-13)
 
-**Why this baseline exists:** Earlier work added real integration tests and fixed inference/training edge cases; coverage gate was set to 90% until `gradio_ui` and Unsloth training are fully exercised.
+**Why this baseline exists:** Phase 1 cleanup and MPS documentation are complete; CI holds at 75% until Gradio UI and CUDA-only Unsloth paths are fully exercised.
 
 | Item | Status |
 |------|--------|
-| Test count | ~1,196 tests passing (full `pytest tests/`) |
+| Test count | ~1,207 tests passing (full `pytest tests/`) |
 | Overall coverage | ~76% (`app`+`data`+`train`); `data/` ~92%; `app/gradio_ui.py` ~46% |
 | CI coverage gate | 75% (`.gitea/workflows/tests.yml`; long-term goal 100% on core modules) |
-| `tests/real/` | Real model load, PEFT, `finetune_cpu` in-process train, memory tab, swarm, Ollama live, sharegpt format |
-| Removed | `tests/unit/test_model_loader_extended.py` (mock-based `generate_response` tests) |
-| Code fixes | Chat template fallback (no template); LoRA targets for GPT-2; `train/sharegpt_format.py` shared formatter |
+| Domain fixtures | Medical default in `tests/conftest.py`; no SQL/Teradata test data |
+| `tests/real/` | Model load, PEFT, `finetune_cpu`, MPS suite, memory tab, swarm, Ollama live |
+| Apple Silicon | `tests/real/test_apple_silicon_mps.py` — 7 tests; macOS CI job |
+| Removed | Mock-heavy loader tests; all `sql_vocabulary` / Teradata fixtures |
 | Not installed locally | `unsloth` (Unsloth training body not executed on Mac without install + CUDA) |
 
 **Key files already added:**
@@ -63,7 +64,8 @@ Use this matrix when placing or skipping tests. **Apple Silicon is a first-class
 | **Local dev (Apple Silicon)** | macOS, MPS or CPU | `tests/real/` except `gpu`; `finetune_cpu` integration; `load_model` / `generate_response`; Gradio handler tests (in-process); Ollama if installed | `@pytest.mark.gpu` (CUDA-only Unsloth full train) |
 | **Local dev (Linux/Windows CPU)** | CPU only | Same as Mac CPU column | `gpu`, MPS-only assumptions |
 | **Local dev (NVIDIA GPU)** | CUDA | Everything including `@pytest.mark.gpu` Unsloth smoke | — |
-| **CI default (Gitea/GitHub)** | `ubuntu-latest`, CPU | `pytest tests/ -m "not gpu and not slow"` or full suite without slow; coverage `--cov-fail-under=90` | Optional: long `slow` train job |
+| **CI default (Gitea/GitHub)** | `ubuntu-latest`, CPU | Full suite minus MPS file on Linux; coverage `--cov-fail-under=75` | `@pytest.mark.gpu`, `slow` optional |
+| **CI macOS** | `macos-latest` | `pytest tests/real/test_apple_silicon_mps.py -m mps` | Linux MPS assumptions |
 | **CI GPU worker (recommended)** | `ubuntu` + CUDA + `unsloth` | `pytest -m gpu` minimal Unsloth 1-step train on tiny JSONL | Run only in dedicated job |
 | **Ollama optional** | Any host with `ollama serve` | `tests/real/test_ollama_live.py`, live branches in `test_ollama_client.py` | `pytest.skip` if `/api/tags` fails |
 
@@ -74,7 +76,7 @@ Use this matrix when placing or skipping tests. **Apple Silicon is a first-class
    - Do not assume CUDA or `bfloat16` in assertions.
 2. **`app/model_loader`** tests must pass on MPS when MPS is available (device auto-detected).
 3. **Do not** require Unsloth or CUDA for the default PR CI job on Mac runners.
-4. Add explicit test file if needed: `tests/real/test_apple_silicon_mps.py` (skip if MPS unavailable) that asserts `_get_device().type == "mps"` and runs one `generate_response` call.
+4. **`tests/real/test_apple_silicon_mps.py`** — implemented; runs on Mac CI and locally when MPS available.
 
 ### Phase B clarification: CPU vs GPU vs Unsloth
 
@@ -139,7 +141,7 @@ For each module below **&lt; 100%**, add or extend tests using **real files** un
 | `prepare_training_data.py` | CLI subprocess: `--csv sample_data/medical_qa.csv`, `--yaml-dir sample_data/patternexamples` | `tests/e2e/` |
 | `manual_extractor.py` | Run against synthetic manual PDF fixtures in `tests/e2e/test_pipeline_pdf.py` | Extend `tests/e2e/test_pipeline_pdf.py` |
 | `pattern_embedder.py` | Real YAML from `sample_data/patternexamples/hypertension.yaml` | `tests/real/test_pattern_embedder_real.py` if present |
-| `template_expander.py` | Load real `data/question_templates.yaml` + `sql_vocabulary.yaml` | `tests/real/test_template_expander_real.py` |
+| `template_expander.py` | Load real `data/question_templates.yaml` + `medical_vocabulary.yaml` | `tests/real/test_template_expander_real.py` |
 | `knowledge_capture.py` | Round-trip save/load under `tmp_path` knowledge library | `tests/real/test_knowledge_capture_real.py` |
 | `judge_llm.py` | Use real `app.model_loader` + tiny model if judge path testable without cloud API | Only if no external API; otherwise test rule-based `judge.py` paths |
 
@@ -398,9 +400,8 @@ pytest tests/ -m gpu -q
 
 | Date | Author | Phase / step | What changed | Why | Coverage (`data` / `train` / `app`) |
 |------|--------|--------------|--------------|-----|-------------------------------------|
-| 2026-06-02 | AI + human | Baseline | Added `tests/real/*`, sharegpt_format, model_loader fixes, removed mock extended loader tests, CI 90% | Ollama 404 clarity, memory dropdown crash, PEFT load | ~92% / ~65% / ~46% |
-| | | | | | |
-| | | | | | |
+| 2026-06-02 | AI + human | Baseline | Added `tests/real/*`, sharegpt_format, model_loader fixes, removed mock extended loader tests | Ollama 404 clarity, memory dropdown crash, PEFT load | ~92% / ~65% / ~46% |
+| 2026-06-13 | AI + human | Phase 1 docs/tests | Domain-neutral fixtures; MPS tests; SQL/Teradata removed from codebase and tests; CI gate 75% | 100% coverage deferred (Gradio + Unsloth gaps) | ~76% overall |
 
 ---
 
@@ -428,7 +429,7 @@ When new gaps are discovered:
 | CPU train unit | `tests/real/test_finetune_cpu_module.py` | main() branches |
 | Unsloth no-GPU | `test_finetune_unsloth_module.py`, `test_finetune_unsloth_callbacks.py` | val-missing |
 | Unsloth GPU | — | `test_finetune_unsloth_gpu.py` |
-| Apple Silicon | — | `test_apple_silicon_mps.py` |
+| Apple Silicon | `tests/real/test_apple_silicon_mps.py` | Done (7 tests + macOS CI) |
 | Gradio handlers | smoke only | `tests/real/test_gradio_*.py` per tab |
 | Data CLI | e2e partial | `test_prepare_training_data_cli.py` |
 

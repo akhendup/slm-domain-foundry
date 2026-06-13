@@ -11,9 +11,10 @@
 
 ## Apple Silicon (MPS)
 
-Run the dedicated MPS suite on a Mac with Metal enabled:
+Native Mac install uses **`requirements-mps.txt`** (see README and `run_local.sh`). Run the dedicated MPS suite on a Mac with Metal enabled:
 
 ```bash
+pip install -r requirements-mps.txt
 pytest tests/real/test_apple_silicon_mps.py -v -m mps
 ```
 

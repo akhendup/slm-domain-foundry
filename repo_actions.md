@@ -3,7 +3,92 @@
 **Project**: `slm-domain-foundry`  
 **Purpose**: Prepare a domain-adaptive SLM training pipeline for public release on GitHub  
 **Target Audience**: Medical AI team in South Korea + open-source community  
-**Current Status**: Phase 1 cleanup complete (2026-06-12). Ready for pre-release checklist and public GitHub push.
+**Current Status**: Phase 1 complete (2026-06-13). Domain-neutral medical default, MPS documented, tests green. Pre-public GitHub push and Phase 2 enhancements remain.
+
+---
+
+## Current status (2026-06-13)
+
+| Area | State |
+|------|--------|
+| **Phase 1 cleanup** | Complete — medical default, no Teradata/SQL coupling |
+| **Apple Silicon (MPS)** | Documented (`requirements-mps.txt`, `run_local.sh`, CI macOS job) |
+| **Tests** | ~1,207 passed, 3 skipped; 75% CI coverage gate on `app/`, `data/`, `train/` |
+| **Release tag** | `v0.1.0-beta` (pre–full domain cleanup); post-cleanup commit on `main`: `87912f5` |
+| **GitHub public** | Not yet — still private on Gitea |
+| **Phase 2** | Not started (synthetic data, ORPO, DAPT, Korean, etc.) |
+
+---
+
+## Work completed
+
+### Phase 1 (publication readiness)
+
+- **Domain decoupling** — `domain_config.yaml`, `data/domain_config.py`, `--domain-config` CLI; medical keywords and clinical section labels; no SQL/Teradata regex or aliases in production code.
+- **Teradata/SQL removal (final pass, commit `87912f5`)** — Deleted `data/sql_vocabulary.yaml`, `examples/domain_config_sql.yaml`, and non-medical pattern samples; generalized chunking (`chunk_text_structured_aware`), extractors, YAML loader (`pattern_alias`, template `content`), knowledge capture (`worked_example` / `example_summary`); all tests use medical fixtures.
+- **Alternate domain example** — `examples/domain_config_financial.yaml` + `data/financial_vocabulary.yaml` (reference only; not default).
+- **Config consolidation** — `config.yaml`, `train/config.py`, UI copy externalized to `config.yaml` → `ui:` section.
+- **Medical samples** — `sample_data/medical_qa.csv`, `hypertension.yaml`, `aspirin_dosing.yaml`, `data/medical_vocabulary.yaml`.
+- **Docs & legal** — README, CONTRIBUTING, MIT LICENSE; architecture diagram; domain adaptation table (medical / financial / custom).
+- **Dependencies** — `requirements-core.txt`, `requirements-train.txt`, `requirements-inference.txt`, `requirements.txt`, **`requirements-mps.txt`**, `pyproject.toml` extras (`train`, `inference`, `mps`, `dev`).
+- **Apple Silicon** — `train/finetune_cpu.py` MPS path, `run_local.sh`, `tests/real/test_apple_silicon_mps.py`, macOS CI job; README + CONTRIBUTING install instructions.
+- **Tests & CI** — Domain-neutral fixtures in `tests/conftest.py`; Python 3.10–3.12 Linux matrix; 75% coverage gate; security scan script (`scripts/security_scan.sh`).
+- **Pre-release** — Security scan run; `v0.1.0-beta` tag; documentation review (2026-06-12).
+
+### Runtime paths (documented)
+
+| Hardware | Training | Inference |
+|----------|----------|-----------|
+| NVIDIA CUDA | `train/finetune_unsloth.py` (Unsloth + QLoRA) | Unsloth or transformers |
+| Apple Silicon (MPS) | `train/finetune_cpu.py` (HF Trainer + LoRA) | `app/model_loader.py` on MPS |
+| CPU | `train/finetune_cpu.py` | transformers / optional ONNX |
+
+---
+
+## Work outstanding
+
+### Pre-public release
+
+- [ ] **Push to public GitHub** — `github.com/agkhan/slm-domain-foundry`; enable Issues/Discussions; add repo topics.
+- [ ] **Optional: new release tag** — e.g. `v0.1.1-beta` after domain cleanup (`87912f5`) with updated release notes (current tag points at earlier beta).
+- [ ] **Pin dependencies for production** — Replace open `>=` ranges with locked versions after CVE review (`pip-audit` flagged torch CVE-2025-3000 at scan time).
+- [ ] **Align macOS CI install with `requirements-mps.txt`** — CI still filters `bitsandbytes` from `requirements.txt`; functionally equivalent but could use `requirements-mps.txt` for clarity.
+
+### Quality & coverage (Phase 1 stretch goals)
+
+- [ ] **Raise coverage toward 100%** on `app/`, `data/`, `train/` — largest gaps: `app/gradio_ui.py` (~46%), `train/finetune_unsloth.py` (CUDA/Unsloth body rarely executed in CI). Roadmap: `tests/AI_COVERAGE_IMPLEMENTATION.md`.
+- [ ] **Dedicated CUDA CI job** — Optional `@pytest.mark.gpu` Unsloth smoke on NVIDIA runner.
+
+### Phase 2 (post-release enhancements)
+
+All Phase 2 items below remain **not started**. See [Phase 2: Cutting-Edge Enhancements](#phase-2-cutting-edge-enhancements) for detail.
+
+| ID | Feature | Priority |
+|----|---------|----------|
+| A | Teacher-student synthetic data generation | Highest (medical data scarcity) |
+| B | DoRA adapter support | Easy win |
+| C | ORPO preference alignment | Critical (medical safety) |
+| D | Domain-adaptive continued pre-training (DAPT) | Essential for Korean medical SLM |
+| E | RAG-augmented fine-tuning (RAF) | High (unique pipeline advantage) |
+| F | Medical evaluation suite | Production readiness |
+| G | Korean / multilingual support | Critical for Seoul team |
+
+---
+
+## Work bypassed or deferred (with rationale)
+
+| Item | Decision | Explanation |
+|------|----------|-------------|
+| **Teradata/SQL backward compatibility** | Bypassed | Explicit product decision: no legacy SQL field names (`teradata_function`, `sql_vocabulary`, `has_sql_content` aliases). Clean domain-adaptive API only. |
+| **100% test coverage gate in CI** | Deferred | 75% gate enforced today; 100% blocked by large Gradio UI surface and CUDA-only Unsloth paths. Documented in `AI_COVERAGE_IMPLEMENTATION.md`; not required for beta. |
+| **`unittest.mock` in core tests** | Partially bypassed | Policy prefers real I/O; some unit tests still mock I/O boundaries (e.g. chat/Ollama). Full mock removal is a separate hardening pass. |
+| **Unsloth on Apple Silicon** | Bypassed | Unsloth requires CUDA; Mac uses `finetune_cpu.py` + MPS instead. |
+| **GPU training in Docker on Mac** | Bypassed | Docker Desktop runs Linux VM — no Metal/MPS passthrough. Native `run_local.sh` is the supported Mac path. |
+| **Dependency pinning in `requirements*.txt`** | Deferred | Open ranges kept for developer flexibility; security scan notes CVEs in ranges. Pin before production/medical deployment. |
+| **GitHub public release** | Deferred | Awaiting explicit go-live; Gitea remains source of truth. |
+| **Phase 2 features** | Deferred | Intentionally post–Phase 1; incremental PRs after public release. |
+| **Legal/financial sample domains in README walkthrough** | Deferred | README uses medical quick start only; financial config exists as reference under `examples/`. Full legal/scientific walkthroughs not written. |
+| **sentence-transformers in `requirements-core.txt`** | Deferred | Semantic chunking is optional (`chunking.py` imports lazily); not added to core requirements to keep data-only install light. |
 
 ---
 
@@ -11,11 +96,15 @@
 
 1. [Project Overview](#project-overview)
 2. [Why This Matters](#why-this-matters)
-3. [Two-Phase Approach](#two-phase-approach)
-4. [Phase 1: Cleanup Checklist](#phase-1-cleanup-checklist)
-5. [Phase 2: Cutting-Edge Enhancements](#phase-2-cutting-edge-enhancements)
-6. [Execution Priority](#execution-priority)
-7. [Change Log](#change-log)
+3. [Current Status](#current-status-2026-06-13)
+4. [Work Completed](#work-completed)
+5. [Work Outstanding](#work-outstanding)
+6. [Work Bypassed or Deferred](#work-bypassed-or-deferred-with-rationale)
+7. [Two-Phase Approach](#two-phase-approach)
+8. [Phase 1: Cleanup Checklist](#phase-1-cleanup-checklist)
+9. [Phase 2: Cutting-Edge Enhancements](#phase-2-cutting-edge-enhancements)
+10. [Execution Priority](#execution-priority)
+11. [Change Log](#change-log)
 
 ---
 
@@ -34,15 +123,15 @@ The `ai_slm_training` codebase is a solid end-to-end pipeline for training small
 
 ### What Needs to Change
 
-The current codebase is **tightly coupled to Teradata SQL domain knowledge**. To make it generic and shareable:
+~~The codebase was tightly coupled to Teradata SQL domain knowledge.~~ **Resolved (2026-06-13).**
 
-1. **Decouple domain-specific logic** (SQL keywords, Teradata function patterns, TD17 sample data)
-2. **Abstract configuration** into YAML/TOML files
-3. **Generalize documentation** with medical AI examples
-4. **Add LICENSE and CONTRIBUTING.md**
-5. **Split dependencies** for data-only, training, and inference use cases
+Remaining before broad public adoption:
 
-Once clean, the repo will be pushed to **public GitHub** and shared with the Korean medical AI team.
+1. **Public GitHub release** and optional post-cleanup version tag
+2. **Phase 2 enhancements** (synthetic data, alignment, DAPT, Korean, eval suite)
+3. **Production hardening** — dependency pinning, higher coverage, optional GPU CI
+
+Once on GitHub, the repo is ready for the Korean medical AI team to fork and customize via YAML config.
 
 ---
 
@@ -84,31 +173,32 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ### 1. Remove Teradata-Specific Domain Coupling
 
-**Files affected**:
-- `data/manual_extractor.py`
-- `data/chunking.py`
-- `app/gradio_ui.py`
-- `sample_data/`
+**Status**: ✅ Complete (including final pass 2026-06-13, commit `87912f5`)
+
+**Files affected** (all updated):
+- `data/manual_extractor.py`, `data/chunking.py`, `data/prepare_training_data.py`, `data/yaml_pattern_loader.py`
+- `data/knowledge_capture.py`, `data/question_templates.yaml`, `data/template_expander.py`
+- `app/gradio_ui.py`, `domain_config.yaml`, `tests/conftest.py` + full test suite
+- Removed: `data/sql_vocabulary.yaml`, `examples/domain_config_sql.yaml`
 
 **Actions**:
 
-- [x] **Extract hardcoded SQL/Teradata regex to `domain_config.yaml`**
-  - Move `_SQL_KW_RE`, `_TD_FUNC_RE`, `_NON_FUNC_SUFFIX_RE` from `manual_extractor.py` to a config file
-  - Same for duplicated SQL regex in `chunking.py`
-  - Add a `--domain-config` CLI arg to `prepare_training_data.py`
+- [x] **Extract hardcoded regex to `domain_config.yaml`**
+  - Structured-content detection, optional `function_pattern`, example section labels
+  - `--domain-config` CLI on `prepare_training_data.py`
 
-- [x] **Replace Teradata system prompt in `gradio_ui.py`**
-  - Current: hardcoded Teradata-specific system message
-  - Target: Load from `config.yaml` or `--system-prompt` CLI arg
-  - Example: `You are a medical AI assistant specialized in clinical decision support...`
+- [x] **Replace domain-specific system prompt in `gradio_ui.py`**
+  - Load from `config.yaml`; override via `SLM_SYSTEM_PROMPT`
 
-- [x] **Swap TD17 sample data for generic medical example**
-  - Remove: `sample_data/TD17_Analytic_Functions.pdf`
-  - Remove: `sample_data/patternexamples/` YAML files (if Teradata-specific)
-  - Add: Public domain medical Q&A CSV or a synthetic clinical vocabulary example
-  - Ensure no proprietary/personal data in `sample_data/`
+- [x] **Medical sample data only**
+  - Removed TD17 PDF and analytics/SQL pattern trees
+  - Kept: `medical_qa.csv`, `hypertension.yaml`, `aspirin_dosing.yaml`, `medical_vocabulary.yaml`
 
-**Validation**: Run `pytest` after changes to ensure no broken imports.
+- [x] **Remove SQL/Teradata backward compatibility**
+  - No `has_sql_content`, `teradata_function`, or SQL vocabulary files
+  - Alternate reference: `examples/domain_config_financial.yaml`
+
+**Validation**: `pytest tests/` — ~1,207 passed (2026-06-13).
 
 ---
 
@@ -130,7 +220,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
     system_prompt: "You are a medical AI assistant..."
     domain_keywords: ["diagnosis", "treatment", "ICD", "medication", ...]
     section_labels: ["symptoms", "treatment", "dosage", "contraindications", ...]
-    function_patterns: []  # e.g., SQL functions for analytics domains
+    function_patterns: []  # optional; set in domain_config.yaml per vertical
   
   model:
     base_model: "unsloth/Llama-3.2-1B-Instruct"
@@ -163,42 +253,16 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ### 3. README Overhaul
 
-**Current state**: README assumes Teradata/SQL context.
+**Current state**: README uses medical quick start; financial alternate documented; SQL examples removed.
 
 **Actions**:
 
 - [x] **Rewrite intro** with "bring your own domain" framing
-  - Remove SQL/TD17-specific examples
-  - Add medical Q&A walkthrough as primary example
-
-- [x] **Add architecture diagram**
-  - Data → Training → Inference → RAG flow
-  - Use Mermaid or ASCII diagram
-
-- [x] **Document config.yaml usage**
-  - Show how to adapt to new domains
-  - Include 3 examples: medical, legal, financial
-
-- [x] **Add Prerequisites section**
-  - Python 3.10+
-  - CUDA 11.8+ for GPU training (optional)
-  - Docker (optional)
-
-- [x] **Add Quick Start with medical example**
-  ```bash
-  # 1. Prepare data
-  python -m data.prepare_training_data \
-    --csv sample_data/medical_qa.csv \
-    --output-dir training_data
-  
-  # 2. Fine-tune
-  python -m train.finetune_unsloth \
-    --config config.yaml \
-    --train-file training_data/train_sharegpt.jsonl
-  
-  # 3. Run inference
-  python -m app.gradio_ui --model-dir output_model
-  ```
+- [x] **Architecture diagram** (Mermaid)
+- [x] **Document config.yaml and domain adaptation** (medical, financial, custom)
+- [x] **Prerequisites** — Python 3.10+, CUDA optional, Apple Silicon + `requirements-mps.txt`
+- [x] **Quick Start** with medical example
+- [x] **Apple Silicon section** — three runtime paths, `run_local.sh`, manual MPS install
 
 **Validation**: Fresh clone + follow README should work without prior knowledge.
 
@@ -252,29 +316,11 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
   unsloth  # Install separately: pip install unsloth
   ```
 
-- [x] **Create `requirements-inference.txt`** (CPU inference only)
-  ```
-  -r requirements-core.txt
-  torch>=2.1.0  # CPU-only
-  transformers>=4.36.0
-  gradio>=4.0.0
-  ```
+- [x] **Create `requirements-inference.txt`** (inference + Gradio)
 
-- [x] **Add `pyproject.toml`** for proper package metadata
-  ```toml
-  [project]
-  name = "slm-domain-foundry"
-  version = "0.1.0"
-  description = "Domain-adaptive SLM training pipeline"
-  authors = [{name = "AG Khan", email = "your@email.com"}]
-  license = {text = "MIT"}
-  requires-python = ">=3.10"
-  dependencies = ["pyyaml", "numpy", "pandas"]
-  
-  [project.optional-dependencies]
-  train = ["torch", "transformers", "unsloth", ...]
-  inference = ["gradio", ...]
-  ```
+- [x] **Create `requirements-mps.txt`** (Apple Silicon native: train + Gradio, no `bitsandbytes`)
+
+- [x] **Add `pyproject.toml`** with optional extras: `train`, `inference`, `mps`, `dev`
 
 **Validation**: `pip install -e .[train]` should install training deps.
 
@@ -282,28 +328,33 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ### 6. Test Coverage & CI
 
-**Current state**: Tests exist but may reference Teradata fixtures.
+**Current state**: Domain-neutral fixtures; medical default domain in autouse conftest.
 
 **Actions**:
 
-- [x] **Audit `tests/` for domain-specific fixtures**
-  - Replace TD17/SQL test data with generic fixtures
-  - Ensure tests use `config.yaml` if needed
+- [x] **Audit `tests/` for domain-specific fixtures** — medical/generic content only
+- [x] **Config loader tests** — `tests/unit/test_config.py`
+- [x] **CI workflow** — `.gitea/workflows/tests.yml`: Linux 3.10–3.12 @ 75% coverage; macOS MPS job
+- [x] **MPS integration tests** — `tests/real/test_apple_silicon_mps.py`
 
-- [x] **Add test for config loader**
-  - `tests/unit/test_config.py`
-  - Validate YAML parsing, CLI override, missing keys
-
-- [x] **Update CI workflow** (`.gitea/workflows/tests.yml`)
-  - Run on: `push`, `pull_request`
-  - Test matrix: Python 3.10, 3.11, 3.12
-  - Coverage report (target ≥75%)
-
-**Validation**: `pytest --cov=. --cov-report=html` should pass.
+**Validation**: `pytest tests/` passes; CI enforces `--cov-fail-under=75`.
 
 ---
 
-### 7. Final Pre-Release Checklist
+### 7. Apple Silicon (MPS) Documentation & Dependencies
+
+**Actions**:
+
+- [x] **`requirements-mps.txt`** — documented Mac-native stack (no CUDA-only packages)
+- [x] **`run_local.sh`** — installs `requirements-mps.txt`, detects MPS, launches Gradio
+- [x] **`pyproject.toml` `[mps]` extra**
+- [x] **README + CONTRIBUTING** — install paths and limitations (no Docker MPS)
+
+**Validation**: `./run_local.sh` on Mac; `pytest tests/real/test_apple_silicon_mps.py -m mps`.
+
+---
+
+### 8. Final Pre-Release Checklist
 
 - [x] **Security scan**
   - `safety scan` + `pip-audit` run 2026-06-12 (see changelog)
@@ -567,28 +618,30 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 
 ## Execution Priority
 
-### Immediate (This Week)
+### Done (Phase 1)
 
-1. **Phase 1 Items 1-3**: Domain decoupling, config consolidation, README
-2. **Phase 1 Item 4**: LICENSE + CONTRIBUTING.md
-3. **Phase 1 Item 5**: Split requirements
+1. Domain decoupling + full SQL/Teradata removal  
+2. Config consolidation + README + LICENSE + CONTRIBUTING  
+3. Split requirements + `requirements-mps.txt` + MPS tests/CI  
+4. Security scan + `v0.1.0-beta` tag + documentation review  
 
-### Next Week
+### Next (pre-public)
 
-4. **Phase 1 Items 6-7**: Test cleanup, security scan, public push
-5. **Phase 2A**: Synthetic data generator (start implementation)
+5. **GitHub public push** + release notes for post-cleanup `main`  
+6. **Optional**: `v0.1.1-beta` tag; pin dependencies for production  
 
-### Following 2 Weeks
+### Then (Phase 2, incremental)
 
-6. **Phase 2C**: ORPO alignment (highest medical safety impact)
-7. **Phase 2D**: DAPT stage (essential for Korean model)
-8. **Phase 2E**: RAG-augmented fine-tuning
+7. **Phase 2A** — Synthetic data generator  
+8. **Phase 2C** — ORPO alignment (medical safety)  
+9. **Phase 2D** — DAPT (Korean medical corpus)  
+10. **Phase 2E** — RAG-augmented fine-tuning  
+11. **Phase 2B / F / G** — DoRA, eval suite, Korean templates  
 
-### Month 2
+### Stretch (quality)
 
-9. **Phase 2B**: DoRA support (easy, measurable win)
-10. **Phase 2F**: Eval suite
-11. **Phase 2G**: Korean language integration
+12. Coverage toward 100% (`AI_COVERAGE_IMPLEMENTATION.md`)  
+13. Dedicated CUDA CI job for Unsloth smoke tests  
 
 ---
 
@@ -601,9 +654,9 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 - **Initial commit**: 27 commits, 33 MiB, full history preserved
 - **This document created**: `repo_actions.md` initialized with Phase 1 + Phase 2 plan
 
-### 2026-06-12 (Phase 1 complete)
+### 2026-06-12 (Phase 1 complete — initial)
 
-- **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`, `examples/domain_config_sql.yaml`
+- **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`, `examples/domain_config_sql.yaml` *(later removed)*
 - **Config consolidation**: `config.yaml`, `train/config.py`, `--config` on prepare/train/gradio
 - **Medical samples**: `sample_data/medical_qa.csv`, clinical YAML patterns, `data/medical_vocabulary.yaml`
 - **Docs & legal**: README overhaul, MIT LICENSE, CONTRIBUTING.md
@@ -625,7 +678,7 @@ Once clean, the repo will be pushed to **public GitHub** and shared with the Kor
 **Highlights**
 - End-to-end SLM pipeline: data prep → Unsloth fine-tuning → Gradio/CLI inference
 - Medical AI default profile (`config.yaml`, `domain_config.yaml`, sample clinical data)
-- Domain-adaptive YAML config (swap to SQL/financial/legal via config files)
+- Domain-adaptive YAML config (medical default; financial reference under `examples/`)
 - MIT licensed, split requirements, CI on Python 3.10–3.12
 
 **Quick start**
@@ -650,6 +703,40 @@ python -m app.gradio_ui --model-dir output_model
 - `app/chat.py`: medical demo questions (removed Teradata sample prompts)
 - Link check: nanoGPT, minGPT, Hugging Face run_clm — OK; GitHub repo/issues — 404 (expected pre-public)
 
+### 2026-06-12 (Apple Silicon MPS — commit `83da807`)
+
+- MPS training path documented in README; `finetune_cpu.py` + `run_local.sh`
+- `tests/real/test_apple_silicon_mps.py` (7 tests); macOS CI job in `.gitea/workflows/tests.yml`
+- Gradio auto-selects `finetune_cpu` when CUDA/Unsloth unavailable
+
+### 2026-06-13 (Domain cleanup final + MPS requirements — commit `87912f5`)
+
+- **Removed all Teradata/SQL assets and code paths** — no backward-compat aliases
+- **Added** `requirements-mps.txt`, `examples/domain_config_financial.yaml`
+- **Generalized** chunking, extractors, YAML patterns, question templates, knowledge capture UI fields
+- **Tests** rewritten with medical fixtures; ~1,207 passed
+- **Pushed** to Gitea `main`
+
+#### Post-cleanup quick start (Mac MPS)
+
+```bash
+pip install -r requirements-mps.txt
+./run_local.sh
+```
+
+#### Post-cleanup quick start (Linux CUDA)
+
+```bash
+pip install -r requirements.txt
+pip install unsloth   # CUDA only
+python -m data.prepare_training_data \
+  --csv sample_data/medical_qa.csv \
+  --yaml-dir sample_data/patternexamples \
+  --output-dir training_data
+python -m train.finetune_unsloth --config config.yaml
+python -m app.gradio_ui --model-dir output_model
+```
+
 ### [Future entries go here]
 
 ---
@@ -663,6 +750,6 @@ python -m app.gradio_ui --model-dir output_model
 
 ---
 
-**Last Updated**: 2026-06-12 (pre-release: v0.1.0-beta)
+**Last Updated**: 2026-06-13 (Phase 1 complete; domain-neutral; MPS documented)  
 **Maintained By**: AG Khan  
 **Contact**: Gitea issues on the project host (GitHub issues after public release)

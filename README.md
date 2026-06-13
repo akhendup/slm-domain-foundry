@@ -229,4 +229,4 @@ MIT — see [LICENSE](LICENSE). Contributions welcome — see [CONTRIBUTING.md](
 
 ## Roadmap
 
-Phase 2 enhancements (synthetic data generation, ORPO alignment, DAPT, RAG-augmented fine-tuning, Korean language support) are tracked in [repo_actions.md](repo_actions.md).
+Phase 1 is complete (medical default, MPS documented, domain-neutral codebase). Phase 2 enhancements (synthetic data, ORPO, DAPT, RAG-augmented fine-tuning, Korean language support) and pre-public GitHub release are tracked in [repo_actions.md](repo_actions.md).
