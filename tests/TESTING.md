@@ -9,6 +9,16 @@
 3. **Markers** — `unit`, `quality`, `e2e`, `app`, `real`, `slow`, `gpu`.
 4. **Coverage** — CI gate **75%** on `app/`, `data/`, and `train/` (see `.gitea/workflows/tests.yml`). Long-term goal remains higher coverage on core modules (see `AI_COVERAGE_IMPLEMENTATION.md`).
 
+## Apple Silicon (MPS)
+
+Run the dedicated MPS suite on a Mac with Metal enabled:
+
+```bash
+pytest tests/real/test_apple_silicon_mps.py -v -m mps
+```
+
+On Linux/CI without MPS, these tests skip cleanly. A **macOS** job in `.gitea/workflows/tests.yml` runs this file on every push/PR.
+
 ## Running tests
 
 ```bash
