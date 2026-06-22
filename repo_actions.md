@@ -39,7 +39,7 @@
 
 | Hardware | Training | Inference |
 |----------|----------|-----------|
-| NVIDIA CUDA | `train/finetune_unsloth.py` (Unsloth + QLoRA) | Unsloth or transformers |
+| NVIDIA CUDA | `train/finetune_unsloth.py` (Unsloth + QLoRA) or `finetune_cpu.py` | Unsloth or transformers on CUDA |
 | Apple Silicon (MPS) | `train/finetune_cpu.py` (HF Trainer + LoRA) | `app/model_loader.py` on MPS |
 | CPU | `train/finetune_cpu.py` | transformers / optional ONNX |
 
@@ -57,7 +57,7 @@
 ### Quality & coverage (Phase 1 stretch goals)
 
 - [ ] **Raise coverage toward 100%** on `app/`, `data/`, `train/` — largest gaps: `app/gradio_ui.py` (~46%), `train/finetune_unsloth.py` (CUDA/Unsloth body rarely executed in CI). Roadmap: `tests/AI_COVERAGE_IMPLEMENTATION.md`.
-- [ ] **Dedicated CUDA CI job** — Optional `@pytest.mark.gpu` Unsloth smoke on NVIDIA runner.
+- [ ] **Dedicated CUDA CI job** — Optional `@pytest.mark.gpu` job on NVIDIA runner; today use `./scripts/run_tests_amdworkstation.sh` on `amdworkstation` (RTX 3060).
 
 ### Phase 2 (post-release enhancements)
 
@@ -736,6 +736,14 @@ python -m data.prepare_training_data \
 python -m train.finetune_unsloth --config config.yaml
 python -m app.gradio_ui --model-dir output_model
 ```
+
+### 2026-06-13 (Legacy artifact cleanup + CUDA test suite)
+
+- **Removed tracked TD17 Teradata PDFs** from `data/` and `sample_data/` (13 files; docs had claimed removal but binaries remained in git)
+- **Added** `tests/real/test_cuda_gpu.py` (`@pytest.mark.gpu`) — mirrors MPS suite for CUDA
+- **Added** `scripts/run_tests_amdworkstation.sh` — rsync + pytest on remote `amdworkstation`
+- **`.gitignore`** — `coverage.json`, `.coverage.*`, `htmlcov/`
+- **CI** — Linux ignores CUDA file; macOS job uses `requirements-mps.txt`
 
 ### [Future entries go here]
 

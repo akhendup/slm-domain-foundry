@@ -430,6 +430,7 @@ When new gaps are discovered:
 | Unsloth no-GPU | `test_finetune_unsloth_module.py`, `test_finetune_unsloth_callbacks.py` | val-missing |
 | Unsloth GPU | — | `test_finetune_unsloth_gpu.py` |
 | Apple Silicon | `tests/real/test_apple_silicon_mps.py` | Done (7 tests + macOS CI) |
+| NVIDIA CUDA | `tests/real/test_cuda_gpu.py` | Done (7 tests; run via `scripts/run_tests_amdworkstation.sh`) |
 | Gradio handlers | smoke only | `tests/real/test_gradio_*.py` per tab |
 | Data CLI | e2e partial | `test_prepare_training_data_cli.py` |
 
