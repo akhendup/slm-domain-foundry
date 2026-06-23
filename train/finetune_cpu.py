@@ -12,6 +12,7 @@ Usage:
 
 import inspect
 import json
+import time
 from pathlib import Path
 
 try:
@@ -36,6 +37,13 @@ except ImportError as e:
 else:
     _TRAIN_AVAILABLE = True
 
+def _fmt_time(seconds: float) -> str:
+    seconds = int(max(0, seconds))
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    return f"{h:02d}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
+
+
 if _TRAIN_AVAILABLE:
     _sig = inspect.signature(TrainingArguments.__init__)
     USE_EVAL_STRATEGY = "eval_strategy" in _sig.parameters
@@ -44,7 +52,10 @@ if _TRAIN_AVAILABLE:
     _SFT_USES_DATASET_TEXT_FIELD = "dataset_text_field" in _sft_sig.parameters
 
     class _PrintProgressCallback(TrainerCallback):
-        """Print step/epoch progress to stdout so it streams through the UI."""
+        """Print clean progress lines to stdout — one per log interval, with bar + ETA."""
+
+        def on_train_begin(self, args, state, control, **kwargs):
+            self._start = time.time()
 
         def on_epoch_begin(self, args, state, control, **kwargs):
             epoch = int(state.epoch) + 1
@@ -53,6 +64,17 @@ if _TRAIN_AVAILABLE:
         def on_log(self, args, state, control, logs=None, **kwargs):
             if not logs:
                 return
+            elapsed = time.time() - getattr(self, "_start", time.time())
+            step = state.global_step
+            total = state.max_steps or 1
+            pct = step / total
+
+            bar_width = 20
+            filled = int(bar_width * pct)
+            bar = "█" * filled + "░" * (bar_width - filled)
+
+            eta_str = _fmt_time((elapsed / pct) - elapsed) if pct > 0.01 else "?"
+
             parts = []
             if "loss" in logs:
                 parts.append(f"loss={logs['loss']:.4f}")
@@ -60,14 +82,13 @@ if _TRAIN_AVAILABLE:
                 parts.append(f"eval_loss={logs['eval_loss']:.4f}")
             if "learning_rate" in logs:
                 parts.append(f"lr={logs['learning_rate']:.2e}")
-            total = state.max_steps or "?"
-            pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
-            print(f"  step {state.global_step}/{total} {pct}  {' | '.join(parts)}", flush=True)
 
-        def on_step_end(self, args, state, control, **kwargs):
-            total = state.max_steps or "?"
-            pct = f"{100 * state.global_step / state.max_steps:.0f}%" if state.max_steps else ""
-            print(f"  step {state.global_step}/{total} {pct}", flush=True)
+            print(
+                f"  [{bar}] {step}/{total} ({pct*100:.0f}%)"
+                + (f"  {' | '.join(parts)}" if parts else "")
+                + f"  elapsed={_fmt_time(elapsed)} ETA={eta_str}",
+                flush=True,
+            )
 
         def on_epoch_end(self, args, state, control, **kwargs):
             print(f"  Epoch {int(state.epoch)} complete.", flush=True)
@@ -239,7 +260,7 @@ def main():
         "num_train_epochs": args.epochs,
         "learning_rate": args.lr,
         "warmup_steps": 5,
-        "logging_steps": 10,
+        "logging_steps": 5,
         "save_steps": args.save_steps,
         "save_total_limit": 2,
         "eval_steps": args.save_steps,
