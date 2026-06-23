@@ -200,11 +200,10 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # MPS supports float16 but not bfloat16; CUDA gets bfloat16; CPU gets float32
+    # MPS doesn't reliably support fp16 for training (gradient ops can hang);
+    # use float32 on MPS and CPU, bfloat16 only on CUDA.
     if device.type == "cuda":
         dtype = torch.bfloat16
-    elif device.type == "mps":
-        dtype = torch.float16
     else:
         dtype = torch.float32
     model = AutoModelForCausalLM.from_pretrained(
@@ -267,7 +266,7 @@ def main():
         "weight_decay": 0.01,
         "lr_scheduler_type": "cosine",
         "seed": 42,
-        "fp16": device.type == "mps",
+        "fp16": False,
         "bf16": device.type == "cuda" and torch.cuda.is_bf16_supported(),
         "report_to": "none",
         "gradient_checkpointing": args.gradient_checkpointing,
