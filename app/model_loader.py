@@ -3,9 +3,11 @@ Load trained model for inference: use Unsloth when NVIDIA GPU is available,
 otherwise use Hugging Face transformers (CPU or Mac MPS).
 Handles Unsloth/PEFT saves where config.json may lack model_type.
 """
+import inspect
 import json
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 from typing import Any, Tuple
 
@@ -31,6 +33,13 @@ except (ImportError, Exception):
 
 # Transformers always available for fallback (CPU / MPS)
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+
+# Use 'dtype' (new) or 'torch_dtype' (old) depending on installed transformers version
+_DTYPE_KWARG = (
+    "dtype"
+    if "dtype" in inspect.signature(AutoModelForCausalLM.from_pretrained).parameters
+    else "torch_dtype"
+)
 
 
 def _configure_tokenizer_pad(tokenizer: Any) -> None:
@@ -131,13 +140,15 @@ def _load_with_patched_config(model_dir: Path, device: torch.device) -> Tuple[An
                 shutil.copy2(item, tmp_path / item.name)
         (tmp_path / "config.json").write_text(json.dumps(config_dict, indent=2))
 
-        tokenizer = AutoTokenizer.from_pretrained(str(tmp_path), trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            str(tmp_path), trust_remote_code=True, clean_up_tokenization_spaces=False
+        )
         _configure_tokenizer_pad(tokenizer)
         config = AutoConfig.from_pretrained(str(tmp_path))
         model = AutoModelForCausalLM.from_pretrained(
             str(model_dir),
             config=config,
-            torch_dtype=_dtype_for_device(device),
+            **{_DTYPE_KWARG: _dtype_for_device(device)},
             device_map="auto" if device.type == "cuda" else None,
             trust_remote_code=True,
         )
@@ -164,12 +175,14 @@ def _load_peft_adapter(model_dir: Path, device: torch.device) -> Tuple[Any, Any]
     base_name = adapter_cfg.get("base_model_name_or_path", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
     print(f"Loading base model '{base_name}' for PEFT adapter…", flush=True)
-    tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(model_dir), trust_remote_code=True, clean_up_tokenization_spaces=False
+    )
     _configure_tokenizer_pad(tokenizer)
 
     base_model = AutoModelForCausalLM.from_pretrained(
         base_name,
-        torch_dtype=_dtype_for_device(device),
+        **{_DTYPE_KWARG: _dtype_for_device(device)},
         device_map="auto" if device.type == "cuda" else None,
         trust_remote_code=True,
     )
@@ -227,11 +240,13 @@ def load_model(model_dir: Path) -> Tuple[Any, Any]:
 
     # Standard HuggingFace transformers (MPS or CUDA fallback from Unsloth)
     try:
-        tokenizer = AutoTokenizer.from_pretrained(str(model_dir), trust_remote_code=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            str(model_dir), trust_remote_code=True, clean_up_tokenization_spaces=False
+        )
         _configure_tokenizer_pad(tokenizer)
         model = AutoModelForCausalLM.from_pretrained(
             str(model_dir),
-            torch_dtype=_dtype_for_device(device),
+            **{_DTYPE_KWARG: _dtype_for_device(device)},
             device_map="auto" if device.type == "cuda" else None,
             trust_remote_code=True,
         )
@@ -242,6 +257,9 @@ def load_model(model_dir: Path) -> Tuple[Any, Any]:
             raise
     if device.type in ("cpu", "mps") and getattr(model, "device_map", None) is None:
         model = model.to(device)
+    # Clear max_length from generation config to avoid conflict with max_new_tokens at inference
+    if hasattr(model, "generation_config"):
+        model.generation_config.max_length = None
     return model, tokenizer
 
 

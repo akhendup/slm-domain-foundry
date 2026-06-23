@@ -21,6 +21,10 @@ Usage:
 import html as _html
 import json
 import os
+import warnings
+
+# Suppress Starlette deprecation noise from Gradio internals — not actionable from user code
+warnings.filterwarnings("ignore", message=".*HTTP_422_UNPROCESSABLE_ENTITY.*")
 import platform
 import queue
 import re
