@@ -8,7 +8,7 @@
 # Sections:
 #   technical  — APIs, protocols, structured procedures, technical manuals
 #   general    — Textbooks, articles, prose manuals, any non-technical document
-#   financial  — Bank statements, financial reports, invoices, accounting documents
+#   financial  — Accounting, treasury, and financial reporting concepts
 
 # ---------------------------------------------------------------------------
 # technical — structured procedures / APIs / technical documentation
@@ -231,37 +231,27 @@ general:
     - "What are the conditions for {fn}?"
 
 # ---------------------------------------------------------------------------
-# financial — Bank statements, financial reports, invoices
+# financial — Generic financial reporting and treasury concepts
 # ---------------------------------------------------------------------------
 financial:
 
   transaction:
-    - "What transactions appear in {fn}?"
-    - "What is the total amount of transactions in {fn}?"
-    - "What are the debit entries in {fn}?"
-    - "What are the credit entries in {fn}?"
-    - "What is the largest transaction in {fn}?"
-    - "What recurring transactions appear in {fn}?"
-    - "Which transactions reduced the balance in {fn}?"
-    - "Which transactions increased the balance in {fn}?"
-    - "What were the most frequent transaction types in {fn}?"
+    - "When is {fn} used in financial operations?"
+    - "What business process does {fn} support?"
+    - "How does {fn} affect cash movement?"
+    - "What are typical use cases for {fn}?"
+    - "What should analysts verify when reviewing {fn}?"
 
   account_summary:
-    - "What is the opening balance in {fn}?"
-    - "What is the closing balance in {fn}?"
-    - "What is the net change in {fn}?"
-    - "What is the total of all deposits in {fn}?"
-    - "What is the total of all withdrawals in {fn}?"
-    - "What period does {fn} cover?"
-    - "What account does {fn} belong to?"
-    - "What is the account number shown in {fn}?"
+    - "How is {fn} defined in financial reporting?"
+    - "Why is {fn} important for reconciliation?"
+    - "How does {fn} relate to period close?"
+    - "What records support {fn}?"
+    - "What errors commonly affect {fn}?"
 
   analysis:
-    - "What spending categories appear in {fn}?"
-    - "Which merchant received the most payments in {fn}?"
-    - "What is the average transaction amount in {fn}?"
-    - "Are there any unusual or large transactions in {fn}?"
-    - "What fees were charged in {fn}?"
-    - "What interest was applied in {fn}?"
-    - "How does spending in {fn} compare to the previous period?"
-    - "What percentage of transactions in {fn} are recurring?"
+    - "What decisions does {fn} inform?"
+    - "What inputs are needed for {fn}?"
+    - "What trends should {fn} highlight?"
+    - "How often should teams perform {fn}?"
+    - "What follow-up actions result from {fn}?"

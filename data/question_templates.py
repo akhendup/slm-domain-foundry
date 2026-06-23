@@ -25,7 +25,7 @@ Exported lists (for import by yaml_pattern_loader.py, manual_extractor.py, templ
     GENERAL_APPLICATION_QUESTIONS, GENERAL_CAUSES_QUESTIONS,
     GENERAL_REQUIREMENTS_QUESTIONS
 
-  Financial documents (bank statements, reports):
+  Financial reporting and treasury concepts:
     FINANCIAL_TRANSACTION_QUESTIONS, FINANCIAL_ACCOUNT_QUESTIONS,
     FINANCIAL_ANALYSIS_QUESTIONS
 """
@@ -256,25 +256,23 @@ GENERAL_REQUIREMENTS_QUESTIONS: List[str] = _get(_t, "general", "requirements", 
 ])
 
 # ---------------------------------------------------------------------------
-# Financial — Bank statements, financial reports, invoices
+# Financial — Generic financial reporting and treasury concepts
 # ---------------------------------------------------------------------------
 
 FINANCIAL_TRANSACTION_QUESTIONS: List[str] = _get(_t, "financial", "transaction", [
-    "What transactions appear in {fn}?",
-    "What are the debit entries in {fn}?",
-    "What are the credit entries in {fn}?",
-    "What is the largest transaction in {fn}?",
+    "When is {fn} used in financial operations?",
+    "What business process does {fn} support?",
+    "How does {fn} affect cash movement?",
 ])
 
 FINANCIAL_ACCOUNT_QUESTIONS: List[str] = _get(_t, "financial", "account_summary", [
-    "What is the opening balance in {fn}?",
-    "What is the closing balance in {fn}?",
-    "What period does {fn} cover?",
-    "What account does {fn} belong to?",
+    "How is {fn} defined in financial reporting?",
+    "Why is {fn} important for reconciliation?",
+    "How does {fn} relate to period close?",
 ])
 
 FINANCIAL_ANALYSIS_QUESTIONS: List[str] = _get(_t, "financial", "analysis", [
-    "What spending categories appear in {fn}?",
-    "What fees were charged in {fn}?",
-    "Are there any unusual or large transactions in {fn}?",
+    "What decisions does {fn} inform?",
+    "What inputs are needed for {fn}?",
+    "What trends should {fn} highlight?",
 ])

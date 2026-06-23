@@ -83,7 +83,7 @@ class TestTextToQaHeuristic:
         qa = text_to_qa_heuristic([chunk], source="doc")
         assert len(qa) >= 1
         # Heading without "?" gets "What is ...?" prepended
-        assert any("Window Functions" in q or "What is" in q for q, _ in qa)
+        assert any("Hypertension" in q or "What is" in q for q, _ in qa)
 
     def test_heading_generates_what_is_question(self):
         from data.prepare_training_data import text_to_qa_heuristic
@@ -187,8 +187,8 @@ class TestPipelineStandardPdf:
 
         out_dir = tmp_path / "out"
         full_text = (
-            "Window Functions\n\n"
-            "Window functions compute results over a set of rows.\n"
+            "Hypertension\n\n"
+            "Hypertension is sustained elevated blood pressure.\n"
             "They do not collapse rows like aggregate functions.\n"
             "Hypertension management requires medication review and clinical follow-up.\n"
         )
@@ -304,7 +304,7 @@ class TestPipelineManualPdf:
 
         pdf_dir = tmp_path / "pdfs"
         pdf_dir.mkdir()
-        _create_fake_pdf(pdf_dir / "td_functions.pdf")
+        _create_fake_pdf(pdf_dir / "clinical_guide.pdf")
 
         out_dir = tmp_path / "out"
         full_text = (
@@ -312,7 +312,7 @@ class TestPipelineManualPdf:
             "Treatment plan: lifestyle counseling plus first-line antihypertensive with follow-up monitoring.\n"
         )
         sections = [
-            {"heading": "Hypertension Function", "text": full_text},
+            {"heading": "Hypertension Protocol", "text": full_text},
         ]
 
         sys.argv = self._base_argv(pdf_dir, out_dir)
@@ -320,10 +320,10 @@ class TestPipelineManualPdf:
         with patch("data.prepare_training_data.PDFExtractor") as mock_ext_cls, \
              patch("data.prepare_training_data.extract_manual") as mock_extract:
             mock_ext_cls.return_value = MagicMock()
-            mock_extract.return_value = _manual_extract_result(full_text, sections, "td_functions")
+            mock_extract.return_value = _manual_extract_result(full_text, sections, "clinical_guide")
             rc = main()
 
-        manual_dir = out_dir / "td_functions"
+        manual_dir = out_dir / "clinical_guide"
         assert manual_dir.exists()
         assert any(manual_dir.glob("*.jsonl"))
 
@@ -336,7 +336,7 @@ class TestPipelineManualPdf:
 
         out_dir = tmp_path / "out"
         full_text = "Hypertension\n\nHypertension is sustained elevated blood pressure.\nSchedule home monitoring and follow-up.\n"
-        sections = [{"heading": "RANK Function", "text": full_text}]
+        sections = [{"heading": "Hypertension", "text": full_text}]
 
         sys.argv = [
             "prepare_training_data",

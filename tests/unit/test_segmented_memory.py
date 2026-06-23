@@ -115,8 +115,8 @@ class TestKernel:
     def test_update_kernel(self):
         mem = SegmentedMemory()
         mem.set_kernel({"user": "Alice"})
-        mem.update_kernel("goal", "Window functions")
-        assert "Window functions" in mem.build_prompt()["kernel"]
+        mem.update_kernel("goal", "Hypertension management")
+        assert "Hypertension" in mem.build_prompt()["kernel"]
 
     def test_kernel_in_render(self):
         mem = SegmentedMemory()

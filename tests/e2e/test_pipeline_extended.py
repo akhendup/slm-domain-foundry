@@ -75,7 +75,7 @@ class TestCliNoMultiturn:
     def test_no_multiturn_flag(self, tmp_path, sample_yaml_pattern):
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         result = _run_cli(
             "--yaml-dir", str(pattern_dir),
             "--output-dir", str(tmp_path / "out"),
@@ -204,7 +204,7 @@ class TestCliCombinedSources:
         # YAML patterns
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
 
         # Memory with approved records
         mem_dir = tmp_path / "memory"
@@ -256,7 +256,7 @@ class TestMainDirectCall:
 
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         out_dir = tmp_path / "yaml_out"
 
         _sys.argv = [
@@ -287,7 +287,7 @@ class TestMainDirectCall:
         from data.prepare_training_data import main
 
         rows = [
-            {"text": "Window Functions Overview\n\nWindow functions operate on a set of rows."},
+            {"text": "Hypertension Overview\n\nHypertension management combines lifestyle and medication."},
             {"text": "The Hypertension function computes a cumulative sum over the specified window."},
         ]
         csv_path = tmp_csv(rows)
@@ -308,7 +308,7 @@ class TestMainDirectCall:
 
         pattern_dir = tmp_path / "patterns"
         pattern_dir.mkdir()
-        (pattern_dir / "csum.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
+        (pattern_dir / "hypertension.yaml").write_text(sample_yaml_pattern, encoding="utf-8")
         out_dir = tmp_path / "out_no_mt"
 
         _sys.argv = [

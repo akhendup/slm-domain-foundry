@@ -11,7 +11,7 @@
 
 | Area | State |
 |------|--------|
-| **Phase 1 cleanup** | Complete — medical default, no legacy vendor-specific domain coupling |
+| **Phase 1 cleanup** | Complete — medical default, domain-neutral medical default |
 | **Apple Silicon (MPS)** | Documented (`requirements-mps.txt`, `run_local.sh`, CI macOS job) |
 | **Tests** | ~1,207 passed, 3 skipped; 75% CI coverage gate on `app/`, `data/`, `train/` |
 | **Release tag** | `v0.1.0-beta` (pre–full domain cleanup); post-cleanup commit on `main`: `87912f5` |
@@ -24,8 +24,8 @@
 
 ### Phase 1 (publication readiness)
 
-- **Domain decoupling** — `domain_config.yaml`, `data/domain_config.py`, `--domain-config` CLI; medical keywords and clinical section labels; no legacy vendor regex or aliases in production code.
-- **Legacy domain cleanup (commit `87912f5`)** — Removed vendor-specific vocabulary and sample patterns; generalized chunking (`chunk_text_structured_aware`), extractors, YAML loader (`pattern_alias`, template `content`), knowledge capture (`worked_example` / `example_summary`); all tests use medical fixtures.
+- **Domain decoupling** — `domain_config.yaml`, `data/domain_config.py`, `--domain-config` CLI; medical keywords and clinical section labels; no hardcoded single-domain regex in production code.
+- **Domain cleanup (commit `87912f5`)** — Removed single-domain sample patterns; generalized chunking (`chunk_text_structured_aware`), extractors, YAML loader (`pattern_alias`, template `content`), knowledge capture (`worked_example` / `example_summary`); all tests use medical fixtures.
 - **Alternate domain example** — `examples/domain_config_financial.yaml` + `data/financial_vocabulary.yaml` (reference only; not default).
 - **Config consolidation** — `config.yaml`, `train/config.py`, UI copy externalized to `config.yaml` → `ui:` section.
 - **Medical samples** — `sample_data/medical_qa.csv`, `hypertension.yaml`, `aspirin_dosing.yaml`, `data/medical_vocabulary.yaml`.
@@ -79,7 +79,7 @@ All Phase 2 items below remain **not started**. See [Phase 2: Cutting-Edge Enhan
 
 | Item | Decision | Explanation |
 |------|----------|-------------|
-| **Legacy domain backward compatibility** | Bypassed | Explicit product decision: no legacy vendor field names or vocabulary aliases. Clean domain-adaptive API only. |
+| **Single-domain backward compatibility** | Bypassed | Clean domain-adaptive API only; no legacy field-name aliases. |
 | **100% test coverage gate in CI** | Deferred | 75% gate enforced today; 100% blocked by large Gradio UI surface and CUDA-only Unsloth paths. Documented in `AI_COVERAGE_IMPLEMENTATION.md`; not required for beta. |
 | **`unittest.mock` in core tests** | Partially bypassed | Policy prefers real I/O; some unit tests still mock I/O boundaries (e.g. chat/Ollama). Full mock removal is a separate hardening pass. |
 | **Unsloth on Apple Silicon** | Bypassed | Unsloth requires CUDA; Mac uses `finetune_cpu.py` + MPS instead. |
@@ -122,8 +122,6 @@ The `ai_slm_training` codebase is a solid end-to-end pipeline for training small
 - **CI/CD**: Gitea Actions for tests and coverage
 
 ### What Needs to Change
-
-~~The codebase was tightly coupled to a single vendor-specific domain.~~ **Resolved (2026-06-13).**
 
 Remaining before broad public adoption:
 
@@ -171,7 +169,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 
 ## Phase 1: Cleanup Checklist
 
-### 1. Remove vendor-specific domain coupling
+### 1. Domain decoupling
 
 **Status**: ✅ Complete (including final pass 2026-06-13, commit `87912f5`)
 
@@ -179,7 +177,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 - `data/manual_extractor.py`, `data/chunking.py`, `data/prepare_training_data.py`, `data/yaml_pattern_loader.py`
 - `data/knowledge_capture.py`, `data/question_templates.yaml`, `data/template_expander.py`
 - `app/gradio_ui.py`, `domain_config.yaml`, `tests/conftest.py` + full test suite
-- Removed legacy vendor vocabulary and alternate domain config samples
+- Generalized vocabulary and alternate domain config samples
 
 **Actions**:
 
@@ -191,11 +189,11 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
   - Load from `config.yaml`; override via `SLM_SYSTEM_PROMPT`
 
 - [x] **Medical sample data only**
-  - Removed legacy vendor PDFs and non-medical pattern trees
+  - Removed non-medical sample PDFs and pattern trees
   - Kept: `medical_qa.csv`, `hypertension.yaml`, `aspirin_dosing.yaml`, `medical_vocabulary.yaml`
 
-- [x] **Remove legacy domain backward compatibility**
-  - No legacy vendor field names or vocabulary files
+- [x] **Remove single-domain backward compatibility**
+  - No hardcoded single-domain field names
   - Alternate reference: `examples/domain_config_financial.yaml`
 
 **Validation**: `pytest tests/` — ~1,207 passed (2026-06-13).
@@ -253,7 +251,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 
 ### 3. README Overhaul
 
-**Current state**: README uses medical quick start; financial alternate documented; legacy vendor examples removed.
+**Current state**: README uses medical quick start; financial alternate documented; non-medical examples removed.
 
 **Actions**:
 
@@ -365,7 +363,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 - [x] **Documentation review**
   - Spellcheck README, CONTRIBUTING, docstrings — done 2026-06-12
   - Ensure all links work — external HF/Karpathy links OK; GitHub repo/issues 404 until public (documented in README)
-  - Updated stale vendor references in test docs and CLI demo copy
+  - Updated stale domain references in test docs and CLI demo copy
 
 - [x] **Sample data audit**
   - No personal data
@@ -620,7 +618,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 
 ### Done (Phase 1)
 
-1. Domain decoupling + legacy vendor cleanup  
+1. Domain decoupling  
 2. Config consolidation + README + LICENSE + CONTRIBUTING  
 3. Split requirements + `requirements-mps.txt` + MPS tests/CI  
 4. Security scan + `v0.1.0-beta` tag + documentation review  
@@ -656,7 +654,7 @@ Once on GitHub, the repo is ready for the Korean medical AI team to fork and cus
 
 ### 2026-06-12 (Phase 1 complete — initial)
 
-- **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`, `examples/domain_config_sql.yaml` *(later removed)*
+- **Domain decoupling**: `domain_config.yaml`, `data/domain_config.py`
 - **Config consolidation**: `config.yaml`, `train/config.py`, `--config` on prepare/train/gradio
 - **Medical samples**: `sample_data/medical_qa.csv`, clinical YAML patterns, `data/medical_vocabulary.yaml`
 - **Docs & legal**: README overhaul, MIT LICENSE, CONTRIBUTING.md
@@ -699,8 +697,8 @@ python -m app.gradio_ui --model-dir output_model
 - README: Gitea clone URL, GitHub marked as planned; repository/issues table added
 - CONTRIBUTING: full install steps, Gitea issue tracker wording, security scan mention
 - `train/README_FROM_SCRATCH.md`: documents existing `scripts/export_for_from_scratch.py`
-- `tests/TESTING.md` + `AI_COVERAGE_IMPLEMENTATION.md`: aligned with 75% CI gate; removed legacy vendor references
-- `app/chat.py`: medical demo questions (removed legacy vendor sample prompts)
+- `tests/TESTING.md` + `AI_COVERAGE_IMPLEMENTATION.md`: aligned with 75% CI gate; removed stale domain references
+- `app/chat.py`: medical demo questions (removed non-medical sample prompts)
 - Link check: nanoGPT, minGPT, Hugging Face run_clm — OK; GitHub repo/issues — 404 (expected pre-public)
 
 ### 2026-06-12 (Apple Silicon MPS — commit `83da807`)
@@ -711,7 +709,7 @@ python -m app.gradio_ui --model-dir output_model
 
 ### 2026-06-13 (Domain cleanup final + MPS requirements — commit `87912f5`)
 
-- **Removed all legacy vendor assets and code paths** — no backward-compat aliases
+- **Removed single-domain assets and code paths**
 - **Added** `requirements-mps.txt`, `examples/domain_config_financial.yaml`
 - **Generalized** chunking, extractors, YAML patterns, question templates, knowledge capture UI fields
 - **Tests** rewritten with medical fixtures; ~1,207 passed
@@ -739,7 +737,7 @@ python -m app.gradio_ui --model-dir output_model
 
 ### 2026-06-13 (Legacy artifact cleanup + CUDA test suite)
 
-- **Removed tracked legacy vendor PDFs** from `data/` and `sample_data/` (13 files)
+- **Removed tracked non-medical sample PDFs** from `data/` and `sample_data/`
 - **Added** `tests/real/test_cuda_gpu.py` (`@pytest.mark.gpu`) — mirrors MPS suite for CUDA
 - **Added** `scripts/run_tests_amdworkstation.sh` — rsync + pytest on remote `amdworkstation`
 - **`.gitignore`** — `coverage.json`, `.coverage.*`, `htmlcov/`

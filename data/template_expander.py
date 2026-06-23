@@ -251,21 +251,20 @@ class VocabularyExpander:
                         question = template.format(fn=name)
                         pairs.append({"question": question, "answer": desc, "source": name})
 
-        # General overview templates (always add for non-technical domains)
-        if self._domain != "sql":
-            desc = self._answer_for_field(entry, "description") or ""
-            for template in GENERAL_OVERVIEW_QUESTIONS:
+        # General overview templates
+        desc = self._answer_for_field(entry, "description") or ""
+        for template in GENERAL_OVERVIEW_QUESTIONS:
+            placeholders = _get_placeholders(template)
+            if placeholders == ["fn"] and desc:
+                question = template.format(fn=name)
+                pairs.append({"question": question, "answer": desc, "source": name})
+        notes = self._answer_for_field(entry, "analysis_notes") or ""
+        if notes:
+            for template in GENERAL_DETAIL_QUESTIONS:
                 placeholders = _get_placeholders(template)
-                if placeholders == ["fn"] and desc:
+                if placeholders == ["fn"]:
                     question = template.format(fn=name)
-                    pairs.append({"question": question, "answer": desc, "source": name})
-            notes = self._answer_for_field(entry, "analysis_notes") or ""
-            if notes:
-                for template in GENERAL_DETAIL_QUESTIONS:
-                    placeholders = _get_placeholders(template)
-                    if placeholders == ["fn"]:
-                        question = template.format(fn=name)
-                        pairs.append({"question": question, "answer": notes, "source": name})
+                    pairs.append({"question": question, "answer": notes, "source": name})
 
         return pairs
 

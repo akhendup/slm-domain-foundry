@@ -160,7 +160,7 @@ class TestTextToQaHeuristic:
         assert text_to_qa_heuristic([], source="doc") == []
 
     def test_returns_list_of_tuples(self):
-        chunk = "Window Functions\n\nWindow functions compute aggregates over a set of rows."
+        chunk = "Hypertension\n\nHypertension management combines lifestyle counseling and medication."
         result = text_to_qa_heuristic([chunk])
         for item in result:
             assert isinstance(item, tuple)

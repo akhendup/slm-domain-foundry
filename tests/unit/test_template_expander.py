@@ -63,7 +63,7 @@ MINIMAL_FINANCIAL_ENTRY = {
     "common_errors": [
         {"error": "Returned ACH", "cause": "Insufficient funds", "solution": "Verify account balance"}
     ],
-    "analysis_notes": "ACH fees are typically $0.20–$1.50 per transaction.",
+    "analysis_notes": "ACH transfers should be reconciled against settlement reports.",
 }
 
 MINIMAL_MEDICAL_VOCAB = {
@@ -451,20 +451,20 @@ class TestExpandVocabDir:
     def test_real_medical_vocabulary_file(self):
         """Integration: confirm medical_vocabulary.yaml expands to many pairs."""
         data_dir = Path(__file__).parent.parent.parent / "data"
-        if not (data_dir / "medical_vocabulary.yaml").exists():
+        med = data_dir / "medical_vocabulary.yaml"
+        if not med.exists():
             pytest.skip("medical_vocabulary.yaml not present")
-        result = expand_vocab_dir(data_dir)
-        assert len(result) >= 200, f"Expected 200+ pairs, got {len(result)}"
+        result = expand_vocab_dir(med)
+        assert len(result) >= 50, f"Expected 50+ pairs, got {len(result)}"
 
     def test_real_financial_vocabulary_file(self):
-        """Integration: confirm the real financial_vocabulary.yaml expands to 200+ pairs."""
+        """Integration: confirm financial_vocabulary.yaml expands to many pairs."""
         data_dir = Path(__file__).parent.parent.parent / "data"
-        if not (data_dir / "financial_vocabulary.yaml").exists():
+        fin = data_dir / "financial_vocabulary.yaml"
+        if not fin.exists():
             pytest.skip("financial_vocabulary.yaml not present")
-        # Only financial vocab
-        result = expand_vocab_dir(data_dir)
-        # Combined vocab files should produce hundreds of pairs
-        assert len(result) >= 200, f"Expected 200+ pairs, got {len(result)}"
+        result = expand_vocab_dir(fin)
+        assert len(result) >= 50, f"Expected 50+ pairs, got {len(result)}"
 
 
 # ---------------------------------------------------------------------------

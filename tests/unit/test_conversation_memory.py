@@ -392,7 +392,7 @@ class TestMineFrequentQuestions:
 
     def test_normalises_case_and_punctuation(self, tmp_path):
         log_interaction(tmp_path, "What is hypertension?", "Answer 1.")
-        log_interaction(tmp_path, "what is csum", "Answer 2.")
+        log_interaction(tmp_path, "what is hypertension", "Answer 2.")
         log_interaction(tmp_path, "What is hypertension!", "Answer 3.")
         result = mine_frequent_questions(tmp_path, min_count=2)
         # All three normalise to the same key

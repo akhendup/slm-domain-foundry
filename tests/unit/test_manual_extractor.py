@@ -180,7 +180,7 @@ class TestFilterPages:
         assert result[0]["text"] == real
 
     def test_removes_boilerplate(self):
-        boiler = "Copyright 2023 Acme Corp. All rights reserved."
+        boiler = "Copyright 2023 Example Publisher. All rights reserved."
         real = self._substantive()
         pages = [self._make_page(boiler, 1), self._make_page(real, 3)]
         result = filter_pages(pages)

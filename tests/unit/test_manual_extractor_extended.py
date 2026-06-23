@@ -160,7 +160,7 @@ class TestIsHeadingLineExtended:
 
     def test_numbered_section_excluded(self):
         # Numbered sections start with a digit → excluded by the digit-start check
-        assert _is_heading_line("1.2 Window Functions") is False
+        assert _is_heading_line("1.2 Hypertension") is False
 
     def test_empty_excluded(self):
         assert _is_heading_line("") is False
@@ -250,7 +250,7 @@ class TestGroupPagesIntoSections:
         pages = [
             {"page": 1, "text": "Cumulative Sum Function\n\nContent about Hypertension."},
             {"page": 2, "text": "More content about Hypertension."},
-            {"page": 3, "text": "Window Functions Overview\n\nContent about windows."},
+            {"page": 3, "text": "Hypertension Overview\n\nContent about windows."},
         ]
         sections = group_pages_into_sections(pages)
         # Should have at least 2 sections due to heading change

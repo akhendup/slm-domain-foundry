@@ -23,7 +23,7 @@ class TestIsTocPageAdditional:
         text = (
             "Table of Contents\n"
             "Chapter 1: Introduction ............ 1\n"
-            "Chapter 2: Window Functions ........ 10\n"
+            "Chapter 2: Hypertension ........ 10\n"
             "Chapter 3: Examples ............... 20\n"
             "Chapter 4: Best Practices ......... 30\n"
         )
@@ -135,7 +135,7 @@ class TestFilterPagesAdditional:
             {"text": "Hypertension protocols guide medication titration.\nLifestyle counseling improves adherence.\nReassess in four weeks.", "page": 2},
         ]
         result = filter_pages(pages)
-        assert all("Window functions" in p["text"] for p in result)
+        assert all("Hypertension" in p["text"] for p in result)
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +198,7 @@ class TestIsHeadingLineDatePattern:
     def test_date_pattern_returns_false(self):
         """Line 207: lines with date/time patterns are not headings."""
         from data.manual_extractor import _is_heading_line
-        assert _is_heading_line("2024-03-15 Window Function Update") is False
+        assert _is_heading_line("2024-03-15 Hypertension Guideline Update") is False
         assert _is_heading_line("Version 2023-01-01") is False
 
 
@@ -390,7 +390,7 @@ class TestExtractManual:
 
     def test_label_derived_from_filename(self, tmp_path):
         from data.manual_extractor import extract_manual
-        pdf_path = tmp_path / "td_npath_ref.pdf"
+        pdf_path = tmp_path / "clinical_ref.pdf"
         pdf_path.write_bytes(b"%PDF-1.4")
 
         mock_extractor = MagicMock()
