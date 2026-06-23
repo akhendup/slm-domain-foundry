@@ -126,7 +126,7 @@ pip install -r requirements-mps.txt
 python -c "import torch; print('MPS:', torch.backends.mps.is_available())"
 ```
 
-CLI training on Mac:
+CLI training on Mac (MPS):
 
 ```bash
 python -m train.finetune_cpu \
@@ -136,7 +136,7 @@ python -m train.finetune_cpu \
   --output-dir output_model
 ```
 
-Use a smaller base model (1B–3B) on Apple Silicon for practical memory and speed.
+`finetune_cpu.py` auto-detects **CUDA → MPS → CPU** at startup — on Apple Silicon it automatically trains with MPS (float16 + LoRA). Use a 1B–3B base model for practical memory and speed.
 
 ## Configuration
 
