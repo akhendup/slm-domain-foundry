@@ -41,7 +41,7 @@ clean, domain-adaptive starter kit for teams building small language models.
 
 ## Reporting issues
 
-Open an issue on the project tracker (Gitea today; GitHub after public release) with:
+Open an issue on [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues) with:
 
 - A clear description of the problem or feature request
 - Steps to reproduce (for bugs)

@@ -44,11 +44,8 @@ Full test matrix and remote CUDA workflow: **[tests/TESTING.md](tests/TESTING.md
 
 ## Quick start (medical example)
 
-Clone from your Git host (private Gitea today; public GitHub after release):
-
 ```bash
-git clone http://workstation.local:3000/agkhan/slm-domain-foundry.git
-# After public release: git clone https://github.com/agkhan/slm-domain-foundry.git
+git clone https://github.com/agkhan/slm-domain-foundry.git
 cd slm-domain-foundry
 python -m venv venv
 source venv/bin/activate
@@ -264,12 +261,7 @@ pytest tests/ --cov=app --cov=data --cov=train --cov-report=term-missing
 
 ## Repository & issues
 
-| Host | URL | Status |
-|------|-----|--------|
-| Gitea | `http://workstation.local:3000/agkhan/slm-domain-foundry` | Active (private) |
-| GitHub | `https://github.com/agkhan/slm-domain-foundry` | Planned public release |
-
-Report bugs via your Gitea issue tracker until the GitHub repository is public.
+Report bugs and feature requests via [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues).
 
 ## License
 
@@ -277,4 +269,4 @@ MIT — see [LICENSE](LICENSE). Contributions welcome — see [CONTRIBUTING.md](
 
 ## Roadmap
 
-Phase 1 is complete (medical default, MPS documented, domain-neutral codebase). Phase 2 enhancements (synthetic data, ORPO, DAPT, RAG-augmented fine-tuning, Korean language support) and pre-public GitHub release are tracked in [repo_actions.md](repo_actions.md).
+Phase 1 is complete (medical default, MPS documented, domain-neutral codebase). Phase 2 enhancements include synthetic data generation, ORPO preference alignment, DAPT, RAG-augmented fine-tuning, and multilingual support — tracked via [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues).

@@ -4,7 +4,7 @@
 
 **Goal:** Reach **100% line coverage** on `app/`, `data/`, and `train/` using **real code paths and real or simulated data**—not `unittest.mock`, fake tensors, or hardcoded assertion strings that skip production logic.
 
-**Companion docs:** `tests/TESTING.md` (how to run tests), `.coveragerc` (coverage config), `.gitea/workflows/tests.yml` (CI).
+**Companion docs:** `tests/TESTING.md` (how to run tests), `.coveragerc` (coverage config), `.github/workflows/tests.yml` (CI).
 
 ---
 
@@ -39,7 +39,7 @@
 |------|--------|
 | Test count | ~1,207 tests passing (full `pytest tests/`) |
 | Overall coverage | ~76% (`app`+`data`+`train`); `data/` ~92%; `app/gradio_ui.py` ~46% |
-| CI coverage gate | 75% (`.gitea/workflows/tests.yml`; long-term goal 100% on core modules) |
+| CI coverage gate | 75% (`.github/workflows/tests.yml`; long-term goal 100% on core modules) |
 | Domain fixtures | Medical default in `tests/conftest.py`; domain-neutral test data |
 | `tests/real/` | Model load, PEFT, `finetune_cpu`, MPS suite, memory tab, swarm, Ollama live |
 | Apple Silicon | `tests/real/test_apple_silicon_mps.py` — 7 tests; macOS CI job |
@@ -64,7 +64,7 @@ Use this matrix when placing or skipping tests. **Apple Silicon is a first-class
 | **Local dev (Apple Silicon)** | macOS, MPS or CPU | `tests/real/` except `gpu`; `finetune_cpu` integration; `load_model` / `generate_response`; Gradio handler tests (in-process); Ollama if installed | `@pytest.mark.gpu` (CUDA-only Unsloth full train) |
 | **Local dev (Linux/Windows CPU)** | CPU only | Same as Mac CPU column | `gpu`, MPS-only assumptions |
 | **Local dev (NVIDIA GPU)** | CUDA | Everything including `@pytest.mark.gpu` Unsloth smoke | — |
-| **CI default (Gitea/GitHub)** | `ubuntu-latest`, CPU | Full suite minus MPS file on Linux; coverage `--cov-fail-under=75` | `@pytest.mark.gpu`, `slow` optional |
+| **CI default (GitHub Actions)** | `ubuntu-latest`, CPU | Full suite minus MPS file on Linux; coverage `--cov-fail-under=75` | `@pytest.mark.gpu`, `slow` optional |
 | **CI macOS** | `macos-latest` | `pytest tests/real/test_apple_silicon_mps.py -m mps` | Linux MPS assumptions |
 | **CI GPU worker (recommended)** | `ubuntu` + CUDA + `unsloth` | `pytest -m gpu` minimal Unsloth 1-step train on tiny JSONL | Run only in dedicated job |
 | **Ollama optional** | Any host with `ollama serve` | `tests/real/test_ollama_live.py`, live branches in `test_ollama_client.py` | `pytest.skip` if `/api/tags` fails |
@@ -244,7 +244,7 @@ def test_finetune_unsloth_one_step(real_sharegpt_jsonl, tmp_path):
     ...
 ```
 
-**CI:** Add job `test-gpu` in `.gitea/workflows/tests.yml` that runs only `pytest -m gpu`.
+**CI:** Add job `test-gpu` in `.github/workflows/tests.yml` that runs only `pytest -m gpu`.
 
 **Acceptance B.3:**
 
@@ -356,7 +356,7 @@ Add `tests/test_no_mock_imports.py` that fails if banned imports appear outside 
 Only when Phases A–D pass locally:
 
 1. Set `.coveragerc` `fail_under = 100`
-2. Set `.gitea/workflows/tests.yml` `--cov-fail-under=100`
+2. Set `.github/workflows/tests.yml` `--cov-fail-under=100`
 3. Add GPU job separately so Unsloth does not block Mac/CPU PRs
 
 ```yaml
