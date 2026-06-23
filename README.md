@@ -45,7 +45,7 @@ Full test matrix and remote CUDA workflow: **[tests/TESTING.md](tests/TESTING.md
 ## Quick start (medical example)
 
 ```bash
-git clone https://github.com/agkhan/slm-domain-foundry.git
+git clone https://github.com/akhendup/slm-domain-foundry.git
 cd slm-domain-foundry
 python -m venv venv
 source venv/bin/activate
@@ -261,7 +261,7 @@ pytest tests/ --cov=app --cov=data --cov=train --cov-report=term-missing
 
 ## Repository & issues
 
-Report bugs and feature requests via [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues).
+Report bugs and feature requests via [GitHub Issues](https://github.com/akhendup/slm-domain-foundry/issues).
 
 ## License
 
@@ -269,4 +269,4 @@ MIT — see [LICENSE](LICENSE). Contributions welcome — see [CONTRIBUTING.md](
 
 ## Roadmap
 
-Phase 1 is complete (medical default, MPS documented, domain-neutral codebase). Phase 2 enhancements include synthetic data generation, ORPO preference alignment, DAPT, RAG-augmented fine-tuning, and multilingual support — tracked via [GitHub Issues](https://github.com/agkhan/slm-domain-foundry/issues).
+Phase 1 is complete (medical default, MPS documented, domain-neutral codebase). Phase 2 enhancements include synthetic data generation, ORPO preference alignment, DAPT, RAG-augmented fine-tuning, and multilingual support — tracked via [GitHub Issues](https://github.com/akhendup/slm-domain-foundry/issues).

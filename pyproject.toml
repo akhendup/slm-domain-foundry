@@ -9,7 +9,7 @@ description = "Domain-adaptive SLM training pipeline"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "AG Khan" }]
+authors = [{ name = "Altan Khendup" }]
 dependencies = [
   "pdfplumber>=0.10.0",
   "PyPDF2>=3.0.0",
