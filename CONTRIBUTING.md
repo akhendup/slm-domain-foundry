@@ -15,7 +15,7 @@ clean, domain-adaptive starter kit for teams building small language models.
    pip install -e ".[dev]"
    ```
 
-   **Apple Silicon (MPS):** use the native stack instead of the full CUDA-oriented install:
+   **Apple Silicon (MPS):** use the native stack — **not Docker** (containers cannot access Metal/MPS on Mac). See README [Hardware & platforms](../README.md#hardware--platforms).
 
    ```bash
    pip install -r requirements-mps.txt

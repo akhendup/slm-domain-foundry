@@ -25,8 +25,22 @@ flowchart LR
 
 - Python **3.10+**
 - **CUDA 11.8+** for GPU training with Unsloth on NVIDIA hardware (optional)
-- **Apple Silicon Mac** — native install + `run_local.sh` for MPS GPU training/inference (see below)
-- **Docker** (optional; Linux CPU in a container — **no MPS/GPU on Docker Desktop for Mac**)
+- **Apple Silicon Mac** — native install + `run_local.sh` for MPS GPU training/inference (see [Hardware & platforms](#hardware--platforms))
+- **Docker** (optional; see [Docker](#docker) — **CPU-only on Mac; no Metal/MPS in containers**)
+
+## Hardware & platforms
+
+> **Docker on Mac:** Docker Desktop runs a **Linux VM**. Containers **cannot use Apple Metal/MPS**, even on Apple Silicon. Docker on Mac is fine for **CPU-only** data prep or smoke tests, but for GPU training or inference on a Mac use a **native venv** (`requirements-mps.txt` + `run_local.sh`). On Linux with an NVIDIA GPU, use `docker-compose.gpu.yml` or a native CUDA install instead.
+
+| Platform | Training | Inference | Verify on this machine |
+|----------|----------|-----------|----------------------|
+| **CPU** | `train/finetune_cpu.py` (float32) | `app/model_loader.py` | `pytest tests/ --ignore=tests/real/test_apple_silicon_mps.py --ignore=tests/real/test_cuda_gpu.py` |
+| **Apple Silicon (MPS)** | `train/finetune_cpu.py` (LoRA, float16) | `app/model_loader.py` on MPS | `pytest tests/real/test_apple_silicon_mps.py -m mps` · `./scripts/sample_medical_build.sh` · `./run_local.sh` |
+| **NVIDIA CUDA** | `train/finetune_unsloth.py` (Unsloth + QLoRA) or `finetune_cpu.py` | Unsloth or transformers | `pytest tests/real/test_cuda_gpu.py -m gpu` · or `./scripts/run_tests_amdworkstation.sh` from your Mac |
+
+Device selection is automatic: **CUDA → MPS → CPU** (`app/model_loader.py`, `train/finetune_cpu.py`).
+
+Full test matrix and remote CUDA workflow: **[tests/TESTING.md](tests/TESTING.md)**.
 
 ## Quick start (medical example)
 
@@ -98,15 +112,7 @@ Useful overrides:
 
 ## Apple Silicon (Mac)
 
-The repo supports **three runtime paths**:
-
-| Hardware | Training | Inference |
-|----------|----------|-----------|
-| **NVIDIA CUDA** | `train/finetune_unsloth.py` (Unsloth + QLoRA) | Unsloth or transformers |
-| **Apple Silicon (MPS)** | `train/finetune_cpu.py` (HF Trainer + LoRA, float16) | `app/model_loader.py` on MPS |
-| **CPU only** | `train/finetune_cpu.py` | transformers / optional ONNX |
-
-On Mac, **do not use Docker for GPU training** — Docker runs Linux and cannot access Metal/MPS. Use the native launcher instead:
+Use a **native Python venv** on Mac — not Docker — for MPS GPU access. See the [Hardware & platforms](#hardware--platforms) table for the full matrix.
 
 ```bash
 chmod +x run_local.sh
@@ -197,11 +203,23 @@ pip install -e ".[dev]"       # pytest
 
 ## Docker
 
+> **Mac:** `docker compose up` runs **Linux CPU only** — no MPS. For Apple Silicon GPU training, use [native install](#apple-silicon-mac) instead.
+
+**CPU container** (any host, including Mac — data prep and CPU inference only):
+
 ```bash
 docker build -t slm-domain-foundry .
 docker run --rm -v "$(pwd)/sample_data:/data" slm-domain-foundry \
   python -m data.prepare_training_data --csv /data/medical_qa.csv --output-dir /data/training_data
 ```
+
+**NVIDIA GPU** (Linux host with NVIDIA Container Toolkit only — not Docker Desktop on Mac):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+See `docker-compose.yml` header comments for details.
 
 ## Project layout
 
@@ -228,8 +246,18 @@ slm-domain-foundry/
 
 ## Testing
 
+Platform-specific integration tests live under `tests/real/`. See **[tests/TESTING.md](tests/TESTING.md)** for the full hardware matrix.
+
 ```bash
-pytest tests/ --tb=short
+# Default suite (CPU logic; excludes MPS/CUDA-only files)
+pytest tests/ --ignore=tests/real/test_apple_silicon_mps.py --ignore=tests/real/test_cuda_gpu.py --tb=short
+
+# Apple Silicon (native Mac only)
+pytest tests/real/test_apple_silicon_mps.py -m mps
+
+# NVIDIA CUDA (Linux workstation, or from Mac via SSH)
+./scripts/run_tests_amdworkstation.sh
+
 pytest tests/ --cov=app --cov=data --cov=train --cov-report=term-missing
 ./scripts/security_scan.sh   # optional pre-release dependency + secrets check
 ```

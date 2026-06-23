@@ -1,5 +1,7 @@
 # Testing policy
 
+**Start here for hardware:** README [Hardware & platforms](../README.md#hardware--platforms) · this file for pytest commands.
+
 **AI agents:** Follow the step-by-step roadmap in [`AI_COVERAGE_IMPLEMENTATION.md`](AI_COVERAGE_IMPLEMENTATION.md) (environments, phases A–E, Apple Silicon vs GPU, progress log).
 
 ## Principles
@@ -10,6 +12,8 @@
 4. **Coverage** — CI gate **75%** on `app/`, `data/`, and `train/` (see `.gitea/workflows/tests.yml`). Long-term goal remains higher coverage on core modules (see `AI_COVERAGE_IMPLEMENTATION.md`).
 
 ## Hardware matrix
+
+> **Docker on Mac:** CPU-only inside containers — **no MPS**. Use native `requirements-mps.txt` / `run_local.sh` for Apple Silicon GPU work.
 
 | Environment | Marker / file | Install | Command |
 |-------------|---------------|---------|---------|
