@@ -21,6 +21,72 @@ flowchart LR
 3. **Training** — Fine-tune a small base model (Unsloth + QLoRA) or train from scratch.
 4. **Inference** — Gradio web UI, CLI chat, optional Ollama backend, RAG-lite from a knowledge library.
 
+## Key concepts
+
+### Fine-tuning, not training from scratch
+
+This project **fine-tunes** an existing pre-trained model from HuggingFace — it does not build a model from raw random weights. You pick a base (default: `unsloth/Llama-3.2-1B-Instruct`), which already understands language and general reasoning. Fine-tuning then layers domain-specific knowledge on top without erasing what the base model already knows.
+
+> An educational from-scratch path is documented in [`train/README_FROM_SCRATCH.md`](train/README_FROM_SCRATCH.md) for those who want to understand how transformers learn token-by-token — but the resulting toy model is not production-grade. For real domain adaptation, always start from a strong base.
+
+### What fine-tuning does
+
+Fine-tuning runs **Supervised Fine-Tuning (SFT)** on your Q&A pairs using **LoRA** (Low-Rank Adaptation). LoRA attaches small adapter matrices to a handful of attention layers and trains only those — typically less than 1 % of total parameters. At the end the adapters are merged back into the base weights, leaving a self-contained model that:
+
+- Answers in your domain's vocabulary and preferred style
+- Follows your system prompt (set in `config.yaml` → `domain.system_prompt`)
+- Runs entirely offline with no API calls or licensing costs beyond the base model's own license
+
+### Training data: formats and pipeline
+
+| Source | What it provides |
+|--------|-----------------|
+| `sample_data/medical_qa.csv` | Q&A pairs (`question`, `answer` columns) |
+| `sample_data/patternexamples/*.yaml` | Structured input → output examples |
+| `data/medical_vocabulary.yaml` | Term-definition pairs expanded combinatorially into many Q&A rows |
+| PDF files | Manual extraction via `data/pdf_extractor.py` (requires local PDFs; none bundled) |
+
+`data/prepare_training_data.py` converts all sources into **ShareGPT JSONL** — one JSON object per line:
+
+```json
+{"conversations": [
+  {"role": "user",      "content": "What is hypertension?"},
+  {"role": "assistant", "content": "Hypertension is persistently elevated blood pressure …"}
+]}
+```
+
+It also writes **Alpaca JSONL** as a secondary format. A validation split (default 15 %) is held out automatically for eval metrics during training.
+
+```bash
+python -m data.prepare_training_data \
+  --csv sample_data/medical_qa.csv \
+  --yaml-dir sample_data/patternexamples \
+  --output-dir training_data
+```
+
+Write your own Q&A CSV, drop it in, and re-run the pipeline — that is the main customization path.
+
+### Portability: using the fine-tuned model elsewhere
+
+The output in `output_model/` is a **standard HuggingFace checkpoint** (merged safetensors weights + tokenizer config). It is not tied to this project and works anywhere HF transformers does:
+
+| Destination | How |
+|-------------|-----|
+| HuggingFace `transformers` | `AutoModelForCausalLM.from_pretrained("output_model")` |
+| Ollama (local REST API) | Built into the Gradio UI (`5 · Ollama` tab); or convert to GGUF then `ollama create` |
+| llama.cpp / GGUF | Convert with `llama.cpp/convert_hf_to_gguf.py`, quantize, then load |
+| ONNX / CPU inference | Automatic if `optimum[onnxruntime]` is installed (`pip install optimum[onnxruntime]`) |
+| HuggingFace Hub | `model.push_to_hub("your-org/your-model-name")` after `huggingface-cli login` |
+| Any OpenAI-compatible server | Serve with `vllm`, `text-generation-inference`, or `llama.cpp --server` |
+
+### Tool calling
+
+This project produces a **plain chat / instruct model** — tool-calling scaffolding is not added by the pipeline. Whether tool calling works depends on the base model:
+
+- **Llama-3.2-Instruct and similar bases** already include built-in tool-call formatting. Fine-tuning preserves this as long as your training data does not teach a conflicting reply style.
+- **To add tool-calling examples**, include assistant turns that contain the base model's native function-call JSON in your training CSV. The model will learn to emit that format for matching prompts.
+- **For agentic workflows** (chaining calls, external APIs, memory) wrap the fine-tuned model with [LangChain](https://www.langchain.com), [LlamaIndex](https://www.llamaindex.ai), or an Ollama-compatible agent framework — the output model is a drop-in for any of those.
+
 ## Prerequisites
 
 - Python **3.10+**
