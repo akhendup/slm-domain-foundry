@@ -1697,8 +1697,31 @@ def _save_uploads(files) -> Tuple[str, str, str, object]:
         parts.append(f"{len(pdfs)} PDF(s): {', '.join(pdfs)}")
     if csvs:
         parts.append(f"{len(csvs)} CSV(s): {', '.join(csvs)}")
-    msg = "Uploaded " + "; ".join(parts) + f" → {_DATA_DIR}"
+    msg = (
+        "Uploaded " + "; ".join(parts) + f" → {_DATA_DIR}. "
+        "Next: go to Tab 2 · Extract Training Data."
+    )
     return msg, _make_uploaded_files_html(), _make_pipeline_html(), gr.update(choices=_upload_file_choices())
+
+
+def _load_sample_data() -> Tuple[str, str, str, str, object]:
+    """Copy sample_data/medical_qa.csv to _DATA_DIR for a quick-start demo.
+
+    Returns (qs_status, upload_status, files_html, pipeline_html, dd_update).
+    """
+    sample_csv = _PROJECT_ROOT / "sample_data" / "medical_qa.csv"
+    if not sample_csv.exists():
+        msg = "sample_data/medical_qa.csv not found — is the repo checkout complete?"
+        return msg, msg, _make_uploaded_files_html(), _make_pipeline_html(), gr.update()
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    dest = _DATA_DIR / "medical_qa.csv"
+    shutil.copy2(sample_csv, dest)
+    _pipeline_status["upload"] = "complete"
+    ok = (
+        f"✓ Loaded sample_data/medical_qa.csv → {dest}. "
+        "Next: go to Tab 2 · Extract Training Data and click Extract."
+    )
+    return ok, ok, _make_uploaded_files_html(), _make_pipeline_html(), gr.update(choices=_upload_file_choices())
 
 
 def _remove_file(filename: str) -> Tuple[str, str, str, object]:
@@ -2537,6 +2560,55 @@ def build_app() -> gr.Blocks:
 
         with gr.Tabs():
 
+            # ── Tab 0 · Quick Start ────────────────────────────────────────
+            with gr.Tab("0 · Quick Start"):
+                gr.Markdown(
+                    "## Pipeline Overview\n\n"
+                    "Follow these 5 steps to fine-tune and chat with your own small language model:\n\n"
+                    "| Step | Tab | What to do |\n"
+                    "|------|-----|------------|\n"
+                    "| **1** | 1 · Upload | Upload PDFs or a `question,answer` CSV |\n"
+                    "| **2** | 2 · Extract | Generate Q&A pairs, review samples, click Approve |\n"
+                    "| **3** | 3 · Train | Pick a base model and click Start Training |\n"
+                    "| **4** | 4 · Model Manager | *(Optional)* Save and name your trained model |\n"
+                    "| **5** | 5 · Chat | Load your model and start asking questions |\n\n"
+                    "---\n\n"
+                    "### No documents yet? Start with the bundled medical sample data\n\n"
+                    "Click **Load Sample Medical Data** to copy the included clinical Q&A dataset "
+                    "(`sample_data/medical_qa.csv`) into the upload folder, then go to "
+                    "**Tab 2 · Extract Training Data** to run the full pipeline end-to-end."
+                )
+                with gr.Row():
+                    sample_btn = gr.Button(
+                        "▶ Load Sample Medical Data", variant="primary", scale=1
+                    )
+                    sample_status_qs = gr.Textbox(
+                        label="Status",
+                        interactive=False,
+                        lines=2,
+                        scale=3,
+                        value=(
+                            "Click the button to load the bundled clinical Q&A dataset, "
+                            "then follow the tabs in order: Extract → Train → Chat."
+                        ),
+                    )
+                gr.Markdown(
+                    "---\n\n"
+                    "### Prerequisites\n\n"
+                    "- Python **3.10+** and `pip install -r requirements.txt`\n"
+                    "- Base model weights download automatically from HuggingFace on first run "
+                    "(~600 MB for TinyLlama-1.1B)\n"
+                    "- A GPU makes training faster but CPU and Apple Silicon MPS work out of the box\n\n"
+                    f"**Current device:** `{device_label}`\n\n"
+                    "| Platform | Training backend | Notes |\n"
+                    "|----------|-----------------|-------|\n"
+                    "| NVIDIA CUDA | Unsloth + QLoRA | Fastest; `pip install unsloth` required |\n"
+                    "| Apple Silicon (MPS) | HF Trainer + LoRA | Use `requirements-mps.txt` |\n"
+                    "| CPU only | HF Trainer | Slow — keep epochs low (1–2) and dataset small |\n\n"
+                    "Full setup and CLI workflow: "
+                    "[README.md](https://github.com/akhendup/slm-domain-foundry#readme)."
+                )
+
             # ── Tab 1 · Upload ─────────────────────────────────────────────
             with gr.Tab("1 · Upload"):
                 gr.Markdown(
@@ -3262,6 +3334,13 @@ def build_app() -> gr.Blocks:
                     inputs=[swarm_question, swarm_mode, swarm_single_dd],
                     outputs=[swarm_query_status, swarm_responses_out],
                 )
+
+        # ── Quick Start button wiring (after all tab components are defined) ──
+        sample_btn.click(
+            fn=_load_sample_data,
+            inputs=[],
+            outputs=[sample_status_qs, upload_status, uploaded_list, pipeline_status, remove_file_dd],
+        )
 
         # ── Auto-reconnect: restore training UI on page load / browser crash ──
         _reconnect_outputs = [
