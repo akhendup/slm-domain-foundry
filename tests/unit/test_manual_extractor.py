@@ -81,10 +81,10 @@ class TestIsBoilerplatePage:
 
     def test_negative_real_content(self):
         text = (
-            "Window functions are SQL functions that perform calculations across "
+            "Clinical guidelines describe that perform calculations across "
             "a set of table rows related to the current row. Unlike regular aggregate "
-            "functions, window functions do not collapse rows into a single output row.\n"
-            "The OVER clause defines the window of rows used for each calculation.\n"
+            "targets depend on comorbidities, age, and overall cardiovascular risk.\n"
+            "Confirm elevated readings on at least two separate visits before labeling.\n"
         )
         assert is_boilerplate_page(text, page_num=5) is False
 
@@ -113,9 +113,9 @@ class TestIsIndexPage:
 
     def test_negative_regular_content(self):
         text = (
-            "The RANK function assigns a rank to each row within a partition.\n"
-            "Rows with equal values receive the same rank, and gaps follow.\n"
-            "Use ORDER BY inside OVER to specify the ranking order.\n"
+            "Blood pressure targets depend on comorbidities and patient age.\n"
+            "Home monitoring helps distinguish white-coat hypertension from sustained elevation.\n"
+            "Schedule follow-up within four weeks after starting therapy.\n"
         )
         assert is_index_page(text) is False
 
@@ -131,10 +131,10 @@ class TestIsSubstantivePage:
     def test_positive(self):
         # Needs >= 2 lines with >20 chars AND sum of those line lengths > 200
         text = (
-            "Window functions compute aggregate values over a set of rows defined by the OVER clause.\n"
-            "They differ from regular aggregates because they do not collapse rows into a single result.\n"
-            "Each row in the result retains its individual identity while also seeing window values.\n"
-            "The PARTITION BY clause divides rows into logical groups for the window calculation.\n"
+            "Clinical guidelines describe stepwise management of sustained hypertension.\n"
+            "Lifestyle counseling is first-line for many adults with elevated readings.\n"
+            "Pharmacologic therapy is added when targets are not met after lifestyle changes.\n"
+            "Monitoring plans should document frequency and target blood pressure values.\n"
         )
         assert is_substantive_page(text) is True
 
@@ -160,10 +160,10 @@ class TestFilterPages:
     def _substantive(self):
         """Return text that passes is_substantive_page (>= 2 lines >20 chars, sum > 200)."""
         return (
-            "Window functions compute aggregate values over a defined set of rows in SQL.\n"
-            "They use the OVER clause to specify the partition and ordering of the window.\n"
-            "Unlike regular aggregates, they do not collapse the result to a single row.\n"
-            "The PARTITION BY clause divides rows into groups for the window function.\n"
+            "Blood pressure targets depend on comorbidities and patient age.\n"
+            "They require confirmatory readings before diagnosis is finalized.\n"
+            "Lifestyle changes and medication are tailored to comorbidities and age.\n"
+            "Follow-up monitoring should track response and adverse effects.\n"
         )
 
     def test_removes_toc(self):
@@ -269,7 +269,7 @@ class TestGenerateTypedQaTechnical:
         """SYNTAX_QUESTIONS templates must appear as questions for syntax sections."""
         from data.question_templates import SYNTAX_QUESTIONS
         parsed = self._parsed(
-            syntax=["Hypertension(value, reset_value) OVER (PARTITION BY x ORDER BY y)"]
+            syntax=["Lifestyle counseling plus first-line antihypertensive therapy with follow-up monitoring"]
         )
         pairs = generate_typed_qa(parsed, source_label="Hypertension")
         questions = [q for q, _ in pairs]
@@ -289,7 +289,7 @@ class TestGenerateTypedQaTechnical:
     def test_notes_uses_shared_templates(self):
         """NOTES_QUESTIONS templates must appear for notes sections."""
         from data.question_templates import NOTES_QUESTIONS
-        parsed = self._parsed(notes=["Requires an ORDER BY clause inside OVER()."])
+        parsed = self._parsed(notes=["Requires confirmatory blood pressure readings on two visits."])
         pairs = generate_typed_qa(parsed, source_label="Hypertension")
         questions = [q for q, _ in pairs]
         filled = [t.format(fn="Hypertension") for t in NOTES_QUESTIONS]
@@ -297,7 +297,7 @@ class TestGenerateTypedQaTechnical:
 
     def test_description_produces_multiple_pairs(self):
         desc = ("Hypertension computes a cumulative sum. "
-                "It is a window function that accumulates values across ordered rows.")
+                "It is sustained elevated blood pressure managed with lifestyle and medication.")
         parsed = self._parsed(description=[desc])
         pairs = generate_typed_qa(parsed, source_label="Hypertension")
         assert len(pairs) >= 2

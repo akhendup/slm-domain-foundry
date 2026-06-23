@@ -153,7 +153,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         arg_len = sum(len(x) for x in parsed["arguments"])
         note_len = sum(len(x) for x in parsed["notes"])
         ex_count = len(parsed["examples"])
-        sql_blocks = extract_structured_blocks(s["text"])
+        structured_blocks = extract_structured_blocks(s["text"])
         captions = extract_figure_captions(s["text"])
         emit(f"\n  ── {parsed['heading']} (pages {s['page_start']}–{s['page_end']}) ──")
         emit(f"     description : {desc_len} chars")
@@ -161,7 +161,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         emit(f"     arguments   : {arg_len} chars")
         emit(f"     notes       : {note_len} chars")
         emit(f"     examples    : {ex_count} block(s)")
-        emit(f"     SQL blocks  : {len(sql_blocks)}")
+        emit(f"     structured blocks  : {len(structured_blocks)}")
         emit(f"     Fig captions: {len(captions)}")
         if verbose and parsed["description"]:
             emit(f"     desc[0]     : {parsed['description'][0][:200]}")
@@ -191,7 +191,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         "When to use / Problem solved": 0,
         "Syntax / structured expression": 0,
         "Arguments / Parameters": 0,
-        "Example / Demonstrate / SQL": 0,
+        "Example / Demonstrate / protocol": 0,
         "Usage notes / Prerequisites / Gotchas": 0,
         "Diagram": 0,
         "Other / Fallback": 0,
@@ -203,7 +203,7 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
         elif "argument" in ql or "parameter" in ql:
             q_types["Arguments / Parameters"] += 1
         elif "example" in ql or "demonstrate" in ql or "show me" in ql or "sql demonstrates" in ql:
-            q_types["Example / Demonstrate / SQL"] += 1
+            q_types["Example / Demonstrate / protocol"] += 1
         elif "usage notes" in ql or "prerequisites" in ql or "gotchas" in ql or "restrictions" in ql:
             q_types["Usage notes / Prerequisites / Gotchas"] += 1
         elif "when should" in ql or "problem does" in ql:
@@ -247,15 +247,15 @@ def diagnose(pdf_path: Path, verbose: bool = False, output_path: Path = None) ->
     sql_old = sum(1 for c in old_chunks if is_structured_paragraph(c))
     sql_new = sum(1 for c in new_chunks if is_structured_paragraph(c))
 
-    emit(f"  chunk_text (legacy)     : {len(old_chunks)} chunks, {sql_old} contain SQL")
-    emit(f"  chunk_text_structured_aware    : {len(new_chunks)} chunks, {sql_new} contain SQL")
-    emit(f"  (SQL-aware preserves SQL blocks whole; overlap skips SQL paragraphs)")
+    emit(f"  chunk_text (legacy)     : {len(old_chunks)} chunks, {sql_old} contain structured content")
+    emit(f"  chunk_text_structured_aware    : {len(new_chunks)} chunks, {sql_new} contain structured content")
+    emit(f"  (structured-aware preserves structured blocks whole; overlap skips dense clinical paragraphs)")
 
     if verbose:
-        # Show a SQL-containing chunk if any
+        # Show a structured-content chunk if any
         sql_sample = next((c for c in new_chunks if is_structured_paragraph(c)), None)
         if sql_sample:
-            emit(f"\n  Sample SQL-containing chunk:")
+            emit(f"\n  Sample structured-content chunk:")
             emit(f"  {sql_sample[:400]}")
 
     # ── Summary ──────────────────────────────────────────────────────────

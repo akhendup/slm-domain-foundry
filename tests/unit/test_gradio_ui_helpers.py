@@ -472,7 +472,7 @@ class TestMemoryDropdownHelpers:
     def test_parse_interaction_id_from_list(self):
         """Gradio 5 may pass a one-element list as the dropdown value."""
         from app.gradio_ui import _parse_interaction_id
-        choice = ["ed910883 | · 2026-06-02 05:13  'Show me an example SQL query.'"]
+        choice = ["ed910883 | · 2026-06-02 05:13  'What is the first-line treatment for hypertension?'"]
         assert _parse_interaction_id(choice) == "ed910883"
 
     def test_parse_interaction_id_empty(self):

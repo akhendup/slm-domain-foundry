@@ -14,8 +14,8 @@ default and is always available.
 
 Key idea (from agenticwfproject)
 ---------------------------------
-Store SQL / domain knowledge inside YAML patterns so the model
-*selects* the right pattern rather than *generating* SQL from scratch.
+Store domain knowledge inside YAML patterns so the model
+*selects* the right pattern rather than *generating ad hoc answers from scratch.
 This dramatically reduces the generation burden on small models.
 
 Architecture
@@ -82,12 +82,12 @@ def _pattern_text(pattern: Dict[str, Any]) -> str:
                 elif isinstance(item, dict):
                     parts.extend(str(x) for x in item.values() if isinstance(x, str))
 
-    # Also index first SQL from templates for domain keyword coverage
+    # Also index first template content from templates for domain keyword coverage
     templates = pattern.get("templates")
     if isinstance(templates, dict):
         for tval in templates.values():
-            if isinstance(tval, dict) and tval.get("sql"):
-                parts.append(str(tval["sql"])[:200])
+            if isinstance(tval, dict) and tval.get("content"):
+                parts.append(str(tval["content"])[:200])
                 break
 
     return " ".join(parts)
@@ -317,13 +317,13 @@ class PatternEmbedder:
             if use_cases and isinstance(use_cases, list):
                 lines.append("Use cases: " + "; ".join(str(u) for u in use_cases[:3]))
 
-            # First SQL template
+            # First worked example template
             templates = pat.get("templates")
             if isinstance(templates, dict):
                 for tv in templates.values():
-                    if isinstance(tv, dict) and tv.get("sql"):
-                        sql = tv["sql"].strip()
-                        lines.append(f"Example:\n```sql\n{sql}\n```")
+                    if isinstance(tv, dict) and tv.get("content"):
+                        content = tv["content"].strip()
+                        lines.append(f"Example:\n```\n{content}\n```")
                         break
 
             blocks.append("\n".join(lines))

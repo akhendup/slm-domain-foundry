@@ -370,8 +370,8 @@ def generate_qa_from_pattern(pattern: Dict) -> List[Tuple[str, str]]:
                         content,
                     ))
                 pairs.append((
-                    f"How would you modify the '{exname}' {fn} example to change the time window?",
-                    f"Starting from:\n\n{content}\n\nAdjust the ORDER BY column and pattern conditions to change the time window.",
+                    f"How would you modify the '{exname}' {fn} example for a different patient profile?",
+                    f"Starting from:\n\n{content}\n\nAdjust dosing, monitoring interval, and contraindications for the new patient profile.",
                 ))
 
     # -- Common errors --------------------------------------------------------

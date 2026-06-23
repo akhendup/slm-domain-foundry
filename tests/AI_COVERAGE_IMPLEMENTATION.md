@@ -40,10 +40,10 @@
 | Test count | ~1,207 tests passing (full `pytest tests/`) |
 | Overall coverage | ~76% (`app`+`data`+`train`); `data/` ~92%; `app/gradio_ui.py` ~46% |
 | CI coverage gate | 75% (`.gitea/workflows/tests.yml`; long-term goal 100% on core modules) |
-| Domain fixtures | Medical default in `tests/conftest.py`; no SQL/Teradata test data |
+| Domain fixtures | Medical default in `tests/conftest.py`; no legacy vendor test data |
 | `tests/real/` | Model load, PEFT, `finetune_cpu`, MPS suite, memory tab, swarm, Ollama live |
 | Apple Silicon | `tests/real/test_apple_silicon_mps.py` — 7 tests; macOS CI job |
-| Removed | Mock-heavy loader tests; all `sql_vocabulary` / Teradata fixtures |
+| Removed | Mock-heavy loader tests; all legacy vendor fixtures |
 | Not installed locally | `unsloth` (Unsloth training body not executed on Mac without install + CUDA) |
 
 **Key files already added:**
@@ -401,7 +401,7 @@ pytest tests/ -m gpu -q
 | Date | Author | Phase / step | What changed | Why | Coverage (`data` / `train` / `app`) |
 |------|--------|--------------|--------------|-----|-------------------------------------|
 | 2026-06-02 | AI + human | Baseline | Added `tests/real/*`, sharegpt_format, model_loader fixes, removed mock extended loader tests | Ollama 404 clarity, memory dropdown crash, PEFT load | ~92% / ~65% / ~46% |
-| 2026-06-13 | AI + human | Phase 1 docs/tests | Domain-neutral fixtures; MPS tests; SQL/Teradata removed from codebase and tests; CI gate 75% | 100% coverage deferred (Gradio + Unsloth gaps) | ~76% overall |
+| 2026-06-13 | AI + human | Phase 1 docs/tests | Domain-neutral fixtures; MPS tests; legacy vendor domain removed from codebase and tests; CI gate 75% | 100% coverage deferred (Gradio + Unsloth gaps) | ~76% overall |
 
 ---
 

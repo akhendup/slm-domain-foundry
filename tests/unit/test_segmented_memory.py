@@ -46,11 +46,11 @@ class TestExtractKeySentences:
     def test_structured_sentences_preferred(self):
         text = (
             "This is an unrelated sentence. "
-            "Use SELECT col FROM table WHERE id = 1. "
+            "Aspirin 81 mg daily is used for secondary prevention with blood pressure monitoring. "
             "Another unrelated sentence here."
         )
         result = _extract_key_sentences(text, 50)
-        assert "SELECT" in result or result != ""
+        assert "aspirin" in result.lower() or "monitoring" in result.lower() or result != ""
 
     def test_respects_budget(self):
         text = "Word " * 200
@@ -96,8 +96,8 @@ class TestROM:
 
     def test_rom_appears_in_render(self):
         mem = SegmentedMemory()
-        mem.set_rom("System: you are SQL expert.")
-        assert "SQL expert" in mem.render()
+        mem.set_rom("System: you are medical assistant.")
+        assert "medical assistant" in mem.render()
 
 
 # ---------------------------------------------------------------------------
@@ -107,10 +107,10 @@ class TestROM:
 class TestKernel:
     def test_set_kernel(self):
         mem = SegmentedMemory()
-        mem.set_kernel({"user": "Alice", "goal": "Learn SQL"})
+        mem.set_kernel({"user": "Alice", "goal": "Learn hypertension management"})
         prompt = mem.build_prompt()
         assert "Alice" in prompt["kernel"]
-        assert "Learn SQL" in prompt["kernel"]
+        assert "Learn hypertension management" in prompt["kernel"]
 
     def test_update_kernel(self):
         mem = SegmentedMemory()
@@ -182,13 +182,13 @@ class TestL2:
         tiny = SegmentBudgets(rom=5000, kernel=2000, l1=5, l2=50)
         mem  = SegmentedMemory(budgets=tiny)
         for _ in range(20):
-            mem.add_turn("user", "SELECT col FROM table WHERE condition = value and another thing")
+            mem.add_turn("user", "Patient with hypertension needs aspirin and blood pressure monitoring guidance")
         stats = mem.stats()
         assert stats["l2"]["used"] <= tiny.l2 + 10
 
     def test_clear_l1_flushes_to_l2(self):
         mem = SegmentedMemory()
-        mem.add_turn("user", "SELECT * FROM important_table WHERE col = 1;")
+        mem.add_turn("user", "Patient needs aspirin and blood pressure monitoring guidance")
         mem.clear_l1()
         assert len(mem.get_l1_messages()) == 0
 
@@ -201,10 +201,10 @@ class TestFullFlow:
     def test_total_tokens_within_budget(self):
         mem = SegmentedMemory()
         mem.set_rom("System prompt for the assistant.")
-        mem.set_kernel({"user": "Alice", "goal": "SQL training"})
+        mem.set_kernel({"user": "Alice", "goal": "clinical training"})
         for i in range(5):
-            mem.add_turn("user", f"Question {i} about SELECT FROM WHERE")
-            mem.add_turn("assistant", f"Answer {i}: use SELECT col FROM table WHERE id = {i};")
+            mem.add_turn("user", f"Question {i} about hypertension monitoring and aspirin dosing")
+            mem.add_turn("assistant", f"Answer {i}: recommend aspirin 81 mg daily with monitoring for patient {i};")
         stats = mem.stats()
         assert stats["total"]["used"] <= stats["total"]["budget"] + 50
 

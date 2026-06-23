@@ -140,6 +140,10 @@ def main():
     p.add_argument("--batch-size", type=int, default=1)
     p.add_argument("--grad-accum", type=int, default=8)
     p.add_argument("--epochs", type=int, default=1)
+    p.add_argument(
+        "--max-steps", type=int, default=None,
+        help="Stop after N optimizer steps (overrides --epochs when set).",
+    )
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--save-steps", type=int, default=50)
     p.add_argument("--lora-r", type=int, default=8)
@@ -263,6 +267,9 @@ def main():
             train_args_dict["eval_strategy"] = "steps"
         else:
             train_args_dict["evaluation_strategy"] = "steps"
+
+    if args.max_steps is not None:
+        train_args_dict["max_steps"] = args.max_steps
 
     # Build SFTTrainer kwargs compatible with both old TRL (<0.10) and new TRL (>=0.10).
     # In TRL >=0.10 max_seq_length moved into SFTConfig; tokenizer was renamed processing_class.

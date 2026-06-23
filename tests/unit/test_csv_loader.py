@@ -12,13 +12,13 @@ class TestLoadCsv:
 
     def test_auto_detect_question_answer_columns(self, tmp_csv):
         path = tmp_csv([
-            {"question": "What is SQL?", "answer": "A query language."},
+            {"question": "What is hypertension?", "answer": "Chronic high blood pressure."},
             {"question": "What is a table?", "answer": "A structured set of rows and columns."},
         ])
         texts, qa = load_csv(path)
         assert texts == []
         assert len(qa) == 2
-        assert qa[0] == ("What is SQL?", "A query language.")
+        assert qa[0] == ("What is hypertension?", "Chronic high blood pressure.")
 
     def test_auto_detect_q_a_two_column(self, tmp_csv):
         path = tmp_csv([

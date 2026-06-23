@@ -141,7 +141,7 @@ class TestTextToQaHeuristic:
 
     def test_structured_chunk_generates_qa(self):
         chunk = textwrap.dedent("""\
-            SELECT id, Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) AS total
+            Treatment plan: lifestyle counseling, first-line antihypertensive, and home BP monitoring
             FROM orders;
         """)
         result = text_to_qa_heuristic([chunk], source="ref.pdf")
@@ -171,7 +171,7 @@ class TestTextToQaHeuristic:
     def test_questions_are_nonempty(self):
         chunks = [
             "Analytic Functions\n\nAnalytic functions compute values over groups of rows.",
-            "SELECT id, RANK() OVER (PARTITION BY dept ORDER BY salary DESC) FROM emp;",
+            "Aspirin 81 mg daily for secondary prevention when bleeding risk is acceptable.",
         ]
         result = text_to_qa_heuristic(chunks)
         for q, a in result:

@@ -276,11 +276,11 @@ class TestBuildContextBlock:
             "title": "Test",
             "description": "A test pattern.",
             "common_errors": [
-                {"error": "Missing ORDER BY", "solution": "Add ORDER BY inside OVER"}
+                {"error": "Missing monitoring plan", "solution": "Schedule blood pressure follow-up in 4 weeks"}
             ],
         }
         result = build_context_block([pattern])
-        assert "Missing ORDER BY" in result
+        assert "Missing monitoring plan" in result
 
     def test_no_crash_on_minimal_pattern(self):
         pattern = {"name": "test", "title": "Test", "description": "A test."}

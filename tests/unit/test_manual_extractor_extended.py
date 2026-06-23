@@ -342,7 +342,7 @@ class TestSplitExampleParts:
     def test_basic_split(self):
         text = (
             "Input\n\nid | amount\n1  | 100\n\n"
-            "Treatment plan\n\nSELECT Hypertension(amount, ts) FROM t;\n\n"
+            "Treatment plan\n\nLifestyle counseling plus first-line antihypertensive therapy.\n\n"
             "Output\n\nid | total\n1  | 100"
         )
         result = _split_example_parts(text)
@@ -353,11 +353,11 @@ class TestSplitExampleParts:
 
     def test_structured_part_extracted(self):
         text = (
-            "Treatment plan\n\nSELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM orders;\n\n"
+            "Treatment plan\n\nAspirin 81 mg daily with home blood pressure monitoring.\n\n"
             "Output\n\nid | total"
         )
         result = _split_example_parts(text)
-        assert "SELECT" in result.get("structured", "")
+        assert "Aspirin" in result.get("structured", "") or "monitoring" in result.get("structured", "")
 
     def test_empty_returns_empty_parts(self):
         result = _split_example_parts("")
@@ -379,8 +379,8 @@ class TestParseFunctionSection:
             "Description\n\nHypertension is chronic elevation of blood pressure.\n\n"
             "Syntax\n\nTarget blood pressure below 130/80 mmHg\n\n"
             "Arguments\n\nvalue_expression: The column to accumulate\n\n"
-            "Notes\n\nAlways specify ORDER BY for deterministic results.\n\n"
-            "Examples\n\nSELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;"
+            "Notes\n\nAlways document monitoring intervals and contraindications.\n\n"
+            "Examples\n\nAspirin 81 mg daily with blood pressure checks every four weeks."
         )
         result = parse_function_section(text, heading="Hypertension")
         assert result["heading"] == "Hypertension"
@@ -397,7 +397,7 @@ class TestParseFunctionSection:
                    or "description" in part.lower() for part in result["description"])
 
     def test_examples_captured(self):
-        text = "Examples\n\nSELECT Hypertension(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"
+        text = "Examples\n\nAspirin 81 mg daily with monthly blood pressure monitoring."
         result = parse_function_section(text, "Hypertension")
         assert len(result["examples"]) >= 1
 
@@ -409,7 +409,7 @@ class TestParseFunctionSection:
     def test_input_sql_output_map_to_examples(self):
         text = (
             "Description\n\nMain description.\n\n"
-            "Treatment plan\n\nSELECT Hypertension(x, t) FROM t;\n\n"
+            "Treatment plan\n\nLifestyle counseling and first-line antihypertensive therapy.\n\n"
             "Output\n\nid | total\n1  | 100"
         )
         result = parse_function_section(text, "Hypertension")
@@ -447,14 +447,14 @@ class TestExtractFigureCaptions:
 
 class TestGenerateTypedQa:
     def _make_parsed(self, heading="Hypertension", desc="Computes a cumulative sum.", syntax="Hypertension(val, col)",
-                     args="val: The value to accumulate", notes="Use ORDER BY.", examples=None):
+                     args="val: The value to accumulate", notes="Schedule follow-up monitoring.", examples=None):
         return {
             "heading": heading,
             "description": [desc],
             "syntax": [syntax],
             "arguments": [args],
             "notes": [notes],
-            "examples": examples or ["SELECT Hypertension(x, t) OVER (PARTITION BY id ORDER BY t) FROM tbl;"],
+            "examples": examples or ["Aspirin 81 mg daily with home blood pressure monitoring."],
             "raw": f"{heading}\n\n{desc}",
         }
 

@@ -12,7 +12,7 @@ Comparison templates use two placeholders: {fn} and {related}.
 
 Exported lists (for import by yaml_pattern_loader.py, manual_extractor.py, template_expander.py):
 
-  Technical (SQL / software documentation):
+  Technical (structured clinical / protocol documentation):
     DESCRIPTION_QUESTIONS, ONE_SENTENCE_QUESTIONS, CATEGORY_QUESTIONS,
     USE_CASE_QUESTIONS, PARAMETER_QUESTIONS, SYNTAX_QUESTIONS,
     ARGUMENT_QUESTIONS, NOTES_QUESTIONS, EXAMPLE_QUESTIONS,
@@ -59,7 +59,7 @@ def _get(templates: Dict, section: str, key: str, fallback: List[str]) -> List[s
 _t = _load_yaml_templates()
 
 # ---------------------------------------------------------------------------
-# Technical — SQL functions, software documentation
+# Technical — structured clinical / protocol documentation
 # ---------------------------------------------------------------------------
 
 DESCRIPTION_QUESTIONS: List[str] = _get(_t, "technical", "description", [
@@ -78,10 +78,10 @@ ONE_SENTENCE_QUESTIONS: List[str] = _get(_t, "technical", "one_sentence", [
 ])
 
 CATEGORY_QUESTIONS: List[str] = _get(_t, "technical", "category", [
-    "What category of SQL function is {fn}?",
-    "What type of SQL function is {fn}?",
-    "Is {fn} an analytic function, aggregate function, or something else?",
-    "How is {fn} classified in SQL?",
+    "What category does {fn} belong to?",
+    "What type of clinical approach is {fn}?",
+    "Is {fn} a diagnostic, treatment, or monitoring approach?",
+    "How is {fn} classified in clinical practice?",
 ])
 
 USE_CASE_QUESTIONS: List[str] = _get(_t, "technical", "use_case", [
@@ -106,13 +106,13 @@ PARAMETER_QUESTIONS: List[str] = _get(_t, "technical", "parameter", [
 
 SYNTAX_QUESTIONS: List[str] = _get(_t, "technical", "syntax", [
     "What is the syntax for {fn}?",
-    "What are the required vs optional clauses in {fn}?",
-    "Which keyword is mandatory in {fn} syntax?",
-    "What is the minimum valid {fn} expression?",
-    "How do you write a {fn} expression in SQL?",
-    "Show me the {fn} SQL syntax.",
-    "What does a basic {fn} query look like?",
-    "What clauses does {fn} use?",
+    "What are the required vs optional steps in {fn}?",
+    "Which step is mandatory in {fn}?",
+    "What is the minimum valid {fn} workflow?",
+    "How do you document a {fn} protocol?",
+    "Show me the standard format for {fn}.",
+    "What does a basic {fn} example look like?",
+    "What components does {fn} use?",
 ])
 
 ARGUMENT_QUESTIONS: List[str] = _get(_t, "technical", "argument", [
@@ -143,10 +143,10 @@ EXAMPLE_QUESTIONS: List[str] = _get(_t, "technical", "example", [
     "Show me a complete example of {fn} with input and output.",
     "What is the purpose of this {fn} example?",
     "How would you modify this {fn} example to change the output?",
-    "What are the key SQL clauses in this {fn} example?",
-    "Explain the SQL logic in this {fn} example.",
-    "What would happen if you changed the ORDER BY in this {fn} example?",
-    "Write a SQL query using {fn}.",
+    "What are the key steps in this {fn} example?",
+    "Explain the clinical logic in this {fn} example.",
+    "What would happen if you changed a parameter in this {fn} example?",
+    "Show me a worked example using {fn}.",
     "Give me a real-world example of {fn}.",
 ])
 
@@ -168,17 +168,17 @@ PERFORMANCE_QUESTIONS: List[str] = _get(_t, "technical", "performance", [
     "What are the performance tips for {fn}?",
     "What makes {fn} slow?",
     "How does data volume affect {fn} performance?",
-    "What indexes or statistics help {fn} run faster?",
-    "How does {fn} scale with increasing row count?",
+    "What practices improve efficiency when applying {fn}?",
+    "How does {fn} scale with increasing patient complexity?",
     "When should I avoid {fn} for performance reasons?",
-    "What is the memory footprint of {fn} for large windows?",
+    "What is the practical burden of {fn} at scale?",
     "Is {fn} more efficient than its common alternatives?",
-    "How can I use EXPLAIN PLAN to diagnose a slow {fn} query?",
+    "How can I troubleshoot a failing {fn} workflow?",
 ])
 
 ERROR_QUESTIONS: List[str] = _get(_t, "technical", "error_troubleshoot", [
     "What are common errors when using {fn}?",
-    "Why does my {fn} query fail?",
+    "Why does my {fn} plan fail?",
     "How do I troubleshoot {fn} issues?",
     "What causes {fn} to return unexpected results?",
     "What are the most common mistakes with {fn}?",

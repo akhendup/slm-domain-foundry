@@ -16,24 +16,24 @@ pytestmark = pytest.mark.unit
 def good_candidates():
     return [
         {
-            "question": "How do I compute a running total in SQL?",
-            "answer": "Use Hypertension: SELECT col, Hypertension(col, col) FROM t ORDER BY col;\n```sql\nSELECT id, Hypertension(amount, id) FROM sales;\n```",
+            "question": "How should blood pressure be monitored in adults?",
+            "answer": "Hypertension is sustained elevated blood pressure. Confirm readings on two visits, then start lifestyle counseling and first-line therapy with follow-up monitoring.",
         },
         {
-            "question": "What is a window function?",
-            "answer": "Window functions compute values across a set of rows related to the current row. Examples include ROW_NUMBER, RANK, and LAG.",
+            "question": "What is secondary prevention with aspirin?",
+            "answer": "Low-dose aspirin reduces recurrent cardiovascular events in eligible adults after balancing bleeding risk.",
         },
         {
-            "question": "How to filter rows in SQL?",
-            "answer": "Use a WHERE clause: SELECT * FROM t WHERE col = value;",
+            "question": "What lifestyle changes help manage hypertension?",
+            "answer": "Recommend sodium reduction, regular exercise, and home blood pressure monitoring.",
         },
         {
-            "question": "Explain GROUP BY",
-            "answer": "GROUP BY aggregates rows sharing a common value. Use with aggregate functions like SUM, COUNT, AVG.",
+            "question": "Explain contraindications to aspirin",
+            "answer": "Avoid aspirin when active bleeding, severe allergy, or high bleeding risk without clear benefit.",
         },
         {
             "question": "What does HAVING do?",
-            "answer": "HAVING filters groups after GROUP BY, similar to WHERE but for aggregated results. Example: SELECT dept, COUNT(*) FROM emp GROUP BY dept HAVING COUNT(*) > 5;",
+            "answer": "Review renal function and age before aspirin; adjust antihypertensive dose when creatinine rises.",
         },
     ]
 
@@ -44,8 +44,8 @@ def mixed_candidates():
     return [
         {"question": "Q?", "answer": ""},                   # empty — bad
         {"question": "Q?", "answer": "I cannot tell you."}, # refusal — bad
-        {"question": "How to SELECT?",
-         "answer": "Use SELECT col FROM table WHERE condition;"},  # decent
+        {"question": "How to monitor BP?",
+         "answer": "Use home blood pressure readings twice daily for one week."},  # decent
         {"question": "DROP TABLE?",
          "answer": "DROP TABLE users; DELETE FROM accounts;"},     # harmful
     ]
@@ -135,8 +135,8 @@ class TestBootstrapFewShotSelect:
 
     def test_alpaca_format_candidates(self):
         candidates = [
-            {"instruction": "What is SQL?", "output": "SQL is a query language for databases. Use SELECT to retrieve data."},
-            {"instruction": "How to filter?", "output": "Use WHERE clause: SELECT * FROM t WHERE col=1;"},
+            {"instruction": "What is hypertension?", "output": "Hypertension is chronic elevation of blood pressure managed with lifestyle changes and medication."},
+            {"instruction": "How to filter?", "output": "Use home blood pressure monitoring twice daily for one week."},
         ]
         bfs   = BootstrapFewShot(top_k=2)
         demos = bfs.select(candidates)
@@ -173,10 +173,10 @@ class TestScoreCandidates:
 class TestDistill:
     def test_teacher_examples_preferred(self):
         teacher = [
-            {"question": "Teacher Q", "answer": "SELECT * FROM t WHERE id=1; use this example below."},
+            {"question": "Teacher Q", "answer": "Aspirin 81 mg daily with blood pressure monitoring; use this example below."},
         ]
         student = [
-            {"question": "Student Q", "answer": "Use WHERE clause."},
+            {"question": "Student Q", "answer": "Schedule follow-up monitoring."},
         ]
         bfs   = BootstrapFewShot(top_k=2, min_confidence=0.0)
         demos = bfs.distill(teacher, student, teacher_boost=0.2)
@@ -184,7 +184,7 @@ class TestDistill:
 
     def test_distill_empty_student(self):
         teacher = [
-            {"question": "Q?", "answer": "SELECT col FROM table;"},
+            {"question": "Q?", "answer": "Start lifestyle counseling and recheck blood pressure in four weeks."},
         ]
         bfs   = BootstrapFewShot(top_k=1, min_confidence=0.0)
         demos = bfs.distill(teacher, student_pool=None)

@@ -30,8 +30,8 @@ class TestScoreQuality:
         assert "empty answer" in flags
 
     def test_good_answer_scores_high(self):
-        q = "How do I use Hypertension in SQL?"
-        a = "Hypertension computes a cumulative sum over a column. Use SELECT Hypertension(col, col) FROM t;"
+        q = "How do I use Hypertension in primary care?"
+        a = "Hypertension is sustained elevated blood pressure. Confirm readings and start first-line therapy with monitoring."
         score, flags = _score_quality(q, a)
         assert score > 0.4
 
@@ -40,7 +40,7 @@ class TestScoreQuality:
         a = "I cannot provide that information as an AI."
         score, flags = _score_quality(q, a)
         assert "refusal detected" in flags
-        score_normal, _ = _score_quality(q, "Hypertension is a cumulative sum function used in Clinical SQL.")
+        score_normal, _ = _score_quality(q, "Hypertension is sustained elevated blood pressure managed with lifestyle and medication.")
         assert score < score_normal
 
     def test_score_in_range(self):
@@ -55,7 +55,7 @@ class TestScoreSafety:
         assert "harmful content detected" in flags
 
     def test_clean_answer_perfect(self):
-        score, flags = _score_safety("Use SELECT * FROM t WHERE col = 1;")
+        score, flags = _score_safety("Use aspirin 81 mg daily with blood pressure monitoring.")
         assert score == 1.0
         assert flags == []
 
@@ -71,8 +71,8 @@ class TestScoreSafety:
 
 class TestScoreCost:
     def test_concise_scores_full(self):
-        q = "What is SELECT?"
-        a = "SELECT retrieves rows from a table."
+        q = "What is hypertension?"
+        a = "Hypertension is sustained elevated blood pressure."
         score, flags = _score_cost(q, a)
         assert score == 1.0
         assert flags == []
@@ -95,22 +95,22 @@ class TestScoreDomain:
         assert score == 1.0
 
     def test_all_keywords_present(self):
-        score, _ = _score_domain("Use SELECT FROM WHERE JOIN in SQL.", ["SELECT", "FROM", "WHERE"])
+        score, _ = _score_domain("Manage hypertension with aspirin and monitoring.", ["hypertension", "aspirin", "monitoring"])
         assert score == 1.0
 
     def test_none_present_returns_zero(self):
-        score, flags = _score_domain("Hello world.", ["SELECT", "FROM", "WHERE"])
+        score, flags = _score_domain("Hello world.", ["hypertension", "aspirin", "monitoring"])
         assert score == 0.0
         assert "low domain vocabulary coverage" in flags
 
     def test_partial_coverage(self):
-        score, _ = _score_domain("Use SELECT only.", ["SELECT", "FROM", "WHERE"])
+        score, _ = _score_domain("Discuss hypertension only.", ["hypertension", "aspirin", "monitoring"])
         assert 0.0 < score < 1.0
 
 
 class TestScorePerformance:
     def test_code_block_boosts_score(self):
-        answer = "Use this query:\n```sql\nSELECT * FROM t;\n```"
+        answer = "Use this plan:\n```\nAspirin 81 mg daily with blood pressure monitoring.\n```"
         score, _ = _score_performance(answer)
         assert score > 0.5
 
@@ -130,8 +130,8 @@ class TestScorePerformance:
 
 class TestScoreUsability:
     def test_action_words_boost(self):
-        q = "How to run a query?"
-        a = "First, select the table. Then execute the SELECT statement. Use the following example below."
+        q = "How to manage hypertension?"
+        a = "First, confirm elevated readings. Then start lifestyle counseling. Use the following monitoring plan below."
         score, _ = _score_usability(q, a)
         assert score > 0.3
 
@@ -232,7 +232,7 @@ class TestJudgeResult:
 class TestJudgeOrchestrator:
     def test_evaluate_returns_result(self):
         orch = JudgeOrchestrator()
-        result = orch.evaluate("What is SQL?", "SQL is a query language for databases.")
+        result = orch.evaluate("What is hypertension?", "Hypertension is chronic elevation of blood pressure.")
         assert isinstance(result, JudgeResult)
         assert set(result.scores.keys()) == set(DIMENSIONS)
         assert 0.0 <= result.confidence <= 1.0
@@ -245,19 +245,19 @@ class TestJudgeOrchestrator:
             assert 0.0 <= result.scores[dim] <= 1.0
 
     def test_domain_keywords_used(self):
-        orch_sql  = JudgeOrchestrator(domain_keywords=["SELECT", "FROM", "WHERE"])
+        orch_kw   = JudgeOrchestrator(domain_keywords=["aspirin", "monitoring", "lifestyle"])
         orch_none = JudgeOrchestrator()
-        q = "How to filter?"
-        a = "Use WHERE clause with SELECT FROM."
-        r_sql  = orch_sql.evaluate(q, a)
+        q = "How to manage hypertension?"
+        a = "Use lifestyle counseling with aspirin and monitoring."
+        r_kw   = orch_kw.evaluate(q, a)
         r_none = orch_none.evaluate(q, a)
         # domain score with matching keywords should be 1.0
-        assert r_sql.scores["domain"] == 1.0
+        assert r_kw.scores["domain"] == 1.0
         assert r_none.scores["domain"] == 1.0   # no keywords → neutral 1.0
 
     def test_custom_strategy(self):
         orch = JudgeOrchestrator(strategy=AggregationStrategy.MIN_SCORE)
-        result = orch.evaluate("Q?", "A useful answer with SELECT FROM WHERE.")
+        result = orch.evaluate("Q?", "A useful answer with hypertension monitoring and aspirin guidance.")
         assert result.strategy == AggregationStrategy.MIN_SCORE.value
         assert result.confidence == min(result.scores.values())
 
@@ -272,7 +272,7 @@ class TestJudgeOrchestrator:
         orch = JudgeOrchestrator()
         pairs = [
             ("Q?", ""),                    # empty answer → low confidence
-            ("Q?", "SELECT * FROM t WHERE col = 1 and use this example below."),
+            ("Q?", "Aspirin 81 mg daily with blood pressure monitoring; use this example below."),
         ]
         ranked = orch.rank(pairs)
         assert ranked[0][0].confidence >= ranked[1][0].confidence

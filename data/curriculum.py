@@ -20,16 +20,16 @@ CurriculumSorter  : takes a list of training examples, optionally annotates
 CurriculumDataset : thin wrapper that exposes a sorted iterable of examples
                     ready to feed into a training loop
 
-Built-in SQL error patterns are provided; custom patterns can be added.
+Built-in clinical error patterns are provided; custom patterns can be added.
 
 Usage
 -----
-    from data.curriculum import CurriculumSorter, DEFAULT_SQL_PATTERNS
+    from data.curriculum import CurriculumSorter, DEFAULT_MEDICAL_PATTERNS
 
-    sorter = CurriculumSorter(patterns=DEFAULT_SQL_PATTERNS)
+    sorter = CurriculumSorter(patterns=DEFAULT_MEDICAL_PATTERNS)
     examples = [
-        {"instruction": "Fix this query", "output": "SELECT * FROM t WHERE col=1"},
-        {"instruction": "Handle LOB index", "output": "DROP INDEX ..."},
+        {"instruction": "Manage elevated blood pressure", "output": "Confirm readings and start first-line therapy."},
+        {"instruction": "Review contraindications", "output": "Avoid aspirin when active bleeding is present."},
     ]
     ordered = sorter.sort(examples, text_key="output")
     # High-confidence examples come first.
@@ -77,7 +77,7 @@ class ErrorPattern:
     confidence   : base confidence when this pattern fires (0.0–1.0)
     phase        : lifecycle phase (schema, loading, validation, …)
     fix_hint     : brief description of the canonical fix
-    error_code   : optional error code (e.g. "TD_ERROR_5660")
+    error_code   : optional error code (e.g. "CLIN_CONTRA_001")
     """
     name:       str
     pattern:    re.Pattern
@@ -120,108 +120,114 @@ class ConfidenceMatch:
 
 
 # ---------------------------------------------------------------------------
-# Built-in SQL error patterns (ported from bird_critic knowledge base)
+# Built-in clinical error / complexity patterns for curriculum sorting
 # ---------------------------------------------------------------------------
 
-DEFAULT_SQL_PATTERNS: List[ErrorPattern] = [
+DEFAULT_MEDICAL_PATTERNS: List[ErrorPattern] = [
     ErrorPattern(
-        name="LOB_index_error",
-        pattern=re.compile(r"lob\s+index|TD_ERROR_5660|5660", re.IGNORECASE),
+        name="contraindication",
+        pattern=re.compile(
+            r"contraindic|do\s+not\s+use|avoid\s+in|not\s+recommended\s+for",
+            re.IGNORECASE,
+        ),
         confidence=0.95,
-        phase="schema",
-        fix_hint="Remove or recreate LOB index after migration.",
-        error_code="TD_ERROR_5660",
+        phase="safety",
+        fix_hint="Review contraindications and choose an alternative therapy.",
+        error_code="CLIN_CONTRA_001",
     ),
     ErrorPattern(
-        name="date_format_mismatch",
+        name="drug_interaction",
         pattern=re.compile(
-            r"TD_ERROR_2666|2666|date\s+format|invalid\s+date|"
-            r"timestamp\s+format|date\s+conversion",
+            r"interaction|potentiates|inhibits\s+metabolism|serotonin\s+syndrome",
+            re.IGNORECASE,
+        ),
+        confidence=0.92,
+        phase="pharmacology",
+        fix_hint="Check medication list and adjust or monitor interacting agents.",
+        error_code="CLIN_INTERACT_002",
+    ),
+    ErrorPattern(
+        name="dosage_error",
+        pattern=re.compile(
+            r"overdose|subtherapeutic|incorrect\s+dose|toxic\s+dose|underdose",
             re.IGNORECASE,
         ),
         confidence=0.90,
-        phase="loading",
-        fix_hint="Normalise date strings to YYYY-MM-DD before loading.",
-        error_code="TD_ERROR_2666",
+        phase="prescribing",
+        fix_hint="Verify weight, renal function, and guideline-recommended dose.",
+        error_code="CLIN_DOSE_003",
     ),
     ErrorPattern(
-        name="column_mismatch",
+        name="diagnosis_uncertainty",
         pattern=re.compile(
-            r"TD_ERROR_3810|3810|column\s+(not\s+found|mismatch|type)|"
-            r"incompatible\s+(type|column)",
+            r"differential\s+diagnosis|rule\s+out|confirm\s+with|white.?coat",
             re.IGNORECASE,
         ),
         confidence=0.85,
-        phase="schema",
-        fix_hint="Verify column names and types match target schema.",
-        error_code="TD_ERROR_3810",
+        phase="diagnosis",
+        fix_hint="Confirm diagnosis with repeated measurements or additional workup.",
+        error_code="CLIN_DX_004",
     ),
     ErrorPattern(
-        name="character_encoding",
+        name="monitoring_required",
         pattern=re.compile(
-            r"TD_ERROR_2621|2621|encoding|character\s+set|latin.?1|utf.?8|"
-            r"invalid\s+character",
+            r"monitor|follow.?up|reassess\s+in|surveillance|track\s+blood\s+pressure",
+            re.IGNORECASE,
+        ),
+        confidence=0.82,
+        phase="follow_up",
+        fix_hint="Schedule follow-up and document monitoring plan.",
+        error_code="CLIN_MONITOR_005",
+    ),
+    ErrorPattern(
+        name="adverse_event",
+        pattern=re.compile(
+            r"adverse|side\s+effect|anaphylaxis|bleeding|hypotension|syncope",
             re.IGNORECASE,
         ),
         confidence=0.80,
-        phase="loading",
-        fix_hint="Validate character encoding before bulk load.",
-        error_code="TD_ERROR_2621",
+        phase="safety",
+        fix_hint="Assess severity, stop offending agent if needed, and treat symptoms.",
+        error_code="CLIN_ADVERSE_006",
     ),
     ErrorPattern(
-        name="null_constraint",
+        name="guideline_deviation",
         pattern=re.compile(
-            r"null\s+constraint|not\s+null\s+violation|null\s+value.*column",
+            r"off.?label|guideline|evidence.?based|standard\s+of\s+care",
             re.IGNORECASE,
         ),
         confidence=0.75,
-        phase="loading",
-        fix_hint="Handle NULLs in non-nullable columns before loading.",
+        phase="quality",
+        fix_hint="Align plan with current clinical guidelines and document rationale.",
+        error_code="CLIN_GUIDE_007",
     ),
     ErrorPattern(
-        name="duplicate_key",
+        name="missing_history",
         pattern=re.compile(
-            r"duplicate\s+(key|row|primary)|unique\s+constraint|"
-            r"primary\s+key\s+violation",
+            r"patient\s+history|allergy|pregnancy|comorbid|renal\s+function",
             re.IGNORECASE,
         ),
-        confidence=0.75,
-        phase="loading",
-        fix_hint="Deduplicate source data before loading.",
+        confidence=0.72,
+        phase="assessment",
+        fix_hint="Collect complete history before finalizing treatment.",
+        error_code="CLIN_HISTORY_008",
     ),
     ErrorPattern(
-        name="missing_table",
-        pattern=re.compile(r"table\s+not\s+found|no\s+such\s+table|"
-                           r"relation\s+does\s+not\s+exist",
-                           re.IGNORECASE),
-        confidence=0.70,
-        phase="schema",
-        fix_hint="Ensure schema migration step ran before data load.",
-    ),
-    ErrorPattern(
-        name="syntax_error",
+        name="documentation_gap",
         pattern=re.compile(
-            r"syntax\s+error|unexpected\s+token|parse\s+error|"
-            r"near\s+['\"]",
+            r"unclear\s+indication|missing\s+documentation|incomplete\s+assessment",
             re.IGNORECASE,
         ),
-        confidence=0.60,
-        phase="validation",
-        fix_hint="Review SQL syntax for the failing statement.",
-    ),
-    ErrorPattern(
-        name="timeout",
-        pattern=re.compile(r"timeout|timed?\s+out|query\s+exceeded", re.IGNORECASE),
-        confidence=0.55,
-        phase="performance",
-        fix_hint="Optimise query or increase timeout threshold.",
+        confidence=0.65,
+        phase="quality",
+        fix_hint="Document indication, shared decision-making, and follow-up plan.",
     ),
     ErrorPattern(
         name="generic_error",
-        pattern=re.compile(r"error|exception|failed|failure", re.IGNORECASE),
+        pattern=re.compile(r"error|exception|failed|failure|concern", re.IGNORECASE),
         confidence=0.30,
         phase="unknown",
-        fix_hint="Manual investigation required.",
+        fix_hint="Manual clinical review required.",
     ),
 ]
 
@@ -241,7 +247,7 @@ class PatternMatcher:
 
     def __init__(self, patterns: Optional[List[ErrorPattern]] = None) -> None:
         self._patterns = sorted(
-            patterns or DEFAULT_SQL_PATTERNS,
+            patterns or DEFAULT_MEDICAL_PATTERNS,
             key=lambda p: p.confidence,
             reverse=True,
         )
@@ -304,7 +310,7 @@ class CurriculumSorter:
 
     Parameters
     ----------
-    patterns   : error patterns to use (default: DEFAULT_SQL_PATTERNS)
+    patterns   : error patterns to use (default: DEFAULT_MEDICAL_PATTERNS)
     text_key   : dict key to extract text from each example
                  (defaults to "output", then "answer", then full str)
     """
@@ -414,7 +420,7 @@ class CurriculumDataset:
 
     Usage
     -----
-        ds = CurriculumDataset(examples, patterns=DEFAULT_SQL_PATTERNS)
+        ds = CurriculumDataset(examples, patterns=DEFAULT_MEDICAL_PATTERNS)
         for item in ds:
             train(item.data)
     """

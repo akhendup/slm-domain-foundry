@@ -258,7 +258,7 @@ class TestLLMJudge:
     def test_confidence_in_range(self):
         judge  = LLMJudge(backend=_mock_backend())
         result = judge.evaluate("How does Hypertension work?",
-                                "SELECT Hypertension(col, col) FROM table ORDER BY col;")
+                                "Confirm hypertension readings and start lifestyle counseling with monitoring.")
         assert 0.0 <= result.confidence <= 1.0
 
 
@@ -278,7 +278,7 @@ class TestHybridJudge:
         b.complete.side_effect = ConnectionError("refused")
         judge  = HybridJudge(backend=b, log_fallback=False)
         result = judge.evaluate("What is hypertension?",
-                                "Hypertension computes cumulative sums. Use SELECT Hypertension(col,col) FROM t;")
+                                "Hypertension is sustained elevated blood pressure managed with lifestyle changes and medication.")
         assert "heuristic_fallback" in result.flags
         assert 0.0 <= result.confidence <= 1.0
 
@@ -306,17 +306,17 @@ class TestHybridJudge:
         b = _mock_backend()
         b.complete.side_effect = _side_effect
         judge  = HybridJudge(backend=b, log_fallback=False)
-        ranked = judge.rank([("Q1?", "A1 excellent answer with SELECT FROM WHERE."),
+        ranked = judge.rank([("Q1?", "A1 excellent answer with hypertension monitoring and aspirin guidance."),
                              ("Q2?", "")])
         assert ranked[0][0].confidence >= ranked[-1][0].confidence
 
     def test_domain_keywords_forwarded_to_fallback(self):
         b = _mock_backend()
         b.complete.side_effect = ConnectionError("refused")
-        judge  = HybridJudge(backend=b, domain_keywords=["SELECT", "FROM"],
+        judge  = HybridJudge(backend=b, domain_keywords=["aspirin", "monitoring"],
                               log_fallback=False)
-        result = judge.evaluate("How to query?",
-                                "Use SELECT * FROM table WHERE id = 1;")
+        result = judge.evaluate("How to manage hypertension?",
+                                "Use aspirin 81 mg daily with blood pressure monitoring.")
         assert result.scores["domain"] == 1.0  # both keywords present
 
     def test_backend_name_exposed(self):

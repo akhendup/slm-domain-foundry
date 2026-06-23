@@ -213,9 +213,8 @@ def main():
         type=Path,
         default=default_vocab_path,
         help=(
-            "Directory containing *_vocabulary.yaml files (e.g. medical_vocabulary.yaml, "
-            "financial_vocabulary.yaml). Each file is combinatorially expanded against "
-            "all question templates to produce large Q&A datasets."
+            "Directory or single *_vocabulary.yaml file (e.g. data/medical_vocabulary.yaml). "
+            "Each file is combinatorially expanded against all question templates."
         ),
     )
     parser.add_argument(
@@ -283,7 +282,7 @@ def main():
                         if conv:
                             multiturn.append({"conversations": conv})
 
-                # 2. SQL-aware chunk-based Q&A (supplement for uncaptured content)
+                # 2. structured-aware chunk-based Q&A (supplement for uncaptured content)
                 chunks = chunk_text_structured_aware(
                     full_text,
                     chunk_size=args.chunk_size,

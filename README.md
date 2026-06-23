@@ -76,6 +76,26 @@ python -m app.gradio_ui --model-dir output_model
 # Open http://127.0.0.1:7860
 ```
 
+### One-command sample build (medical demo)
+
+Train an instruct model end-to-end on bundled clinical sample data (CSV, YAML patterns, and **`medical_vocabulary.yaml` expansion**):
+
+```bash
+chmod +x scripts/sample_medical_build.sh
+./scripts/sample_medical_build.sh
+```
+
+Defaults:
+- **Model**: `unsloth/Llama-3.2-1B-Instruct` (same base as `config.yaml`; override with `SAMPLE_MODEL=...`)
+- **Data**: `sample_data/medical_qa.csv`, `sample_data/patternexamples/`, plus combinatorial expansion from `data/medical_vocabulary.yaml` only (~430 Q&A pairs total). The script prints sample rows and writes full JSONL under `training_data/` as the reference dataset.
+- **Training**: 500 optimizer steps by default (practical on MPS/CPU); set `SAMPLE_MAX_STEPS=0` for a full epoch on the full dataset.
+- **Output**: fine-tuned weights in `output_model/`
+
+Useful overrides:
+- `SKIP_TRAIN=1` — prepare data and preview examples only (inspect `training_data/` without training)
+- `SKIP_VOCAB=1` — skip vocabulary expansion (smaller/faster, not representative)
+- `SAMPLE_MAX_STEPS=0` — train a full epoch instead of the 500-step demo cap
+
 ## Apple Silicon (Mac)
 
 The repo supports **three runtime paths**:

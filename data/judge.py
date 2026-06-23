@@ -28,9 +28,9 @@ Usage
 -----
     from data.judge import JudgeOrchestrator, DEFAULT_WEIGHTS
 
-    orch = JudgeOrchestrator(domain_keywords=["SELECT", "FROM", "WHERE"])
-    result = orch.evaluate(question="How do I filter rows?",
-                           answer="Use WHERE clause: SELECT * FROM t WHERE col=1;")
+    orch = JudgeOrchestrator(domain_keywords=["hypertension", "aspirin", "monitoring"])
+    result = orch.evaluate(question="How should blood pressure be managed?",
+                           answer="Confirm elevated readings, start lifestyle counseling, and schedule monitoring.")
     print(result.confidence)          # 0.0–1.0
     print(result.scores)              # {"quality": 0.8, "safety": 1.0, ...}
     print(result.gate(threshold=0.6)) # True / False
@@ -319,7 +319,7 @@ class JudgeOrchestrator:
 
     Parameters
     ----------
-    domain_keywords : words expected in on-domain answers (e.g. SQL keywords)
+    domain_keywords : words expected in on-domain answers (e.g. clinical keywords)
     weights         : per-dimension weights for WEIGHTED_AVERAGE (default: DEFAULT_WEIGHTS)
     strategy        : aggregation strategy (default: WEIGHTED_AVERAGE)
     pass_threshold  : threshold used by ALL_MUST_PASS / MAJORITY_PASS / ANY_PASS

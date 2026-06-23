@@ -112,7 +112,7 @@ class VocabularyExpander:
         description   — string: multi-sentence explanation
         one_sentence  — string: brief one-liner
         category      — string: e.g. "window_function", "fee_type"
-        syntax        — string or dict: SQL syntax or structured definition
+        syntax        — string or dict: structured clinical syntax or definition
         null_behavior — string: NULL handling notes
         analysis_notes / performance_tips — string or list
         common_errors — list of {error, cause, solution}
@@ -205,7 +205,7 @@ class VocabularyExpander:
         for ex in examples:
             if not isinstance(ex, dict):
                 continue
-            ex_desc = ex.get("description") or ex.get("sql") or ""
+            ex_desc = ex.get("description") or ex.get("content") or ""
             if not ex_desc:
                 continue
             ex_desc = ex_desc.strip()
@@ -357,25 +357,29 @@ def expand_vocab_dir(
     vocab_dir: Path,
     multiturn: bool = False,
 ) -> List[Dict]:
-    """Expand all vocabulary YAML files found in vocab_dir.
+    """Expand vocabulary YAML file(s) under *vocab_dir* or a single vocabulary file.
 
-    Looks for files matching '*_vocabulary.yaml' in vocab_dir.
+    Looks for files matching '*_vocabulary.yaml' in a directory, or accepts one
+    such file path directly (e.g. ``data/medical_vocabulary.yaml``).
     Each file is loaded and expanded via VocabularyExpander.
 
     Args:
-        vocab_dir:  Directory containing vocabulary YAML files.
+        vocab_dir:  Directory or single *_vocabulary.yaml file.
         multiturn:  If True, return ShareGPT-format dicts.
                     If False, return flat {question, answer, source} dicts.
 
     Returns:
         Combined list of Q&A pairs or multi-turn conversation dicts.
     """
-    vocab_dir = Path(vocab_dir)
+    vocab_path = Path(vocab_dir)
     all_results: List[Dict] = []
 
-    vocab_files = sorted(vocab_dir.glob("*_vocabulary.yaml"))
+    if vocab_path.is_file():
+        vocab_files = [vocab_path]
+    else:
+        vocab_files = sorted(vocab_path.glob("*_vocabulary.yaml"))
     if not vocab_files:
-        _log.warning("No *_vocabulary.yaml files found in %s", vocab_dir)
+        _log.warning("No *_vocabulary.yaml files found at %s", vocab_path)
         return all_results
 
     for vf in vocab_files:

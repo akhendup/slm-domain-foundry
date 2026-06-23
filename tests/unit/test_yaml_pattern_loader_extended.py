@@ -88,7 +88,7 @@ class TestGenerateQaBestPractices:
         pattern = {
             **self._base_pattern(),
             "best_practices": [
-                "Always use ORDER BY for deterministic results.",
+                "Always schedule follow-up monitoring for deterministic assessment.",
                 "Partition data appropriately to reduce memory usage.",
                 "Avoid wide partitions that exceed available memory.",
             ],
@@ -102,7 +102,7 @@ class TestGenerateQaBestPractices:
         pattern = {
             **self._base_pattern(),
             "best_practices": {
-                "order_by": "Always include ORDER BY for deterministic output.",
+                "order_by": "Always document monitoring intervals in the care plan.",
                 "partitioning": "Use PARTITION BY to limit row scope.",
             },
         }
@@ -117,13 +117,13 @@ class TestGenerateQaBestPractices:
         pattern = {
             **self._base_pattern(),
             "best_practices": [
-                "Always use ORDER BY to get deterministic results from the window.",
+                "Always reassess blood pressure after four weeks of therapy.",
             ],
         }
         qa = generate_qa_from_pattern(pattern)
         # Should include topic-level questions for best practices > 15 chars
         qs = [q for q, _ in qa]
-        assert any("ORDER BY" in q or "order by" in q.lower() or "best practice" in q.lower() for q in qs)
+        assert any("monitor" in q.lower() or "follow" in q.lower() or "best practice" in q.lower() for q in qs)
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +139,7 @@ class TestGenerateQaGuardrails:
             "description": "A function for path analysis.",
             "pattern_alias": "TestFn",
             "guardrails": [
-                "Cannot be used in OLAP window functions.",
+                "Cannot be used when active bleeding is present.",
                 "Maximum partition size is 10,000 rows.",
             ],
         }
@@ -223,12 +223,12 @@ class TestGenerateQaFallback:
             "pattern_alias": "TestFn",
             "common_errors": [
                 {"cause": "missing clause", "solution": "add it"},  # no 'error' key
-                {"error": "Invalid ORDER BY", "cause": "wrong col", "solution": "use correct col"},
+                {"error": "Missing monitoring plan", "cause": "no follow-up scheduled", "solution": "recheck blood pressure in four weeks"},
             ],
         }
         qa = generate_qa_from_pattern(pattern)
         qs = [q for q, _ in qa]
-        assert any("Invalid ORDER BY" in q for q in qs)
+        assert any("Missing monitoring plan" in q for q in qs)
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ class TestMultiturnBestPractices:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for path analysis.",
-            "best_practices": ["Use ORDER BY.", "Partition carefully."],
+            "best_practices": ["Schedule follow-up monitoring.", "Document contraindications carefully."],
         }
         result = generate_multiturn_from_pattern(pattern)
         # Should return a conversation (or None if not enough turns)
@@ -254,7 +254,7 @@ class TestMultiturnBestPractices:
             "name": "testfn",
             "title": "TestFn",
             "description": "A function for path analysis.",
-            "best_practices": {"ordering": "Use ORDER BY.", "partitioning": "Partition carefully."},
+            "best_practices": {"monitoring": "Schedule follow-up monitoring.", "safety": "Document contraindications carefully."},
         }
         result = generate_multiturn_from_pattern(pattern)
         assert result is None or isinstance(result, list)
@@ -280,7 +280,7 @@ class TestMultiturnBestPractices:
 
 class TestBuildDebugConversation:
     def test_returns_none_when_no_first_sql_and_no_errors(self):
-        """No first SQL and no common_errors → returns None (line 620)."""
+        """No first example and no common_errors → returns None (line 620)."""
         from data.yaml_pattern_loader import _build_debug_conversation
         pattern = {
             "name": "testfn",
@@ -353,7 +353,7 @@ class TestBuildPerformanceConversation:
     def test_guardrails_included_in_performance(self):
         from data.yaml_pattern_loader import _build_performance_conversation
         pattern = {
-            "best_practices": "Use ORDER BY.",
+            "best_practices": "Schedule follow-up monitoring.",
             "guardrails": ["Max 10,000 rows per partition."],
         }
         result = _build_performance_conversation(pattern, "TestFn", "A description.")
@@ -368,7 +368,7 @@ class TestBuildPerformanceConversation:
 
 class TestBuildMigrationConversation:
     def test_returns_none_when_no_first_sql(self):
-        """No SQL template → returns None (line 689)."""
+        """No worked example → returns None (line 689)."""
         from data.yaml_pattern_loader import _build_migration_conversation
         pattern = {"templates": {}}
         result = _build_migration_conversation(pattern, "TestFn", "A description.")
@@ -419,7 +419,7 @@ class TestGenerateMultiturnConversations:
             "templates": {
                 "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
-            "best_practices": "Use ORDER BY.",
+            "best_practices": "Schedule follow-up monitoring.",
         }
         result = generate_multiturn_conversations(pattern)
         assert isinstance(result, list)
@@ -434,7 +434,7 @@ class TestGenerateMultiturnConversations:
             "templates": {
                 "basic": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy."}
             },
-            "best_practices": ["Use ORDER BY.", "Partition carefully."],
+            "best_practices": ["Schedule follow-up monitoring.", "Document contraindications carefully."],
             "common_errors": [
                 {"error": "No results", "cause": "bad pattern", "solution": "fix it"},
             ],
@@ -520,12 +520,12 @@ class TestGenerateQaSpecificBranches:
             "pattern_alias": "TestFn",
             "use_cases": ["Use case 1"],
             "templates": {
-                "no_sql_template": {"description": "A template with no SQL"},  # no sql key
+                "no_content_template": {"description": "A template with no content body"},  # no sql key
                 "good_template": {"content": "Case: elevated readings. Treatment plan: lifestyle plus first-line therapy.", "description": "A good template"},
             },
         }
         qa = generate_qa_from_pattern(pattern)
-        # Good template should generate Q&A; no_sql_template should be skipped
+        # Good template should generate Q&A; no_content_template should be skipped
         assert len(qa) >= 1
         qs = [q for q, _ in qa]
         assert any("good template" in q.lower() or "TestFn" in q for q in qs)
@@ -540,7 +540,7 @@ class TestGenerateQaSpecificBranches:
             "pattern_alias": "TestFn",
             "examples": [
                 "a plain string example",  # not a dict — should be skipped
-                {"name": "real_example", "content": "SELECT * FROM TestFn();", "expected_result": "rows"},
+                {"name": "real_example", "content": "Aspirin 81 mg daily with monthly BP checks.", "expected_result": "stable BP"},
             ],
         }
         qa = generate_qa_from_pattern(pattern)
@@ -574,11 +574,11 @@ class TestGenerateQaSpecificBranches:
             "description": "A function.",
             "pattern_alias": "SHORT_FN",  # different from title
             "examples": [
-                {"name": "ex1", "content": "SELECT * FROM SHORT_FN();", "expected_result": "rows"},
+                {"name": "ex1", "content": "Home blood pressure monitoring twice daily.", "expected_result": "confirmed hypertension"},
             ],
         }
         qa = generate_qa_from_pattern(pattern)
         qs = [q for q, _ in qa]
-        # Both "SHORT_FN SQL" and "TestFn Full Name SQL" should appear
+        # Both "SHORT_FN example" and "TestFn Full Name example" should appear
         assert any("SHORT_FN" in q for q in qs)
         assert any("TestFn Full Name" in q for q in qs)

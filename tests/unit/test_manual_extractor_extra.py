@@ -42,7 +42,7 @@ class TestIsTocPageAdditional:
 
     def test_returns_false_for_regular_text(self):
         from data.manual_extractor import is_toc_page
-        text = "Window functions are powerful SQL constructs.\nThey operate over a set of rows."
+        text = "Treatment protocols combine lifestyle and medication.\nThey operate over a set of rows."
         assert is_toc_page(text) is False
 
 
@@ -115,8 +115,8 @@ class TestFilterPagesAdditional:
         from data.manual_extractor import filter_pages
         long_content = (
             "Hypertension computes a cumulative sum over the window partition.\n"
-            "Use ORDER BY clause inside OVER() for deterministic results.\n"
-            "Always partition data to limit the scope of the window function.\n"
+            "Use home blood pressure monitoring for at least one week.\n"
+            "Always reassess contraindications before starting aspirin.\n"
             "The cumulative sum resets at each partition boundary.\n"
             "This is useful for running totals and progressive aggregation.\n"
         )
@@ -221,16 +221,16 @@ class TestGenerateTypedQaAdditional:
         return base
 
     def test_structured_syntax_generates_extra_pairs(self):
-        """Lines 490-493: when syntax contains SQL, additional pairs generated."""
+        """Lines 490-493: when syntax contains structured content, additional pairs generated."""
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
             heading="Hypertension",
             description=["Hypertension computes a cumulative sum."],
             syntax=["Treatment plan: lifestyle counseling plus first-line therapy"],
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         qs = [q for q, _ in qa]
-        assert any("subquery" in q.lower() or "OVER" in q or "SQL" in q for q in qs)
+        assert any("syntax" in q.lower() or "treatment" in q.lower() or "hypertension" in q.lower() for q in qs)
 
     def test_short_example_skipped(self):
         """Line 524: examples shorter than 30 chars are skipped."""
@@ -240,13 +240,13 @@ class TestGenerateTypedQaAdditional:
             description=["Hypertension computes a cumulative sum."],
             examples=["short"],  # < 30 chars — should be skipped
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         # No example-based pairs should be generated
         qs = [q for q, _ in qa]
         assert not any("complete example" in q.lower() for q in qs)
 
     def test_example_with_sql_generates_pairs(self):
-        """Lines 531-544: examples with SQL part generate structured pairs."""
+        """Lines 531-544: examples with structured sections generate structured pairs."""
         from data.manual_extractor import generate_typed_qa
         worked_example = (
             "INPUT:\nid | amount\n1  | 100\n\n"
@@ -258,7 +258,7 @@ class TestGenerateTypedQaAdditional:
             description=["HypertensionProtocol finds sequences of rows matching a pattern."],
             examples=[worked_example],
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         qs = [q for q, _ in qa]
         assert any("complete example" in q.lower() or "HypertensionProtocol" in q for q in qs)
 
@@ -271,7 +271,7 @@ class TestGenerateTypedQaAdditional:
             # Captions are extracted from `raw` via extract_figure_captions(_FIG_RE)
             raw="Figure 1-2: Cumulative sum computation over a time series.",
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         qs = [q for q, _ in qa]
         assert any("diagram" in q.lower() for q in qs)
 
@@ -282,7 +282,7 @@ class TestGenerateTypedQaAdditional:
         parsed = self._make_parsed(
             raw="This is some raw section content that wasn't parsed into labeled parts.",
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         assert len(qa) >= 1
         assert any("documentation" in q.lower() or "section" in q.lower() for q, _ in qa)
 
@@ -291,11 +291,11 @@ class TestGenerateTypedQaAdditional:
         from data.manual_extractor import generate_typed_qa
         parsed = self._make_parsed(
             heading="Hypertension",
-            description=["Hypertension is a window function that computes cumulative sums over a partition."],
+            description=["Hypertension is sustained elevated blood pressure requiring confirmatory readings and follow-up."],
         )
-        qa = generate_typed_qa(parsed, "tdref")
+        qa = generate_typed_qa(parsed, "medref")
         qs = [q for q, _ in qa]
-        assert any("window function" in q.lower() or "category" in q.lower() for q in qs)
+        assert any("hypertension" in q.lower() or "blood pressure" in q.lower() for q in qs)
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +411,7 @@ class TestExtractManual:
         mock_extractor = MagicMock()
         mock_extractor.extract.return_value = {
             "pages": self._make_pages([
-                "Hypertension computes cumulative sums.\nUse it with ORDER BY.\nPartition data efficiently.",
+                "Hypertension requires confirmatory readings.\nUse lifestyle counseling first.\nMonitor blood pressure weekly.",
             ]),
         }
 

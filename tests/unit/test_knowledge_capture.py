@@ -105,7 +105,7 @@ class TestParseErrors:
 
     def test_multiple_errors(self):
         text = (
-            "Missing ORDER BY: Add ORDER BY inside the OVER clause\n"
+            "Missing monitoring plan: Schedule blood pressure follow-up in 4 weeks\n"
             "Wrong data type: Cast the column to numeric before use"
         )
         result = _parse_errors(text)

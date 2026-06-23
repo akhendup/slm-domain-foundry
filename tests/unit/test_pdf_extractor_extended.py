@@ -204,10 +204,10 @@ class TestExtractAdditionalBranches:
         pdf_path.write_bytes(b"%PDF-1.4")
 
         long_valid_text = (
-            "Window functions are a powerful SQL feature.\n"
+            "Clinical guidelines are a core part of medical practice.\n"
             "They operate over a set of rows without collapsing them.\n"
-            "Hypertension, MSUM, and MAVG are examples of Clinical window functions.\n"
-            "Each function accepts an ORDER BY clause inside OVER().\n"
+            "Hypertension, aspirin, and lifestyle counseling are core secondary-prevention topics.\n"
+            "Each plan should include blood pressure monitoring and follow-up.\n"
         )
         mock_page = MagicMock()
         mock_page.extract_text.return_value = long_valid_text
@@ -222,7 +222,7 @@ class TestExtractAdditionalBranches:
             result = extractor.extract(pdf_path)
 
         assert result["extraction_method"] == "pdfplumber"
-        assert "Window functions" in result["full_text"]
+        assert "Hypertension" in result["full_text"]
 
     def test_standard_extraction_short_text_falls_through(self, tmp_path, monkeypatch):
         """Short standard text causes extract() to fall through to failed result (no OCR)."""

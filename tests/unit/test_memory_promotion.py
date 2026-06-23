@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 def _make_record(
     question: str = "What is hypertension?",
-    answer:   str = "Hypertension computes a cumulative sum over a column in Clinical SQL.",
+    answer:   str = "Hypertension computes a cumulative sum over a column in clinical practice.",
     approved: object = None,
     kb_used:  bool   = False,
     rid:      str    = "abc123",
@@ -121,8 +121,8 @@ class TestRelevanceScorer:
 
     def test_code_block_boosts_complexity(self):
         scorer = RelevanceScorer()
-        si_code  = self._make_si(answer="Use this:\n```sql\nSELECT * FROM t;\n```")
-        si_plain = self._make_si(answer="Use SELECT to retrieve data.")
+        si_code  = self._make_si(answer="Use this:\n```\nAspirin 81 mg daily with monitoring.\n```")
+        si_plain = self._make_si(answer="Use aspirin for secondary prevention when appropriate.")
         _, d_code  = scorer.score(si_code,  [])
         _, d_plain = scorer.score(si_plain, [])
         assert d_code["complexity"] >= d_plain["complexity"]

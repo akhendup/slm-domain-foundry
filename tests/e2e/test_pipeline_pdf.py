@@ -309,7 +309,7 @@ class TestPipelineManualPdf:
         out_dir = tmp_path / "out"
         full_text = (
             "Hypertension Protocol\n\nInitiate lifestyle counseling plus first-line antihypertensive therapy.\n"
-            "SELECT Hypertension(amount, ts) OVER (PARTITION BY id ORDER BY ts) FROM t;\n"
+            "Treatment plan: lifestyle counseling plus first-line antihypertensive with follow-up monitoring.\n"
         )
         sections = [
             {"heading": "Hypertension Function", "text": full_text},
@@ -335,7 +335,7 @@ class TestPipelineManualPdf:
         _create_fake_pdf(pdf_dir / "doc.pdf")
 
         out_dir = tmp_path / "out"
-        full_text = "RANK Function\n\nRANK assigns a rank to each row.\nUse ORDER BY clause.\n"
+        full_text = "Hypertension\n\nHypertension is sustained elevated blood pressure.\nSchedule home monitoring and follow-up.\n"
         sections = [{"heading": "RANK Function", "text": full_text}]
 
         sys.argv = [
@@ -387,7 +387,7 @@ class TestPipelineManualPdf:
         out_dir = tmp_path / "out"
         full_text = (
             "Hypertension Protocol\n\nTreatment plan includes medication titration and home monitoring.\n"
-            "SELECT Hypertension(x, t) OVER (ORDER BY t) FROM tbl;\n"
+            "Aspirin 81 mg daily with blood pressure monitoring every four weeks.\n"
         )
         sections = [{"heading": "Hypertension", "text": full_text}]
 

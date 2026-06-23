@@ -74,16 +74,17 @@ def _extract_key_sentences(text: str, budget_tokens: int) -> str:
     Return the most informative sentences from *text* that fit in
     *budget_tokens*.
 
-    Strategy: prefer sentences that contain SQL keywords, numbers, or
+    Strategy: prefer sentences that contain structured content keywords, numbers, or
     named entities (heuristic: capitalised tokens ≥ 4 chars).
     """
     sentences = _SENTENCE_SPLIT.split(text.strip())
     if not sentences:
         return ""
 
-    _sql_kw = re.compile(
-        r"\b(SELECT|FROM|WHERE|JOIN|GROUP|ORDER|HAVING|WITH|UNION|INSERT|"
-        r"UPDATE|DELETE|CREATE|TABLE|INDEX|VIEW|FUNCTION|PROCEDURE)\b",
+    _clinical_kw = re.compile(
+        r"\b(hypertension|aspirin|contraindication|dosage|dose|monitoring|"
+        r"diagnosis|guideline|adverse|interaction|blood pressure|therapy|"
+        r"treatment|prescrib|patient)\b",
         re.IGNORECASE,
     )
     _num = re.compile(r"\b\d+\b")
@@ -91,7 +92,7 @@ def _extract_key_sentences(text: str, budget_tokens: int) -> str:
 
     def _priority(s: str) -> int:
         return (
-            len(_sql_kw.findall(s)) * 3
+            len(_clinical_kw.findall(s)) * 3
             + len(_num.findall(s))
             + len(_named.findall(s))
         )
