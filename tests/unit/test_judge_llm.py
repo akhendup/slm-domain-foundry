@@ -135,11 +135,11 @@ class TestBuildMessages:
 # ---------------------------------------------------------------------------
 
 class TestLocalAPIBackend:
-    def test_rejects_openai_cloud(self):
+    def test_rejects_blocked_commercial_host_a(self):
         with pytest.raises(ValueError, match="cloud endpoint"):
             LocalAPIBackend(base_url="https://api.openai.com/v1")
 
-    def test_rejects_anthropic_cloud(self):
+    def test_rejects_blocked_commercial_host_b(self):
         with pytest.raises(ValueError, match="cloud endpoint"):
             LocalAPIBackend(base_url="https://api.anthropic.com")
 
@@ -374,6 +374,6 @@ class TestFactoryHelpers:
         assert isinstance(judge, HybridJudge)
         assert judge.backend_name == "transformers:local"
 
-    def test_ollama_judge_rejects_cloud(self):
+    def test_ollama_judge_rejects_commercial_host(self):
         with pytest.raises(ValueError, match="cloud endpoint"):
             ollama_judge(host="https://api.openai.com/v1")

@@ -5,7 +5,7 @@ Error-driven curriculum learning (Priority 3).
 Implements confidence-scored error pattern matching and curriculum sorting
 for training data.  High-confidence, well-understood patterns are placed
 early in the curriculum; ambiguous or complex cases come later — exactly
-matching bird_critic's confidence-gated escalation model.
+using a confidence-gated escalation model.
 
 No external LLMs or services required.
 
@@ -44,7 +44,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
 # ---------------------------------------------------------------------------
-# Confidence levels (mirrors bird_critic thresholds)
+# Confidence levels for curriculum ordering
 # ---------------------------------------------------------------------------
 
 class ConfidenceLevel(str, Enum):
@@ -111,7 +111,7 @@ class ConfidenceMatch:
         )
 
     def action(self) -> str:
-        """Recommended action matching bird_critic's escalation model."""
+        """Recommended action based on confidence level."""
         if self.level == ConfidenceLevel.HIGH:
             return "auto_retry"
         if self.level == ConfidenceLevel.MEDIUM:

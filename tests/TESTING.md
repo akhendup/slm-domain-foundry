@@ -2,7 +2,7 @@
 
 **Start here for hardware:** README [Hardware & platforms](../README.md#hardware--platforms) · this file for pytest commands.
 
-**AI agents:** Follow the step-by-step roadmap in [`AI_COVERAGE_IMPLEMENTATION.md`](AI_COVERAGE_IMPLEMENTATION.md) (environments, phases A–E, Apple Silicon vs GPU, progress log).
+**Contributors / automation:** Follow the step-by-step roadmap in [`AI_COVERAGE_IMPLEMENTATION.md`](AI_COVERAGE_IMPLEMENTATION.md) (environments, phases A–E, Apple Silicon vs GPU, progress log).
 
 ## Principles
 

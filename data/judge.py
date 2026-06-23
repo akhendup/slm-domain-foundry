@@ -108,7 +108,7 @@ class JudgeResult:
         return self.confidence >= threshold
 
     def confidence_level(self) -> str:
-        """HIGH / MEDIUM / LOW bucket matching bird_critic escalation model."""
+        """HIGH / MEDIUM / LOW confidence bucket."""
         if self.confidence >= 0.8:
             return "HIGH"
         if self.confidence >= 0.5:

@@ -1,6 +1,6 @@
 # SLM Domain Foundry
 
-A **domain-adaptive pipeline for training small language models (SLMs)** — from your own documents and Q&A data to a model you can chat with in a browser or terminal.
+A **domain-adaptive pipeline for training small language models (SLMs)** — from your own documents and Q&A data to a model you can chat with in a browser or terminal. **No commercial chat-API subscription or cloud inference account is required**; everything runs locally with HuggingFace models and optional self-hosted inference servers.
 
 The default profile targets **medical AI** (clinical Q&A, guidelines, vocabulary expansion), but the same pipeline adapts to legal, financial, scientific, or any other vertical by editing YAML config files.
 
@@ -77,7 +77,7 @@ The output in `output_model/` is a **standard HuggingFace checkpoint** (merged s
 | llama.cpp / GGUF | Convert with `llama.cpp/convert_hf_to_gguf.py`, quantize, then load |
 | ONNX / CPU inference | Automatic if `optimum[onnxruntime]` is installed (`pip install optimum[onnxruntime]`) |
 | HuggingFace Hub | `model.push_to_hub("your-org/your-model-name")` after `huggingface-cli login` |
-| Any OpenAI-compatible server | Serve with `vllm`, `text-generation-inference`, or `llama.cpp --server` |
+| Any HTTP chat-completions server | Serve with `vllm`, `text-generation-inference`, or `llama.cpp --server` (`/v1/chat/completions`) |
 
 ### Tool calling
 
@@ -90,6 +90,7 @@ This project produces a **plain chat / instruct model** — tool-calling scaffol
 ## Prerequisites
 
 - Python **3.10+**
+- **No paid LLM API** — training and inference use open HuggingFace checkpoints and your own data; optional local servers (Ollama, llama.cpp, LM Studio) are free to run yourself
 - **CUDA 11.8+** for GPU training with Unsloth on NVIDIA hardware (optional)
 - **Apple Silicon Mac** — native install + `run_local.sh` for MPS GPU training/inference (see [Hardware & platforms](#hardware--platforms))
 - **Docker** (optional; see [Docker](#docker) — **CPU-only on Mac; no Metal/MPS in containers**)

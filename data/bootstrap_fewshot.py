@@ -80,7 +80,7 @@ class BootstrapFewShot:
     Select the top-K highest-quality demonstrations from a candidate pool.
 
     The "teacher" here is the JudgeOrchestrator — a multi-dimensional
-    heuristic scorer that needs no external LLM.  This matches loom's
+    heuristic scorer that needs no external LLM.  This follows the same
     BootstrapFewShot approach: judge-filtered demonstration selection.
 
     Parameters

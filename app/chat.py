@@ -4,7 +4,7 @@ Simple Q&A demo: load your trained model and answer questions in the terminal.
 Works on NVIDIA GPU (Unsloth), Mac (MPS), and CPU (Hugging Face transformers).
 
 Also supports chatting with a local LLM (Ollama / llama.cpp / LM Studio) via
-the OpenAI-compatible API — no trained model needed.
+a local HTTP chat-completions server — no trained model needed.
 
 Usage:
   # Fine-tuned SLM from output_model/
@@ -138,7 +138,7 @@ def main():
 
     # Local LLM (Ollama / llama.cpp / LM Studio) options
     p.add_argument("--ollama", action="store_true",
-                   help="Use a local OpenAI-compatible LLM server instead of a trained model")
+                   help="Use a local HTTP chat-completions server instead of a trained model")
     p.add_argument("--ollama-host", default="http://localhost:11434",
                    help="Local LLM server URL (default: http://localhost:11434)")
     p.add_argument("--ollama-model", default=None,

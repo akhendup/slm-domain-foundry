@@ -2,7 +2,7 @@
 """
 Learning agent with canary testing and circuit breaker (Priority 7).
 
-Implements loom's learning agent safety architecture for autonomous
+Implements a learning-agent safety architecture for autonomous
 pattern improvement:
 
   CircuitBreaker  — prevents cascading failures from bad pattern changes.

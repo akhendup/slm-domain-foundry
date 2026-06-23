@@ -2453,7 +2453,7 @@ def _ollama_chat(
     model_name: str,
 ) -> str:
     """
-    Send a message to any OpenAI-compatible local inference server and return the reply.
+    Send a message to a local HTTP chat-completions server and return the reply.
 
     Compatible with:
       - Ollama        (http://localhost:11434)
@@ -2498,7 +2498,7 @@ def _ollama_test_connection(host: str, model_name: str) -> str:
 
     host = (host or "http://localhost:11434").rstrip("/")
     try:
-        # Try /api/tags (Ollama) or /v1/models (OpenAI-compatible) to check connectivity
+        # Try /api/tags (Ollama) or /v1/models (chat-completions servers) to check connectivity
         try:
             names = list_ollama_models(host)
             if names:
@@ -2997,7 +2997,8 @@ def build_app() -> gr.Blocks:
             # ── Tab 6 · Local LLM (Ollama / llama.cpp / LM Studio) ────────
             with gr.Tab("6 · Local LLM"):
                 gr.Markdown(
-                    "**Chat with any local LLM** — no fine-tuning or model download required.\n\n"
+                    "**Chat with any local LLM** — no fine-tuning, no commercial API subscription, "
+                    "and no cloud account required.\n\n"
                     "Point this tab at a running [Ollama](https://ollama.ai), "
                     "[llama.cpp](https://github.com/ggerganov/llama.cpp), or "
                     "[LM Studio](https://lmstudio.ai) server and start chatting immediately.\n\n"

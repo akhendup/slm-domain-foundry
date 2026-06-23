@@ -143,7 +143,7 @@ For each module below **&lt; 100%**, add or extend tests using **real files** un
 | `pattern_embedder.py` | Real YAML from `sample_data/patternexamples/hypertension.yaml` | `tests/real/test_pattern_embedder_real.py` if present |
 | `template_expander.py` | Load real `data/question_templates.yaml` + `medical_vocabulary.yaml` | `tests/real/test_template_expander_real.py` |
 | `knowledge_capture.py` | Round-trip save/load under `tmp_path` knowledge library | `tests/real/test_knowledge_capture_real.py` |
-| `judge_llm.py` | Use real `app.model_loader` + tiny model if judge path testable without cloud API | Only if no external API; otherwise test rule-based `judge.py` paths |
+| `judge_llm.py` | Use real `app.model_loader` + tiny model if judge path testable without external services | Otherwise test rule-based `judge.py` paths |
 
 **Acceptance criteria Phase A:**
 
@@ -400,8 +400,8 @@ pytest tests/ -m gpu -q
 
 | Date | Author | Phase / step | What changed | Why | Coverage (`data` / `train` / `app`) |
 |------|--------|--------------|--------------|-----|-------------------------------------|
-| 2026-06-02 | AI + human | Baseline | Added `tests/real/*`, sharegpt_format, model_loader fixes, removed mock extended loader tests | Ollama 404 clarity, memory dropdown crash, PEFT load | ~92% / ~65% / ~46% |
-| 2026-06-13 | AI + human | Phase 1 docs/tests | Domain-neutral fixtures; MPS tests; single-domain coupling removed from codebase and tests; CI gate 75% | 100% coverage deferred (Gradio + Unsloth gaps) | ~76% overall |
+| 2026-06-02 | Maintainers | Baseline | Added `tests/real/*`, sharegpt_format, model_loader fixes, removed mock extended loader tests | Ollama 404 clarity, memory dropdown crash, PEFT load | ~92% / ~65% / ~46% |
+| 2026-06-13 | Maintainers | Phase 1 docs/tests | Domain-neutral fixtures; MPS tests; single-domain coupling removed from codebase and tests; CI gate 75% | 100% coverage deferred (Gradio + Unsloth gaps) | ~76% overall |
 
 ---
 
@@ -410,7 +410,7 @@ pytest tests/ -m gpu -q
 When new gaps are discovered:
 
 1. **Do not** remove or rewrite completed rows in **Progress log**.
-2. Add a new subsection under the relevant phase, e.g. `### A.3 New: data/judge_llm cloud API`.
+2. Add a new subsection under the relevant phase, e.g. `### A.3 New: data/judge_llm optional backend`.
 3. State **environment** (Mac / CUDA / Ollama), **inputs**, and **acceptance criteria**.
 4. If a step is obsolete, strike through the step and add a one-line **Superseded by …** note—keep the old text.
 

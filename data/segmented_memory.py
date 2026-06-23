@@ -2,11 +2,11 @@
 """
 Segmented memory with hard token budgets (Priority 2).
 
-Implements a four-segment context window manager inspired by loom's
+Implements a four-segment context window manager with
 agent memory architecture.  No external services required — token
 counting uses a simple word/punctuation heuristic.
 
-Segments (from loom architecture)
+Segments
 ----------------------------------
 ROM     (5 000 tokens, immutable) : system prompt, static patterns
 Kernel  (2 000 tokens, mutable)   : session context (user prefs, goals)

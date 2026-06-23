@@ -6,12 +6,12 @@ Replaces heuristic scorers with a structured LLM prompt that returns
 JSON dimension scores.  Two backends are supported:
 
   LocalAPIBackend
-      Talks to any OpenAI-compatible local server:
+      Talks to any local HTTP chat-completions server:
         - Ollama          (default: http://localhost:11434)
         - llama.cpp server(default: http://localhost:8080)
         - LM Studio       (default: http://localhost:1234)
       Uses only the ``requests`` library (already in requirements).
-      No Anthropic / OpenAI cloud keys accepted.
+      Commercial cloud inference endpoints are blocked; use self-hosted servers only.
 
   TransformersBackend
       Uses a HuggingFace model + tokenizer already loaded in memory
@@ -185,12 +185,12 @@ class JudgeBackend(ABC):
 
 
 # ---------------------------------------------------------------------------
-# Backend 1: OpenAI-compatible local API
+# Backend 1: local HTTP chat-completions API
 # ---------------------------------------------------------------------------
 
 class LocalAPIBackend(JudgeBackend):
     """
-    Calls any OpenAI-compatible local inference server.
+    Calls any local HTTP chat-completions inference server.
 
     Compatible with:
       - Ollama        (base_url="http://localhost:11434")
@@ -206,8 +206,7 @@ class LocalAPIBackend(JudgeBackend):
     temperature : sampling temperature (default 0.1 for deterministic scoring)
     max_tokens  : max tokens to generate (256 is enough for a JSON score block)
     api_key     : dummy key sent in Authorization header; ignored by local servers
-                  but required by some OpenAI-SDK wrappers.  Must NOT be a real
-                  Anthropic or OpenAI cloud key.
+                  but required by some HTTP client wrappers.  Must NOT be a commercial cloud API key.
     """
 
     def __init__(
@@ -261,7 +260,7 @@ class LocalAPIBackend(JudgeBackend):
         resp.raise_for_status()
         data = resp.json()
 
-        # Standard OpenAI response shape
+        # Standard chat-completions JSON response shape
         return data["choices"][0]["message"]["content"]
 
 
@@ -397,7 +396,7 @@ class HybridJudge:
     Tries the LLM backend first; falls back to heuristic scoring if the
     LLM call fails (timeout, server down, unparseable output, etc.).
 
-    This mirrors loom's RetryableJudge pattern but adapted for Python:
+    Uses an LLM-first scoring path with heuristic fallback on failure:
     instead of retrying the same backend, we fall back to a known-good
     heuristic so evaluation never hard-fails at inference time.
 

@@ -2,6 +2,7 @@
 
 Thank you for helping improve this project. This repository is intended as a
 clean, domain-adaptive starter kit for teams building small language models.
+You do **not** need any commercial chat-API subscription to develop or run the pipeline.
 
 ## Getting started
 

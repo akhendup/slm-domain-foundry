@@ -1,5 +1,5 @@
 """
-Helpers for Ollama and other OpenAI-compatible local LLM servers.
+Helpers for Ollama and other local HTTP chat-completions servers (optional; self-hosted only).
 """
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def local_llm_chat(
     timeout: float = 60,
 ) -> str:
     """
-    Chat via OpenAI-compatible ``/v1/chat/completions``.
+    Chat via local HTTP ``/v1/chat/completions`` (common JSON shape used by Ollama, llama.cpp, LM Studio, vLLM).
 
     Raises ``requests.HTTPError`` / ``ConnectionError``; callers can use
     ``format_local_llm_error`` for user-facing text.
